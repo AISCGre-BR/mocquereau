@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  background-color: #f9fafb;
+  color: #111827;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
