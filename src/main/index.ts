@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, clipboard } from "electron";
 import { join } from "node:path";
+import { registerProjectHandlers } from './project-io';
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -21,20 +22,6 @@ function createWindow(): void {
   }
 }
 
-function registerProjectHandlers(): void {
-  // Phase 2 will provide real implementations in src/main/project-io.ts
-  ipcMain.handle("project:save", async (_event, _project) => {
-    return null; // stub
-  });
-
-  ipcMain.handle("project:open", async () => {
-    return null; // stub
-  });
-
-  ipcMain.handle("project:import-gueranger", async () => {
-    return null; // stub
-  });
-}
 
 function registerExportHandlers(): void {
   // Phase 7 will provide real implementation in src/main/docx-export.ts
