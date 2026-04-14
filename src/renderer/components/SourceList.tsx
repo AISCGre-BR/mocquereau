@@ -104,6 +104,14 @@ export function SourceList({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAddedRef = useRef<string | null>(null);
 
+  // Auto-add first source row when entering with no sources
+  useEffect(() => {
+    if (state.project && sources.length === 0) {
+      handleAddSource();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.project]);
+
   // Auto-focus siglum input when a new source is added
   useEffect(() => {
     if (lastAddedRef.current) {
@@ -424,10 +432,15 @@ export function SourceList({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps
                           />
                         ) : (
                           <button
-                            className="p-1 text-gray-300 hover:text-blue-500 transition-colors"
+                            className="flex items-center gap-1 px-2 py-0.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
                             title="Adicionar imagem (ou Ctrl+V)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleImageCellClick(source.id);
+                            }}
                           >
-                            <ImagePlus size={14} />
+                            <ImagePlus size={11} />
+                            Img
                           </button>
                         )}
                       </td>
