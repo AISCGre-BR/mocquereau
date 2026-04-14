@@ -1,6 +1,6 @@
 // src/renderer/components/slice-editor/ImageCanvas.tsx
 
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { StoredImage, SyllabifiedWord } from '../../lib/models';
 import { EditorAction } from './editorReducer';
 import { DividerHandle } from './DividerHandle';
@@ -14,7 +14,7 @@ interface ImageCanvasProps {
   zoom: number;
   panOffset: { x: number; y: number };
   dispatch: React.Dispatch<EditorAction>;
-  words?: SyllabifiedWord[];    // For rendering syllable labels above each slice
+  words?: SyllabifiedWord[];
 }
 
 export function ImageCanvas({
@@ -28,111 +28,19 @@ export function ImageCanvas({
   dispatch,
   words,
 }: ImageCanvasProps) {
-  // Refs
-  const containerRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const dividerRefs = useRef<number[]>([]);
-  const isPanning = useRef(false);
-  const startPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const imageWrapperRef = useRef<HTMLDivElement>(null);
+  const dividerRefs = useRef<number[]>([...dividers]);
 
-  // Sync dividerRefs with prop
-  useEffect(() => {
+  // Keep dividerRefs in sync with prop (after AUTO_DISTRIBUTE, SET_DIVIDERS)
+  if (dividerRefs.current.length !== dividers.length) {
     dividerRefs.current = [...dividers];
-  }, [dividers]);
-
-  // ── Event handlers ──────────────────────────────────────────────────────────
-
-  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const delta = -e.deltaY * 0.001;
-    const newZoom = Math.max(0.25, Math.min(8, zoom * (1 + delta)));
-    const rect = containerRef.current!.getBoundingClientRect();
-    const cursorX = e.clientX - rect.left;
-    const cursorY = e.clientY - rect.top;
-    const scaleRatio = newZoom / zoom;
-    const newPanX = cursorX / zoom - scaleRatio * (cursorX / zoom - panOffset.x);
-    const newPanY = cursorY / zoom - scaleRatio * (cursorY / zoom - panOffset.y);
-    dispatch({ type: 'SET_ZOOM', payload: newZoom });
-    dispatch({ type: 'SET_PAN', payload: { x: newPanX, y: newPanY } });
   }
 
-  function handleCanvasPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.ctrlKey || e.shiftKey) {
-      e.preventDefault();
-      isPanning.current = true;
-      startPanRef.current = {
-        x: e.clientX / zoom - panOffset.x,
-        y: e.clientY / zoom - panOffset.y,
-      };
-      containerRef.current?.setPointerCapture(e.pointerId);
-    }
-  }
-
-  function handleCanvasPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!isPanning.current) return;
-    const newPanX = e.clientX / zoom - startPanRef.current.x;
-    const newPanY = e.clientY / zoom - startPanRef.current.y;
-    dispatch({ type: 'SET_PAN', payload: { x: newPanX, y: newPanY } });
-  }
-
-  function handleCanvasPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (isPanning.current) {
-      isPanning.current = false;
-      containerRef.current?.releasePointerCapture(e.pointerId);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === '0' && e.ctrlKey) {
-      e.preventDefault();
-      dispatch({ type: 'SET_ZOOM', payload: 1 });
-      dispatch({ type: 'SET_PAN', payload: { x: 0, y: 0 } });
-    }
-  }
-
-  function handleDividerCommit(index: number, newFraction: number) {
-    const updated = [...dividerRefs.current];
-    updated[index] = newFraction;
-    dispatch({ type: 'SET_DIVIDERS', payload: updated });
-  }
-
-  function renderSliceHighlight() {
-    if (hoveredSyllableIdx === null || !syllableRange) return null;
-
-    // Gap-guard: gap syllables have no corresponding slice — render nothing.
-    const gapSet = new Set(gaps);
-    if (gapSet.has(hoveredSyllableIdx)) return null;
-
-    // Find which slice index this global syllable maps to.
-    // Active syllables: range indices excluding gaps.
-    let sliceIdx = 0;
-    for (let i = syllableRange.start; i <= syllableRange.end; i++) {
-      if (gapSet.has(i)) continue;
-      if (i === hoveredSyllableIdx) break;
-      sliceIdx++;
-    }
-
-    // sliceIdx is now the 0-based index in active syllables
-    const boundaries = [0, ...dividers, 1];
-    const leftFrac = boundaries[sliceIdx] ?? 0;
-    const rightFrac = boundaries[sliceIdx + 1] ?? 1;
-
-    return (
-      <div
-        className="absolute top-0 bottom-0 bg-red-400/20 pointer-events-none"
-        style={{
-          left: `${leftFrac * 100}%`,
-          width: `${(rightFrac - leftFrac) * 100}%`,
-        }}
-      />
-    );
-  }
-
-  // ── Compute syllable labels for each active slice ────────────────────────
-  function computeSliceLabels(): Array<{ text: string; isLastOfWord: boolean }> {
+  // ── Compute syllable labels ────────────────────────────────────────────────
+  function computeSliceLabels(): Array<{ text: string; isLastOfWord: boolean; globalIdx: number }> {
     if (!words || !syllableRange) return [];
     const gapSet = new Set(gaps);
-    const labels: Array<{ text: string; isLastOfWord: boolean }> = [];
+    const labels: Array<{ text: string; isLastOfWord: boolean; globalIdx: number }> = [];
     let globalIdx = 0;
     for (let wi = 0; wi < words.length; wi++) {
       const word = words[wi];
@@ -143,10 +51,10 @@ export function ImageCanvas({
           !gapSet.has(globalIdx)
         ) {
           const isLast = si === word.syllables.length - 1;
-          // Show syllable with a trailing hyphen if it's not the last of a word
           labels.push({
             text: isLast ? word.syllables[si] : word.syllables[si] + '-',
             isLastOfWord: isLast,
+            globalIdx,
           });
         }
         globalIdx++;
@@ -155,7 +63,18 @@ export function ImageCanvas({
     return labels;
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const delta = -e.deltaY * 0.001;
+    const newZoom = Math.max(0.5, Math.min(4, zoom * (1 + delta)));
+    dispatch({ type: 'SET_ZOOM', payload: newZoom });
+  }
+
+  function handleDividerCommit(index: number, newFraction: number) {
+    const updated = [...dividerRefs.current];
+    updated[index] = newFraction;
+    dispatch({ type: 'SET_DIVIDERS', payload: updated });
+  }
 
   if (!image) {
     return (
@@ -169,75 +88,104 @@ export function ImageCanvas({
   const boundaries = [0, ...dividers, 1];
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-full overflow-hidden bg-gray-100 focus:outline-none"
-      tabIndex={0}
-      onWheel={handleWheel}
-      onPointerDown={handleCanvasPointerDown}
-      onPointerMove={handleCanvasPointerMove}
-      onPointerUp={handleCanvasPointerUp}
-      onKeyDown={handleKeyDown}
-    >
-      {/* Syllable labels strip — always visible, shows which slice maps to which syllable */}
-      {sliceLabels.length > 0 && (
-        <div className="absolute top-0 left-0 right-0 h-7 bg-white/90 border-b border-gray-200 z-20 pointer-events-none">
+    <div className="flex flex-col h-full bg-gray-100" onWheel={handleWheel}>
+      {/* Labels row — always visible above image, aligned with slices below */}
+      <div className="h-8 bg-white border-b border-gray-300 flex-shrink-0 overflow-hidden">
+        <div
+          className="relative h-full"
+          style={{ width: `${100 * zoom}%`, minWidth: '100%' }}
+        >
           {sliceLabels.map((label, i) => {
             const leftFrac = boundaries[i] ?? 0;
             const rightFrac = boundaries[i + 1] ?? 1;
-            const isHovered = hoveredSyllableIdx !== null && i === hoveredSyllableIdx - (syllableRange?.start ?? 0);
+            const isHovered =
+              hoveredSyllableIdx !== null && label.globalIdx === hoveredSyllableIdx;
             return (
               <div
                 key={i}
                 className={[
-                  'absolute top-0 bottom-0 flex items-center justify-center text-xs font-mono truncate px-1',
-                  label.isLastOfWord ? 'border-r-2 border-gray-700' : 'border-r border-gray-300',
-                  isHovered ? 'bg-yellow-100 text-yellow-900 font-semibold' : 'text-gray-700',
+                  'absolute top-0 bottom-0 flex items-center justify-center text-sm font-medium truncate px-1 cursor-pointer',
+                  label.isLastOfWord
+                    ? 'border-r-2 border-gray-700'
+                    : 'border-r border-gray-300',
+                  isHovered
+                    ? 'bg-yellow-200 text-yellow-900'
+                    : 'text-gray-800 hover:bg-gray-50',
                 ].join(' ')}
                 style={{
                   left: `${leftFrac * 100}%`,
                   width: `${(rightFrac - leftFrac) * 100}%`,
                 }}
+                onMouseEnter={() =>
+                  dispatch({ type: 'SET_HOVER', payload: label.globalIdx })
+                }
+                onMouseLeave={() => dispatch({ type: 'SET_HOVER', payload: null })}
               >
                 {label.text}
               </div>
             );
           })}
         </div>
-      )}
+      </div>
 
-      {/* Inner container receives CSS transform for zoom/pan */}
-      <div
-        ref={overlayRef}
-        className="absolute inset-0 origin-top-left pt-7"
-        style={{
-          transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-        }}
-      >
-        <img
-          src={image.dataUrl}
-          alt="Manuscript"
-          className="block max-w-none select-none pointer-events-none"
-          style={{ width: image.width, height: image.height }}
-          draggable={false}
-        />
-
-        {/* Divider handles */}
-        {dividers.map((frac, idx) => (
-          <DividerHandle
-            key={idx}
-            index={idx}
-            initialFraction={frac}
-            containerRef={overlayRef}
-            dividerRefs={dividerRefs}
-            syllableCount={dividers.length + 1}
-            onCommit={handleDividerCommit}
-            onHover={() => {}}
+      {/* Image + dividers area */}
+      <div className="relative flex-1 min-h-0 overflow-auto">
+        {/* Inner wrapper sized to fit width; dividers positioned relative to this */}
+        <div
+          ref={imageWrapperRef}
+          className="relative inline-block"
+          style={{
+            width: `${100 * zoom}%`,
+            minWidth: '100%',
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+          }}
+        >
+          <img
+            src={image.dataUrl}
+            alt="Manuscript"
+            className="block w-full h-auto select-none pointer-events-none"
+            draggable={false}
           />
-        ))}
 
-        {/* Slice highlight overlay for hovered syllable */}
-        {hoveredSyllableIdx !== null && image && renderSliceHighlight()}
+          {/* Divider handles — absolute over the image */}
+          {dividers.map((frac, idx) => (
+            <DividerHandle
+              key={idx}
+              index={idx}
+              initialFraction={frac}
+              containerRef={imageWrapperRef}
+              dividerRefs={dividerRefs}
+              syllableCount={dividers.length + 1}
+              onCommit={handleDividerCommit}
+              onHover={() => {}}
+            />
+          ))}
+
+          {/* Slice highlight overlay */}
+          {hoveredSyllableIdx !== null &&
+            syllableRange &&
+            (() => {
+              const gapSet = new Set(gaps);
+              if (gapSet.has(hoveredSyllableIdx)) return null;
+              let sliceIdx = 0;
+              for (let i = syllableRange.start; i <= syllableRange.end; i++) {
+                if (gapSet.has(i)) continue;
+                if (i === hoveredSyllableIdx) break;
+                sliceIdx++;
+              }
+              const leftFrac = boundaries[sliceIdx] ?? 0;
+              const rightFrac = boundaries[sliceIdx + 1] ?? 1;
+              return (
+                <div
+                  className="absolute top-0 bottom-0 bg-yellow-400/20 pointer-events-none border-x-2 border-yellow-500/50"
+                  style={{
+                    left: `${leftFrac * 100}%`,
+                    width: `${(rightFrac - leftFrac) * 100}%`,
+                  }}
+                />
+              );
+            })()}
+        </div>
       </div>
     </div>
   );
