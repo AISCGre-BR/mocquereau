@@ -1,5 +1,7 @@
 // src/renderer/components/slice-editor/editorReducer.ts
 
+import type { SyllableBox } from '../../lib/models';
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface EditorState {
@@ -13,6 +15,10 @@ export interface EditorState {
   zoom: number;                       // 1.0 === 100%
   panOffset: { x: number; y: number };
   isDirty: boolean;
+  /** Index of the syllable currently being box-edited (global idx), or null */
+  activeSyllableIdx: number | null;
+  /** In-flight boxes: Record<globalSyllableIdx, SyllableBox | null> */
+  syllableBoxes: Record<number, SyllableBox | null>;
 }
 
 export const initialEditorState: EditorState = {
@@ -26,6 +32,8 @@ export const initialEditorState: EditorState = {
   zoom: 1,
   panOffset: { x: 0, y: 0 },
   isDirty: false,
+  activeSyllableIdx: null,
+  syllableBoxes: {},
 };
 
 // ── Action union ─────────────────────────────────────────────────────────────
@@ -40,6 +48,7 @@ export type EditorAction =
         syllableRange: { start: number; end: number };
         gaps: number[];
         coveredSyllables?: number[];  // optional — backward compatible
+        syllableBoxes?: Record<number, SyllableBox | null>;
       };
     }
   | { type: 'SET_DIVIDERS'; payload: number[] }
@@ -60,11 +69,24 @@ export type EditorAction =
         syllableRange: { start: number; end: number } | null;
         gaps: number[];
         coveredSyllables: number[];  // indices confirmed in OTHER lines
+        syllableBoxes?: Record<number, SyllableBox | null>;
       };
     }
   | {
       type: 'REMOVE_LINE';
       payload: { lineId: string };
+    }
+  | {
+      type: 'SET_BOX';
+      payload: { syllableIdx: number; box: SyllableBox };
+    }
+  | {
+      type: 'DELETE_BOX';
+      payload: { syllableIdx: number };
+    }
+  | {
+      type: 'SET_ACTIVE_SYLLABLE';
+      payload: number | null;
     };
 
 // ── Private helpers ──────────────────────────────────────────────────────────
@@ -97,6 +119,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         zoom: 1,
         panOffset: { x: 0, y: 0 },
         isDirty: false,
+        activeSyllableIdx: null,
+        syllableBoxes: action.payload.syllableBoxes ?? {},
       };
     }
 
@@ -168,6 +192,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         dividers: newDividers,
         gaps: [],
         isDirty: false,
+        activeSyllableIdx: null,
+        syllableBoxes: {},
       };
     }
 
@@ -197,6 +223,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         zoom: 1,
         panOffset: { x: 0, y: 0 },
         isDirty: false,
+        activeSyllableIdx: null,
+        syllableBoxes: action.payload.syllableBoxes ?? {},
       };
     }
 
@@ -211,7 +239,25 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         gaps: [],
         coveredSyllables: [],
         isDirty: false,
+        activeSyllableIdx: null,
+        syllableBoxes: {},
       };
+    }
+
+    case 'SET_BOX': {
+      const { syllableIdx, box } = action.payload;
+      const updated = { ...state.syllableBoxes, [syllableIdx]: box };
+      return { ...state, syllableBoxes: updated, isDirty: true };
+    }
+
+    case 'DELETE_BOX': {
+      const { syllableIdx } = action.payload;
+      const updated = { ...state.syllableBoxes, [syllableIdx]: null };
+      return { ...state, syllableBoxes: updated, isDirty: true };
+    }
+
+    case 'SET_ACTIVE_SYLLABLE': {
+      return { ...state, activeSyllableIdx: action.payload };
     }
 
     default:
