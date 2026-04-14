@@ -62,6 +62,8 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
 
   // ── Debounce ───────────────────────────────────────────────────────────────
   useEffect(() => {
+    // When the raw text changes, reset manual edits so auto-syllabification takes over
+    setHasManualEdits(false);
     const timer = setTimeout(() => setDebouncedText(rawText), 300);
     return () => clearTimeout(timer);
   }, [rawText]);
