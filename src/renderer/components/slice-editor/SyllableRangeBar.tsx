@@ -10,6 +10,7 @@ interface SyllableRangeBarProps {
   syllableRange: { start: number; end: number } | null;
   gaps: number[];
   hoveredSyllableIdx: number | null;
+  coveredSyllables: number[];   // indices confirmed in other lines
   onRangeChange: (range: { start: number; end: number }) => void;
   onGapToggle: (globalIdx: number) => void;
   onHover: (globalIdx: number | null) => void;
@@ -17,13 +18,15 @@ interface SyllableRangeBarProps {
 
 // ── Chip state ────────────────────────────────────────────────────────────────
 
-type ChipState = 'inactive' | 'active' | 'gap';
+type ChipState = 'inactive' | 'active' | 'gap' | 'covered';
 
 function getChipState(
   i: number,
   syllableRange: { start: number; end: number } | null,
   gaps: number[],
+  coveredSyllables: number[],
 ): ChipState {
+  if (coveredSyllables.includes(i)) return 'covered';
   if (syllableRange === null || i < syllableRange.start || i > syllableRange.end) {
     return 'inactive';
   }
@@ -39,10 +42,12 @@ function handleChipClick(
   i: number,
   syllableRange: { start: number; end: number } | null,
   gaps: number[],
+  coveredSyllables: number[],
   onRangeChange: (range: { start: number; end: number }) => void,
   onGapToggle: (globalIdx: number) => void,
 ): void {
-  const state = getChipState(i, syllableRange, gaps);
+  const state = getChipState(i, syllableRange, gaps, coveredSyllables);
+  if (state === 'covered') return;  // locked — cannot re-select
 
   if (state === 'inactive') {
     if (syllableRange === null) {
@@ -63,18 +68,21 @@ function handleChipClick(
 
 function chipClassName(state: ChipState, isHovered: boolean): string {
   const base =
-    'inline-flex items-center px-2 py-1 text-xs rounded select-none cursor-pointer transition-colors';
+    'inline-flex items-center px-2 py-1 text-xs rounded select-none transition-colors';
   let stateClass = '';
 
   if (state === 'inactive') {
     stateClass = 'bg-gray-100 text-gray-400 cursor-pointer hover:bg-gray-200';
   } else if (state === 'active') {
     stateClass =
-      'bg-indigo-100 text-indigo-800 border border-indigo-300 hover:bg-indigo-200';
-  } else {
-    // gap
+      'bg-indigo-100 text-indigo-800 border border-indigo-300 cursor-pointer hover:bg-indigo-200';
+  } else if (state === 'gap') {
     stateClass =
-      'bg-red-50 text-red-400 border border-dashed border-red-300';
+      'bg-red-50 text-red-400 border border-dashed border-red-300 cursor-pointer';
+  } else {
+    // covered
+    stateClass =
+      'bg-green-100 text-green-700 border border-green-400 cursor-not-allowed opacity-80';
   }
 
   const hoverClass =
@@ -90,6 +98,7 @@ export function SyllableRangeBar({
   syllableRange,
   gaps,
   hoveredSyllableIdx,
+  coveredSyllables,
   onRangeChange,
   onGapToggle,
   onHover,
@@ -108,9 +117,12 @@ export function SyllableRangeBar({
     <div className="flex flex-col gap-1">
       <div className="flex flex-row flex-wrap items-center gap-y-1 overflow-x-auto py-2 px-1">
         {allSyllables.map((syllable, i) => {
-          const state = getChipState(i, syllableRange, gaps);
+          const state = getChipState(i, syllableRange, gaps, coveredSyllables);
           const isHovered = i === hoveredSyllableIdx;
-          const label = state === 'gap' ? `✕ ${syllable}` : syllable;
+          const label =
+            state === 'gap' ? `✕ ${syllable}` :
+            state === 'covered' ? `✓ ${syllable}` :
+            syllable;
 
           return (
             <span key={i} className="inline-flex items-center">
@@ -119,13 +131,13 @@ export function SyllableRangeBar({
                 onMouseEnter={() => onHover(i)}
                 onMouseLeave={() => onHover(null)}
                 onClick={() =>
-                  handleChipClick(i, syllableRange, gaps, onRangeChange, onGapToggle)
+                  handleChipClick(i, syllableRange, gaps, coveredSyllables, onRangeChange, onGapToggle)
                 }
-                role="button"
-                tabIndex={0}
+                role={state === 'covered' ? undefined : 'button'}
+                tabIndex={state === 'covered' ? -1 : 0}
                 onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
-                    handleChipClick(i, syllableRange, gaps, onRangeChange, onGapToggle);
+                    handleChipClick(i, syllableRange, gaps, coveredSyllables, onRangeChange, onGapToggle);
                   }
                 }}
               >
