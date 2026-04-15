@@ -28,6 +28,15 @@ function log(...args: unknown[]) {
   console.log('[docx-export]', ...args);
 }
 
+// ── Unique ID generator for images ───────────────────────────────────────────
+// docx v9.6.1 emits wp:docPr id="1" for EVERY image which makes OOXML invalid
+// and prevents Word/LibreOffice from rendering the images. Workaround: pass
+// explicit altText.id on each ImageRun.
+let imageIdCounter = 1000;
+function nextImageId(): string {
+  return String(imageIdCounter++);
+}
+
 // ── Page dimensions ────────────────────────────────────────────────────────────
 // A4 landscape: 297mm × 210mm in twentieths-of-a-point (TWIPs)
 // 1 inch = 1440 TWIPs; 1 mm ≈ 56.7 TWIPs
@@ -132,6 +141,7 @@ function buildDataCell(cell: DocxCellData): TableCell {
       );
     }
 
+    const imgId = nextImageId();
     children = [
       new Paragraph({
         alignment: AlignmentType.CENTER,
@@ -142,6 +152,12 @@ function buildDataCell(cell: DocxCellData): TableCell {
             transformation: {
               width: dims.width,
               height: dims.height,
+            },
+            altText: {
+              id: imgId,
+              name: `Image_${imgId}`,
+              description: '',
+              title: '',
             },
           }),
         ],
@@ -333,6 +349,7 @@ function buildDocument(payload: DocxExportPayload): Document {
 export function registerDocxExportHandler(): void {
   ipcMain.handle('export:docx', async (_event, payload: DocxExportPayload) => {
     debugFirstCellWritten = false; // reset for each export
+    imageIdCounter = 1000;          // reset unique image ID counter
     try {
       log(`payload received: title="${payload.title}", rows=${payload.rows.length}, syllables=${payload.syllables.length}`);
       let totalCells = 0, filledCells = 0, gapCells = 0, unfilledCells = 0;
