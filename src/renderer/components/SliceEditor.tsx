@@ -45,7 +45,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
   const [editorState, editorDispatch] = useReducer(editorReducer, initialEditorState);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [awaitingNewLine, setAwaitingNewLine] = useState<boolean>(false);
-  const [showAllBoxes, setShowAllBoxes] = useState<boolean>(false);
+  const [showAllBoxes, setShowAllBoxes] = useState<boolean>(true);
   const [sameSizeMode, setSameSizeMode] = useState<boolean>(false);
 
   const project = globalState.project;
@@ -121,7 +121,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorState.activeSourceId, project?.sources]);
+  }, [editorState.activeSourceId]);
 
   // ── Auto-save boxes to the active line (so TablePreview sees them immediately) ──
   // Debounced to avoid excessive dispatches during drag (drag updates are in
