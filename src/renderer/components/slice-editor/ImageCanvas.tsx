@@ -164,7 +164,9 @@ export function ImageCanvas({
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     const box = drawState.current.live;
     // Only commit if box is big enough (at least 2% in both dimensions)
-    if (box.w >= 0.02 && box.h >= 0.02) {
+    // Accept very small selections (0.5% = ~5-10 pixels depending on image size).
+    // Rejecting too aggressively frustrates users marking narrow neumes.
+    if (box.w >= 0.005 && box.h >= 0.005) {
       dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box } });
     }
     drawState.current = null;

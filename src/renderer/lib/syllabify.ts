@@ -51,6 +51,22 @@ function splitWithHyphen(
  *
  * Returns an empty array for blank/whitespace-only input.
  */
+// Regex matching characters that count as "word letters" (Latin + ligatures + accented).
+// Anything else (periods, commas, colons, dashes, asterisks, numbers, etc.) is treated
+// as punctuation and stripped before hyphenation.
+const LETTER_RE = /[\p{L}]/u;
+
+/**
+ * Strip leading/trailing non-letter characters from a word.
+ * Returns { leading, core, trailing }. If core is empty, the whole token was
+ * punctuation/non-letters and should be skipped entirely.
+ */
+function stripPunctuation(w: string): { leading: string; core: string; trailing: string } {
+  const match = w.match(/^([^\p{L}]*)([\s\S]*?)([^\p{L}]*)$/u);
+  if (!match) return { leading: '', core: w, trailing: '' };
+  return { leading: match[1] ?? '', core: match[2] ?? '', trailing: match[3] ?? '' };
+}
+
 export function syllabifyText(
   raw: string,
   mode: HyphenationMode
@@ -59,22 +75,37 @@ export function syllabifyText(
   const words = raw.trim().split(/\s+/);
 
   if (mode === 'manual') {
-    return words.map((w) => ({
-      original: w.replace(/-/g, ''),
-      syllables: w.split('-').filter(Boolean),
-    }));
+    return words
+      .filter((w) => LETTER_RE.test(w))
+      .map((w) => ({
+        original: w.replace(/-/g, ''),
+        syllables: w.split('-').filter(Boolean),
+      }));
   }
 
-  return words.map((w) => {
+  const result: SyllabifiedWord[] = [];
+  for (const w of words) {
+    const { leading, core, trailing } = stripPunctuation(w);
+    // Skip tokens that have no letters at all (pure punctuation, e.g. "—", "...", "*")
+    if (!core || !LETTER_RE.test(core)) continue;
+
     let syllables: string[];
     if (mode === 'liturgical') {
-      syllables = liturgicalEngine.hyphenate(normalizeLigatures(w));
+      syllables = liturgicalEngine.hyphenate(normalizeLigatures(core));
     } else if (mode === 'classical') {
-      syllables = splitWithHyphen(w, classicalHyphenate);
+      syllables = splitWithHyphen(core, classicalHyphenate);
     } else {
-      // mode === 'modern'
-      syllables = splitWithHyphen(w, modernHyphenate);
+      syllables = splitWithHyphen(core, modernHyphenate);
     }
-    return { original: w, syllables };
-  });
+
+    // Hypher may return an empty array for very short words — fall back to single syllable
+    if (syllables.length === 0) syllables = [core];
+
+    // Reattach punctuation: leading goes on first syllable, trailing on last
+    if (leading) syllables[0] = leading + syllables[0];
+    if (trailing) syllables[syllables.length - 1] = syllables[syllables.length - 1] + trailing;
+
+    result.push({ original: w, syllables });
+  }
+  return result;
 }

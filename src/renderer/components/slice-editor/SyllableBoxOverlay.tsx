@@ -54,8 +54,8 @@ const HANDLES: HandleConfig[] = [
 // ── Clamp helper ──────────────────────────────────────────────────────────────
 
 function clampBox(box: SyllableBox): SyllableBox {
-  const w = Math.max(0.02, box.w);
-  const h = Math.max(0.02, box.h);
+  const w = Math.max(0.005, box.w);
+  const h = Math.max(0.005, box.h);
   const x = Math.max(0, Math.min(1 - w, box.x));
   const y = Math.max(0, Math.min(1 - h, box.y));
   return { x, y, w, h };
