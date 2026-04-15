@@ -70,6 +70,11 @@ function StatusBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.isDirty, state.project, state.currentFilePath]);
 
+  // Sync dirty state to main process so close-confirmation dialog works
+  useEffect(() => {
+    window.mocquereau.setDirty(state.isDirty && state.project !== null);
+  }, [state.isDirty, state.project]);
+
   if (!state.project) return null;
 
   const title = state.project.meta.title || "Sem título";

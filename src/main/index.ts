@@ -1,8 +1,13 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
 import { join } from "node:path";
 import { registerProjectHandlers } from './project-io';
 import { registerImageHandlers } from './iiif-fetch';
 import { registerDocxExportHandler } from './docx-export';
+
+// Track dirty state for close confirmation. Set via IPC from renderer.
+let projectIsDirty = false;
+// User already confirmed discard? Skip the next close prompt to avoid loops.
+let bypassCloseConfirm = false;
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -15,6 +20,26 @@ function createWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  });
+
+  // Intercept close to prompt when there are unsaved changes
+  win.on('close', (e) => {
+    if (projectIsDirty && !bypassCloseConfirm) {
+      e.preventDefault();
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        buttons: ['Cancelar', 'Descartar e sair'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Alterações não salvas',
+        message: 'Há alterações não salvas no projeto.',
+        detail: 'Se sair agora, as alterações não salvas serão perdidas. Use Ctrl+S para salvar antes.',
+      });
+      if (choice === 1) {
+        bypassCloseConfirm = true;
+        win.close();
+      }
+    }
   });
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -37,6 +62,11 @@ function registerSystemHandlers(): void {
     } catch {
       // Invalid URL — ignore
     }
+  });
+
+  // Track renderer's dirty state for the close-confirmation dialog
+  ipcMain.handle("project:set-dirty", async (_event, isDirty: boolean) => {
+    projectIsDirty = !!isDirty;
   });
 
   // Phase 8 will integrate electron-conf for persistence

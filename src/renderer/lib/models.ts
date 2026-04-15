@@ -175,6 +175,7 @@ export interface GuerangerExport {
 export interface MocquereauAPI {
   // Projeto
   saveProject: (project: MocquereauProject, existingPath?: string) => Promise<{ filePath: string } | null>;
+  setDirty: (isDirty: boolean) => Promise<void>;
   openProject: () => Promise<{ project: MocquereauProject; filePath: string } | null>;
   importGueranger: () => Promise<GuerangerExport | null>;
 
