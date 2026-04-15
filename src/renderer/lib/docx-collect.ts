@@ -1,0 +1,116 @@
+// src/renderer/lib/docx-collect.ts
+
+import type { MocquereauProject, DocxExportPayload, DocxCellData } from './models';
+import { flattenSyllables, computeSyllableCuts } from './sliceUtils';
+import { isWordBoundary } from './tableUtils';
+
+/**
+ * Converts a data URL (base64 PNG/JPEG) to an ArrayBuffer.
+ * Strips the `data:image/...;base64,` prefix and decodes.
+ */
+function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
+  const base64 = dataUrl.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+/**
+ * Collects all per-cell PNG crops for every source × syllable and assembles
+ * the DocxExportPayload to be sent to the main process via IPC.
+ *
+ * Canvas crops are performed here in the renderer (D-14) using computeSyllableCuts
+ * from sliceUtils — the same function used by the slice editor preview.
+ *
+ * @param project  Complete project state
+ * @param onProgress  Optional callback(processedCells, totalCells) for UI feedback
+ */
+export async function collectDocxCrops(
+  project: MocquereauProject,
+  onProgress?: (done: number, total: number) => void,
+): Promise<DocxExportPayload> {
+  const syllables = flattenSyllables(project.text.words);
+  const totalSyllables = syllables.length;
+
+  // Pre-compute word boundary flags for all syllable indices
+  const wordBoundaries: boolean[] = syllables.map((_, idx) =>
+    isWordBoundary(project.text.words, idx),
+  );
+
+  const totalCells = project.sources.length * totalSyllables;
+  let processedCells = 0;
+
+  const rows = await Promise.all(
+    project.sources.map(async source => {
+      // Merge all line crops into a flat map: syllableIdx → StoredImage | null
+      const mergedCuts: Record<number, import('./models').StoredImage | null> = {};
+
+      for (const line of source.lines) {
+        if (!line.syllableBoxes) continue; // Phase 4/5 compat — skip lines without boxes
+        const lineCuts = await computeSyllableCuts(
+          line.image,
+          line.syllableBoxes,
+          line.syllableRange,
+        );
+        // Merge: later lines can overwrite earlier ones (shouldn't happen in valid projects)
+        for (const [idxStr, cut] of Object.entries(lineCuts)) {
+          mergedCuts[Number(idxStr)] = cut;
+        }
+      }
+
+      // Also fold in syllableCuts (Phase 4/5 backward-compat) for indices not in mergedCuts
+      for (const [idxStr, cut] of Object.entries(source.syllableCuts)) {
+        const idx = Number(idxStr);
+        if (!(idx in mergedCuts)) {
+          mergedCuts[idx] = cut;
+        }
+      }
+
+      // Build cells array (one entry per global syllable index)
+      const cells: DocxCellData[] = [];
+      for (let idx = 0; idx < totalSyllables; idx++) {
+        const isWB = wordBoundaries[idx];
+
+        if (idx in mergedCuts) {
+          const cut = mergedCuts[idx];
+          if (cut === null) {
+            // Explicit gap
+            cells.push({ pngBuffer: null, cropWidth: 0, cropHeight: 0, isGap: true, isWordBoundary: isWB });
+          } else {
+            // Filled cell — convert data URL to ArrayBuffer
+            const pngBuffer = dataUrlToArrayBuffer(cut.dataUrl);
+            cells.push({ pngBuffer, cropWidth: cut.width, cropHeight: cut.height, isGap: false, isWordBoundary: isWB });
+          }
+        } else {
+          // Unfilled (no line covers this syllable)
+          cells.push({ pngBuffer: null, cropWidth: 0, cropHeight: 0, isGap: false, isWordBoundary: isWB });
+        }
+
+        processedCells++;
+        onProgress?.(processedCells, totalCells);
+      }
+
+      return {
+        meta: {
+          siglum: source.metadata.siglum,
+          city: source.metadata.city,
+          century: source.metadata.century,
+          folio: source.metadata.folio,
+        },
+        cells,
+      };
+    }),
+  );
+
+  return {
+    title: project.meta.title,
+    author: project.meta.author,
+    rawText: project.text.raw,
+    syllables,
+    rows,
+    wordBoundaries,
+  };
+}

@@ -14,14 +14,14 @@ vi.stubGlobal('atob', (b64: string) => Buffer.from(b64, 'base64').toString('bina
 class MockImage {
   onload: (() => void) | null = null;
   onerror: ((e: unknown) => void) | null = null;
-  src: string = '';
+  _src: string = '';
+
+  get src() { return this._src; }
   set src(value: string) {
     this._src = value;
-    // Simulate async load completing
-    Promise.resolve().then(() => this.onload?.());
+    // Simulate async load completing on next microtask
+    Promise.resolve().then(() => { if (this.onload) this.onload(); });
   }
-  get src() { return this._src; }
-  private _src: string = '';
 }
 vi.stubGlobal('Image', MockImage);
 
