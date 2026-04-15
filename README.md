@@ -5,7 +5,7 @@ Ferramenta desktop (Electron) para construção de tabelas neumáticas comparati
 Nomeada em homenagem a **Dom André Mocquereau, O.S.B. (1849–1930)** — monge de Solesmes, pioneiro da paleografia neumática e fundador da *Paléographie Musicale*.
 
 ![Status](https://img.shields.io/badge/status-ALPHA-orange)
-![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 ## O problema
 
@@ -55,4 +55,6 @@ Projetos são salvos como `.mocquereau.json` — auto-contidos com imagens em ba
 
 ## Licença
 
-[Apache License 2.0](LICENSE) — © 2026 Gabriel Honorato Teixeira Bernardo
+[GNU General Public License v3.0 or later](LICENSE) — © 2026 Gabriel Honorato Teixeira Bernardo
+
+Sob GPL-3.0, qualquer trabalho derivado (fork, modificação, redistribuição) **deve** permanecer software livre sob a mesma licença, com o código-fonte disponível.
