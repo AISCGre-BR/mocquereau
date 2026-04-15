@@ -10,7 +10,16 @@ interface ProjectMeta { title: string; author: string; createdAt: string; update
 type SerializableProject = { meta: ProjectMeta; [key: string]: unknown };
 
 export function registerProjectHandlers(): void {
-  ipcMain.handle('project:save', async (_event, project: SerializableProject) => {
+  ipcMain.handle('project:save', async (
+    _event,
+    project: SerializableProject,
+    existingPath?: string,
+  ) => {
+    // If existingPath is provided, overwrite silently (used by Ctrl+S and auto-save).
+    if (existingPath) {
+      await writeFile(existingPath, JSON.stringify(project, null, 2), 'utf-8');
+      return { filePath: existingPath };
+    }
     const defaultName = `${project.meta?.title || 'projeto'}.mocquereau.json`;
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Salvar projeto',

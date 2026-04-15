@@ -4,8 +4,8 @@ const ALLOWED_PROTOCOLS = ["https:", "http:"];
 
 contextBridge.exposeInMainWorld("mocquereau", {
   // Projeto
-  saveProject: (project: unknown) =>
-    ipcRenderer.invoke("project:save", project),
+  saveProject: (project: unknown, existingPath?: string) =>
+    ipcRenderer.invoke("project:save", project, existingPath),
 
   openProject: () =>
     ipcRenderer.invoke("project:open"),

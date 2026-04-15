@@ -123,14 +123,22 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   }
 
   // ── Save ───────────────────────────────────────────────────────────────────
+  // If the project already has a filePath, overwrite silently.
+  // Otherwise, open the save dialog.
   async function handleSave() {
     if (!state.project) return;
     const updated = {
       ...state.project,
       meta: { ...state.project.meta, updatedAt: new Date().toISOString() },
     };
-    const result = await window.mocquereau.saveProject(updated);
-    if (result) dispatch({ type: 'SAVE_SUCCESS' });
+    const result = await window.mocquereau.saveProject(
+      updated,
+      state.currentFilePath ?? undefined,
+    );
+    if (result) {
+      dispatch({ type: 'SAVE_SUCCESS' });
+      dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
+    }
   }
 
   // ── Open ───────────────────────────────────────────────────────────────────
@@ -138,6 +146,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     const result = await window.mocquereau.openProject();
     if (!result) return;
     dispatch({ type: 'SET_PROJECT', payload: result.project });
+    dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
     setRawText(result.project.text.raw);
     setHyphenationMode(result.project.text.hyphenationMode);
     setSyllabifiedText(wordsToHyphenated(result.project.text.words));
@@ -157,7 +166,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   }
 
   // ── Create / Next ──────────────────────────────────────────────────────────
-  function handleCreateOrNext() {
+  async function handleCreateOrNext() {
     if (state.project) {
       onNext();
       return;
@@ -174,7 +183,15 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
       ...newProject,
       text: { raw: rawText, words, hyphenationMode },
     };
+    // Ask user where to save the new project BEFORE navigating to next screen.
+    // This sets up the filePath so Ctrl+S / auto-save work immediately.
+    const saveResult = await window.mocquereau.saveProject(withText);
+    if (!saveResult) {
+      // User cancelled the save dialog — do not create the project; stay on this screen.
+      return;
+    }
     dispatch({ type: 'SET_PROJECT', payload: withText });
+    dispatch({ type: 'SET_FILE_PATH', payload: saveResult.filePath });
     onNext();
   }
 

@@ -22,17 +22,20 @@ type ProjectAction =
   | { type: "REMOVE_SOURCE"; payload: string }          // source id
   | { type: "UPDATE_SOURCE"; payload: ManuscriptSource }
   | { type: "DUPLICATE_SOURCE"; payload: string }       // source id
-  | { type: "REORDER_SOURCE"; payload: { id: string; direction: "up" | "down" } };
+  | { type: "REORDER_SOURCE"; payload: { id: string; direction: "up" | "down" } }
+  | { type: "SET_FILE_PATH"; payload: string | null };
 
 // ── State ────────────────────────────────────────────────────────────────────
 
 interface ProjectState {
   project: MocquereauProject | null;
   isDirty: boolean;
+  currentFilePath: string | null;
 }
 
 const initialState: ProjectState = {
   project: null,
+  currentFilePath: null,
   isDirty: false,
 };
 
@@ -44,7 +47,9 @@ export const initialStateForTest = initialState;
 export function projectReducer(state: ProjectState, action: ProjectAction): ProjectState {
   switch (action.type) {
     case "SET_PROJECT":
-      return { ...state, project: action.payload, isDirty: true };
+      // Loading an existing project from disk starts clean; creating a new project
+      // in-memory will typically dispatch SET_FILE_PATH right after to mark the path.
+      return { ...state, project: action.payload, isDirty: false };
 
     case "RESET":
       return initialState;
@@ -141,6 +146,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case "SAVE_SUCCESS":
       return { ...state, isDirty: false };
+
+    case "SET_FILE_PATH":
+      return { ...state, currentFilePath: action.payload };
 
     case "ADD_SOURCE": {
       if (!state.project) return state;

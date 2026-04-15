@@ -30,6 +30,7 @@ function makeStateWithSources(sources: ManuscriptSource[]) {
       sources,
     },
     isDirty: false,
+    currentFilePath: null,
   };
 }
 
@@ -46,7 +47,7 @@ describe("projectReducer — source actions", () => {
     });
 
     it("guards against null project", () => {
-      const state = { project: null, isDirty: false };
+      const state = { project: null, isDirty: false, currentFilePath: null };
       const next = projectReducer(state, { type: "ADD_SOURCE", payload: makeSource("a", 1) });
       expect(next).toBe(state);
     });
@@ -67,7 +68,7 @@ describe("projectReducer — source actions", () => {
     });
 
     it("guards against null project", () => {
-      const state = { project: null, isDirty: false };
+      const state = { project: null, isDirty: false, currentFilePath: null };
       const next = projectReducer(state, { type: "REMOVE_SOURCE", payload: "a" });
       expect(next).toBe(state);
     });
@@ -84,7 +85,7 @@ describe("projectReducer — source actions", () => {
     });
 
     it("guards against null project", () => {
-      const state = { project: null, isDirty: false };
+      const state = { project: null, isDirty: false, currentFilePath: null };
       const next = projectReducer(state, { type: "UPDATE_SOURCE", payload: makeSource("a", 1) });
       expect(next).toBe(state);
     });
@@ -112,7 +113,7 @@ describe("projectReducer — source actions", () => {
     });
 
     it("guards against null project", () => {
-      const state = { project: null, isDirty: false };
+      const state = { project: null, isDirty: false, currentFilePath: null };
       const next = projectReducer(state, { type: "DUPLICATE_SOURCE", payload: "a" });
       expect(next).toBe(state);
     });
@@ -154,7 +155,7 @@ describe("projectReducer — source actions", () => {
     });
 
     it("guards against null project", () => {
-      const state = { project: null, isDirty: false };
+      const state = { project: null, isDirty: false, currentFilePath: null };
       const next = projectReducer(state, { type: "REORDER_SOURCE", payload: { id: "a", direction: "up" } });
       expect(next).toBe(state);
     });
