@@ -1,27 +1,31 @@
 // src/renderer/components/slice-editor/SlicePreview.tsx
 
 import { SlicePreviewCell } from './SlicePreviewCell';
-import { flattenSyllables, getActiveSyllables } from '../../lib/sliceUtils';
-import type { StoredImage, SyllabifiedWord } from '../../lib/models';
+import { flattenSyllables } from '../../lib/sliceUtils';
+import type { StoredImage, SyllabifiedWord, SyllableBox } from '../../lib/models';
 
 interface SlicePreviewProps {
   image: StoredImage | null;
   words: SyllabifiedWord[];
-  dividers: number[];          // fractions 0.0–1.0
+  syllableBoxes: Record<number, SyllableBox | null>;  // replaces dividers
+  activeSyllableIdx: number | null;                   // added
   syllableRange: { start: number; end: number } | null;
   gaps: number[];
   hoveredSyllableIdx: number | null;
   onHover: (idx: number | null) => void;
+  onActivate: (idx: number) => void;  // fires when label clicked in preview
 }
 
 export function SlicePreview({
   image,
   words,
-  dividers,
+  syllableBoxes,
+  activeSyllableIdx,
   syllableRange,
   gaps,
   hoveredSyllableIdx,
   onHover,
+  onActivate,
 }: SlicePreviewProps) {
   const allSyllables = flattenSyllables(words);
 
@@ -33,22 +37,20 @@ export function SlicePreview({
     wordBoundarySet.add(offset - 1);
   }
 
-  const activeSyllables = syllableRange ? getActiveSyllables(syllableRange, gaps) : [];
-  // Full boundary fractions: [0, div0, div1, ..., divN-1, 1]
-  const boundaries = [0, ...dividers, 1];
   const gapSet = new Set(gaps);
-
   const cells: React.ReactNode[] = [];
 
   if (syllableRange && image) {
     for (let globalIdx = syllableRange.start; globalIdx <= syllableRange.end; globalIdx++) {
+      const box = syllableBoxes[globalIdx];
       const isGap = gapSet.has(globalIdx);
-      const sliceIdxAmongActive = activeSyllables.indexOf(globalIdx);
       const syllableText = allSyllables[globalIdx] ?? '?';
       const isWordBoundaryRight = wordBoundarySet.has(globalIdx);
       const isHovered = globalIdx === hoveredSyllableIdx;
+      const isActive = globalIdx === activeSyllableIdx;
 
-      if (isGap) {
+      if (isGap || box === null || box === undefined) {
+        // Gap or no box yet — show placeholder
         cells.push(
           <div
             key={globalIdx}
@@ -58,24 +60,31 @@ export function SlicePreview({
             ].join(' ')}
             style={{ minWidth: 40 }}
           >
-            <div className="text-xs px-1 py-0.5 font-mono text-gray-400">{syllableText}</div>
-            <div className="w-full h-14 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">—</div>
+            <div
+              className="text-xs px-1 py-0.5 font-mono text-gray-400 cursor-pointer hover:text-gray-600"
+              onClick={() => onActivate(globalIdx)}
+            >
+              {syllableText}
+            </div>
+            <div className="w-full h-14 bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs">
+              {isGap ? '—' : '+'}
+            </div>
           </div>
         );
-      } else if (sliceIdxAmongActive >= 0) {
-        const sliceLeftFrac = boundaries[sliceIdxAmongActive] ?? 0;
-        const sliceRightFrac = boundaries[sliceIdxAmongActive + 1] ?? 1;
+      } else {
+        // Has a box
         cells.push(
           <SlicePreviewCell
             key={globalIdx}
             syllableText={syllableText}
             globalIdx={globalIdx}
             image={image}
-            sliceLeftFrac={sliceLeftFrac}
-            sliceRightFrac={sliceRightFrac}
+            box={box}
+            isActive={isActive}
             isHovered={isHovered}
             isWordBoundaryRight={isWordBoundaryRight}
             onHover={onHover}
+            onClick={onActivate}
           />
         );
       }

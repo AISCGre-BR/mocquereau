@@ -1,33 +1,39 @@
 // src/renderer/components/slice-editor/SlicePreviewCell.tsx
 
-import type { StoredImage } from '../../lib/models';
+import type { StoredImage, SyllableBox } from '../../lib/models';
 
 interface SlicePreviewCellProps {
-  syllableText: string;       // e.g. "San-"
-  globalIdx: number;          // global syllable index
-  image: StoredImage;         // the full manuscript image (not a crop)
-  sliceLeftFrac: number;      // left edge fraction 0.0–1.0
-  sliceRightFrac: number;     // right edge fraction 0.0–1.0
+  syllableText: string;
+  globalIdx: number;
+  image: StoredImage;
+  box: SyllableBox;         // replaces sliceLeftFrac/sliceRightFrac
+  isActive: boolean;        // true when this is the activeSyllableIdx (blue ring)
   isHovered: boolean;
-  isWordBoundaryRight: boolean;  // true if a word ends at this syllable
+  isWordBoundaryRight: boolean;
   onHover: (idx: number | null) => void;
+  onClick: (idx: number) => void;  // label click → activate syllable
 }
 
 export function SlicePreviewCell({
   syllableText,
   globalIdx,
   image,
-  sliceLeftFrac,
-  sliceRightFrac,
+  box,
+  isActive,
   isHovered,
   isWordBoundaryRight,
   onHover,
+  onClick,
 }: SlicePreviewCellProps) {
-  const sliceWidthFrac = sliceRightFrac - sliceLeftFrac;
-  if (sliceWidthFrac <= 0) return null;
+  if (box.w <= 0 || box.h <= 0) return null;
 
-  const bgSize = `${(1 / sliceWidthFrac) * 100}% auto`;
-  const bgPos  = `${(-sliceLeftFrac / sliceWidthFrac) * 100}% 0`;
+  const bgSizeX = (1 / box.w) * 100;   // percent
+  const bgSizeY = (1 / box.h) * 100;   // percent
+  const bgPosX  = (-box.x / box.w) * 100;  // percent
+  const bgPosY  = (-box.y / box.h) * 100;  // percent
+
+  const bgSize = `${bgSizeX}% ${bgSizeY}%`;
+  const bgPos  = `${bgPosX}% ${bgPosY}%`;
 
   return (
     <div
@@ -42,19 +48,23 @@ export function SlicePreviewCell({
       {/* Syllable label */}
       <div
         className={[
-          'text-xs px-1 py-0.5 font-mono select-none',
-          isHovered ? 'text-indigo-700 font-bold' : 'text-gray-600',
-        ].join(' ')}
+          'text-xs px-1 py-0.5 font-mono select-none cursor-pointer',
+          isActive   ? 'text-blue-700 font-bold' : '',
+          isHovered  ? 'text-indigo-700 font-bold' : '',
+          !isActive && !isHovered ? 'text-gray-600' : '',
+        ].filter(Boolean).join(' ')}
+        onClick={() => onClick(globalIdx)}
       >
         {syllableText}
       </div>
 
-      {/* Image crop via CSS background-position */}
+      {/* Image crop via CSS background-position (2D box) */}
       <div
         className={[
           'w-full h-14 bg-no-repeat',
+          isActive  ? 'ring-2 ring-blue-500 ring-inset' : '',
           isHovered ? 'ring-2 ring-indigo-400 ring-inset' : '',
-        ].join(' ')}
+        ].filter(Boolean).join(' ')}
         style={{
           backgroundImage: `url(${image.dataUrl})`,
           backgroundSize: bgSize,
