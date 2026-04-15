@@ -123,6 +123,38 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorState.activeSourceId, project?.sources]);
 
+  // ── Auto-save boxes to the active line (so TablePreview sees them immediately) ──
+  // Debounced to avoid excessive dispatches during drag (drag updates are in
+  // editorState only; on pointerup we get a final SET_BOX that fires this save).
+  useEffect(() => {
+    if (!project || !editorState.activeSourceId || !editorState.activeLineId) return;
+    const source = project.sources.find(s => s.id === editorState.activeSourceId);
+    if (!source) return;
+    const line = source.lines.find(l => l.id === editorState.activeLineId);
+    if (!line) return;
+
+    // Skip if nothing actually changed (prevents infinite loop)
+    const currentJson = JSON.stringify(line.syllableBoxes ?? {});
+    const newJson = JSON.stringify(editorState.syllableBoxes);
+    if (currentJson === newJson) return;
+
+    const timer = setTimeout(() => {
+      const updatedLine: ManuscriptLine = {
+        ...line,
+        syllableBoxes: editorState.syllableBoxes,
+        syllableRange: editorState.syllableRange ?? line.syllableRange,
+        gaps: editorState.gaps,
+      };
+      const updatedLines = source.lines.map(l => (l.id === line.id ? updatedLine : l));
+      globalDispatch({
+        type: 'UPDATE_SOURCE',
+        payload: { ...source, lines: updatedLines },
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorState.syllableBoxes, editorState.syllableRange, editorState.gaps, editorState.activeLineId]);
+
   // ── Paste handler ─────────────────────────────────────────────────────────
 
   useEffect(() => {
