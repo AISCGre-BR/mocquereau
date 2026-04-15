@@ -20,12 +20,6 @@ interface ScreenProps {
   canGoPrev: boolean;
 }
 
-// ── Helper: auto-distribute ──────────────────────────────────────────────────
-
-function autoDistribute(n: number): number[] {
-  return Array.from({ length: Math.max(0, n - 1) }, (_, i) => (i + 1) / n);
-}
-
 // ── Helper: computeCoveredSyllables ─────────────────────────────────────────
 
 /**
@@ -75,10 +69,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
         payload: {
           sourceId: firstSource.id,
           lineId: firstLine?.id ?? '',
-          initialDividers:
-            firstLine && firstLine.dividers.length > 0
-              ? firstLine.dividers
-              : autoDistribute(totalSyllableCount),
+          initialDividers: firstLine?.dividers ?? [],
           syllableRange:
             firstLine?.syllableRange &&
             !(firstLine.syllableRange.start === 0 && firstLine.syllableRange.end === 0)
@@ -86,6 +77,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               : { start: 0, end: Math.max(0, totalSyllableCount - 1) },
           gaps: firstLine?.gaps ?? [],
           coveredSyllables: covered,
+          syllableBoxes: firstLine?.syllableBoxes ?? {},
         },
       });
     }
@@ -101,18 +93,12 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     // Prefer first unconfirmed line; fall back to first line
     const line = source.lines.find(l => !l.confirmed) ?? source.lines[0];
     const covered = line ? computeCoveredSyllables(source, line.id) : [];
-    const activeSylCount = line?.syllableRange
-      ? line.syllableRange.end - line.syllableRange.start + 1 - line.gaps.length
-      : totalSyllableCount;
     editorDispatch({
       type: 'LOAD_SOURCE',
       payload: {
         sourceId: source.id,
         lineId: line?.id ?? '',
-        initialDividers:
-          line && line.dividers.length > 0
-            ? line.dividers
-            : autoDistribute(activeSylCount),
+        initialDividers: line?.dividers ?? [],
         syllableRange:
           line?.syllableRange &&
           !(line.syllableRange.start === 0 && line.syllableRange.end === 0)
@@ -120,6 +106,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
             : { start: 0, end: Math.max(0, totalSyllableCount - 1) },
         gaps: line?.gaps ?? [],
         coveredSyllables: covered,
+        syllableBoxes: line?.syllableBoxes ?? {},
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -164,7 +151,8 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
       id: crypto.randomUUID(),
       image: storedImage,
       syllableRange: { start: suggestedStart, end: suggestedEnd },
-      dividers: autoDistribute(suggestedEnd - suggestedStart + 1),
+      dividers: [],  // kept for backward compat; not used by new code
+      syllableBoxes: {},  // start with no boxes on new line
       gaps: [],
       confirmed: false,
     };
@@ -181,10 +169,11 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
       type: 'SWITCH_LINE',
       payload: {
         lineId: newLine.id,
-        initialDividers: newLine.dividers,
+        initialDividers: [],
         syllableRange: newLine.syllableRange,
         gaps: [],
         coveredSyllables: covered,
+        syllableBoxes: {},
       },
     });
   }
@@ -206,6 +195,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
         syllableRange: line.syllableRange,
         gaps: line.gaps,
         coveredSyllables: covered,
+        syllableBoxes: line.syllableBoxes ?? {},
       },
     });
     setAwaitingNewLine(false);
@@ -253,6 +243,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           syllableRange: nextLine.syllableRange,
           gaps: nextLine.gaps,
           coveredSyllables: covered,
+          syllableBoxes: nextLine.syllableBoxes ?? {},
         },
       });
     }
@@ -272,13 +263,14 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     try {
       const newCuts = await computeSyllableCuts(
         line.image,
-        line.syllableBoxes ?? {},
+        editorState.syllableBoxes,
         editorState.syllableRange,
       );
 
       const updatedLine: ManuscriptLine = {
         ...line,
-        dividers: editorState.dividers,
+        dividers: line.dividers,  // preserve (backward compat, not used)
+        syllableBoxes: editorState.syllableBoxes,  // save current boxes to line
         syllableRange: editorState.syllableRange,
         gaps: editorState.gaps,
         confirmed: true,
@@ -296,11 +288,6 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
 
       globalDispatch({ type: 'UPDATE_SOURCE', payload: updatedSource });
       editorDispatch({ type: 'CONFIRM_COMMITTED' });
-
-      // D-04: check for uncovered syllables after confirming
-      // Auto-suggest is handled when user loads a new image via DropZone (applyImageToSource).
-      // If uncovered syllables remain, progress indicator in LineSidebar shows them.
-      // No line is pre-created without an image — user must drag/paste new image.
     } finally {
       setIsConfirming(false);
     }
@@ -317,13 +304,14 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
       ...l,
       dividers: [],
       gaps: [],
+      syllableBoxes: {},
       confirmed: false,
     }));
     globalDispatch({ type: 'UPDATE_SOURCE', payload: { ...updatedSource, lines: updatedLines } });
     editorDispatch({ type: 'CLEAR_LINE' });
   }
 
-  // ── Keyboard navigation ───────────────────────────────────────────────────
+  // ── Source navigation ─────────────────────────────────────────────────────
 
   function navigateSource(direction: 'prev' | 'next') {
     if (!project) return;
@@ -344,19 +332,20 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           syllableRange: nextLine?.syllableRange ?? { start: 0, end: Math.max(0, totalSyllableCount - 1) },
           gaps: nextLine?.gaps ?? [],
           coveredSyllables: covered,
+          syllableBoxes: nextLine?.syllableBoxes ?? {},
         },
       });
     }
   }
 
-  // D-12: Tab navigates lines within source first; at boundary falls back to source navigation
-  function navigateLines(direction: 'prev' | 'next') {
+  // D-15: Tab/Enter cycle activeSyllableIdx within range; at boundary → next/prev line
+  function navigateLines(direction: 1 | -1) {
     if (!project || !editorState.activeSourceId) return;
     const source = project.sources.find(s => s.id === editorState.activeSourceId);
     if (!source || source.lines.length === 0) return;
 
     const currentIdx = source.lines.findIndex(l => l.id === editorState.activeLineId);
-    const nextIdx = direction === 'next' ? currentIdx + 1 : currentIdx - 1;
+    const nextIdx = currentIdx + direction;
 
     if (nextIdx >= 0 && nextIdx < source.lines.length) {
       // Navigate within same source's lines
@@ -370,35 +359,57 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           syllableRange: nextLine.syllableRange,
           gaps: nextLine.gaps,
           coveredSyllables: covered,
+          syllableBoxes: nextLine.syllableBoxes ?? {},
         },
       });
     } else {
       // At boundary — navigate to adjacent source
-      navigateSource(direction);
+      navigateSource(direction === 1 ? 'next' : 'prev');
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    // Tab / Shift+Tab: navigate lines within source (D-12)
-    if (e.key === 'Tab' && !e.ctrlKey) {
+    const range = editorState.syllableRange;
+
+    // Tab / Enter: advance activeSyllableIdx within range; overflow → next line
+    if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter') {
+      // Ctrl+Enter keeps Phase 4 behavior (advance between sources)
+      if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        navigateSource('next');
+        return;
+      }
       e.preventDefault();
-      navigateLines(e.shiftKey ? 'prev' : 'next');
+      if (range && editorState.activeSyllableIdx !== null) {
+        const next = editorState.activeSyllableIdx + 1;
+        if (next <= range.end) {
+          editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: next });
+        } else {
+          // At last syllable in range — advance to next line
+          navigateLines(1);
+        }
+      } else if (range) {
+        // No active syllable yet — activate first
+        editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: range.start });
+      }
+      return;
     }
-    // Ctrl+Enter: advance to next source (D-13)
-    if (e.key === 'Enter' && e.ctrlKey) {
+
+    // Shift+Tab: go backward within range; underflow → previous line
+    if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
-      navigateSource('next');
-    }
-    // Arrow keys: adjust range end by ±1 (D-01)
-    if (e.key === 'ArrowRight' && !e.ctrlKey && !e.shiftKey && editorState.syllableRange) {
-      e.preventDefault();
-      const newEnd = Math.min(editorState.syllableRange.end + 1, totalSyllableCount - 1);
-      editorDispatch({ type: 'SET_RANGE', payload: { ...editorState.syllableRange, end: newEnd } });
-    }
-    if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.shiftKey && editorState.syllableRange) {
-      e.preventDefault();
-      const newEnd = Math.max(editorState.syllableRange.end - 1, editorState.syllableRange.start);
-      editorDispatch({ type: 'SET_RANGE', payload: { ...editorState.syllableRange, end: newEnd } });
+      if (range && editorState.activeSyllableIdx !== null) {
+        const prev = editorState.activeSyllableIdx - 1;
+        if (prev >= range.start) {
+          editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: prev });
+        } else {
+          // At first syllable in range — go to previous line
+          navigateLines(-1);
+        }
+      } else if (range) {
+        editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: range.end });
+      }
+      return;
     }
   }
 
@@ -440,6 +451,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
                 { start: 0, end: Math.max(0, totalSyllableCount - 1) },
               gaps: line?.gaps ?? [],
               coveredSyllables: covered,
+              syllableBoxes: line?.syllableBoxes ?? {},
             },
           });
         }}
@@ -466,14 +478,6 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
             {activeSource?.metadata.siglum ?? 'Nenhuma fonte selecionada'}
           </span>
           <div className="flex gap-2">
-            <button
-              type="button"
-              className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded border border-gray-300"
-              onClick={() => editorDispatch({ type: 'AUTO_DISTRIBUTE' })}
-              disabled={!hasImage}
-            >
-              Auto-distribuir
-            </button>
             <button
               type="button"
               className="px-3 py-1.5 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-300"
@@ -531,9 +535,6 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
                   className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-center"
                 />
               </label>
-              <span className="text-xs text-gray-400 ml-auto">
-                ← → ajustam fim do range
-              </span>
             </div>
 
             {/* Syllable range bar */}
@@ -553,9 +554,9 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
         {/* Instruction banner */}
         {hasImage && (
           <div className="flex-shrink-0 bg-blue-50 border-b border-blue-200 px-4 py-2 text-xs text-blue-900">
-            <span className="font-medium">Arraste os divisores vermelhos</span> para posicionar entre as sílabas.
-            <span className="ml-2">Clique nas sílabas para ajustar o range ou marcar gaps.</span>
-            <span className="ml-2 text-blue-600">Scroll = zoom · Ctrl+drag = mover</span>
+            <span className="font-medium">Clique em uma sílaba</span> para selecioná-la.
+            <span className="ml-2">Sem caixa: arraste na imagem para desenhar. Com caixa: arraste para mover ou use os handles para redimensionar.</span>
+            <span className="ml-2 text-blue-600">Tab/Enter = próxima sílaba · Shift+Tab = anterior · Delete = remover caixa · Scroll = zoom</span>
           </div>
         )}
 
@@ -590,11 +591,13 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           <SlicePreview
             image={activeLine?.image ?? null}
             words={project.text.words}
-            dividers={editorState.dividers}
+            syllableBoxes={editorState.syllableBoxes}
+            activeSyllableIdx={editorState.activeSyllableIdx}
             syllableRange={editorState.syllableRange}
             gaps={editorState.gaps}
             hoveredSyllableIdx={editorState.hoveredSyllableIdx}
             onHover={(idx) => editorDispatch({ type: 'SET_HOVER', payload: idx })}
+            onActivate={(idx) => editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx })}
           />
         </div>
 
