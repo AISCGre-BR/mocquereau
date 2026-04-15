@@ -17,6 +17,7 @@ interface ImageCanvasProps {
   dispatch: React.Dispatch<EditorAction>;
   words?: SyllabifiedWord[];
   showAllBoxes?: boolean;
+  sameSizeMode?: boolean;
 }
 
 // Distinguishable color palette for "show all boxes" mode
@@ -43,6 +44,7 @@ export function ImageCanvas({
   dispatch,
   words,
   showAllBoxes = false,
+  sameSizeMode = false,
 }: ImageCanvasProps) {
   const imageWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -96,19 +98,46 @@ export function ImageCanvas({
     dispatch({ type: 'SET_ZOOM', payload: newZoom });
   }
 
+  // Find the "template box" for same-size mode: first box (by lowest syllable idx) that exists
+  function getTemplateBox(): SyllableBox | null {
+    const indices = Object.keys(syllableBoxes)
+      .map(Number)
+      .filter(k => syllableBoxes[k] != null)
+      .sort((a, b) => a - b);
+    if (indices.length === 0) return null;
+    return syllableBoxes[indices[0]];
+  }
+
   // ── Draw-new-box pointer handlers ─────────────────────────────────────────
   function handleImagePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (activeSyllableIdx === null) return;
     const hasBox =
       activeSyllableIdx in syllableBoxes && syllableBoxes[activeSyllableIdx] !== null;
     if (hasBox) return;  // SyllableBoxOverlay handles its own pointer events
+
+    // Same-size mode: if a template box exists, click places a box of same dimensions
+    // centered on the click. User can still drag to override size.
+    const template = sameSizeMode ? getTemplateBox() : null;
+
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const rect = imageWrapperRef.current!.getBoundingClientRect();
     const startX = (e.clientX - rect.left) / rect.width;
     const startY = (e.clientY - rect.top) / rect.height;
     drawState.current = { startX, startY, live: null };
-    setLiveDrawBox(null);
+
+    // If same-size mode with a template: pre-populate a box of template size centered at click
+    if (template) {
+      const w = template.w;
+      const h = template.h;
+      const x = Math.max(0, Math.min(1 - w, startX - w / 2));
+      const y = Math.max(0, Math.min(1 - h, startY - h / 2));
+      const box: SyllableBox = { x, y, w, h };
+      drawState.current.live = box;
+      setLiveDrawBox(box);
+    } else {
+      setLiveDrawBox(null);
+    }
   }
 
   function handleImagePointerMove(e: React.PointerEvent<HTMLDivElement>) {

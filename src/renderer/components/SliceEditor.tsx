@@ -46,6 +46,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [awaitingNewLine, setAwaitingNewLine] = useState<boolean>(false);
   const [showAllBoxes, setShowAllBoxes] = useState<boolean>(false);
+  const [sameSizeMode, setSameSizeMode] = useState<boolean>(false);
 
   const project = globalState.project;
   const totalSyllableCount = project ? flattenSyllables(project.text.words).length : 0;
@@ -581,15 +582,26 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
                 </span>
               )}
             </div>
-            <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
-              <input
-                type="checkbox"
-                checked={showAllBoxes}
-                onChange={(e) => setShowAllBoxes(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <span className="font-medium">Ver todas as caixas</span>
-            </label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={sameSizeMode}
+                  onChange={(e) => setSameSizeMode(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="font-medium">Mesmo tamanho da 1ª</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={showAllBoxes}
+                  onChange={(e) => setShowAllBoxes(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="font-medium">Ver todas as caixas</span>
+              </label>
+            </div>
           </div>
         )}
 
@@ -608,6 +620,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               dispatch={editorDispatch}
               words={project.text.words}
               showAllBoxes={showAllBoxes}
+              sameSizeMode={sameSizeMode}
             />
           ) : (
             <DropZone

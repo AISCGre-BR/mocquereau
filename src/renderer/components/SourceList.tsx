@@ -104,13 +104,16 @@ export function SourceList({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAddedRef = useRef<string | null>(null);
 
-  // Auto-add first source row when entering with no sources
+  // Auto-add first source row when entering with no sources (guarded by ref to prevent
+  // double-add in React 19 StrictMode + re-renders caused by dispatched ADD_SOURCE)
+  const hasAutoAddedRef = useRef(false);
   useEffect(() => {
-    if (state.project && sources.length === 0) {
+    if (state.project && sources.length === 0 && !hasAutoAddedRef.current) {
+      hasAutoAddedRef.current = true;
       handleAddSource();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.project]);
+  }, [state.project, sources.length]);
 
   // Auto-focus siglum input when a new source is added
   useEffect(() => {

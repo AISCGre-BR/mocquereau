@@ -108,6 +108,8 @@ function evenlyDistributed(n: number): number[] {
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'LOAD_SOURCE': {
+      // Auto-select first syllable in range so user can immediately start drawing
+      const autoActive = action.payload.syllableRange?.start ?? null;
       return {
         activeSourceId: action.payload.sourceId,
         activeLineId: action.payload.lineId,
@@ -119,7 +121,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         zoom: 1,
         panOffset: { x: 0, y: 0 },
         isDirty: false,
-        activeSyllableIdx: null,
+        activeSyllableIdx: autoActive,
         syllableBoxes: action.payload.syllableBoxes ?? {},
       };
     }
@@ -212,6 +214,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const dividers = initialDividers.length > 0
         ? initialDividers
         : evenlyDistributed(activeSyllableCount);
+      // Auto-select first syllable in range
+      const autoActive = syllableRange?.start ?? null;
       return {
         ...state,
         activeLineId: lineId,
@@ -223,7 +227,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         zoom: 1,
         panOffset: { x: 0, y: 0 },
         isDirty: false,
-        activeSyllableIdx: null,
+        activeSyllableIdx: autoActive,
         syllableBoxes: action.payload.syllableBoxes ?? {},
       };
     }
