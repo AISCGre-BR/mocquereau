@@ -1,6 +1,6 @@
 // src/renderer/components/SliceEditor.tsx
 
-import { useReducer, useEffect, useState } from 'react';
+import { useReducer, useEffect, useState, useRef } from 'react';
 import { useProject } from '../hooks/useProject';
 import { editorReducer, initialEditorState } from './slice-editor/editorReducer';
 import { SourceSidebar } from './slice-editor/SourceSidebar';
@@ -139,11 +139,14 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     if (currentJson === newJson) return;
 
     const timer = setTimeout(() => {
+      // Auto-confirm the line when at least one box has been drawn.
+      const hasAnyBox = Object.values(editorState.syllableBoxes).some(b => b != null);
       const updatedLine: ManuscriptLine = {
         ...line,
         syllableBoxes: editorState.syllableBoxes,
         syllableRange: editorState.syllableRange ?? line.syllableRange,
         gaps: editorState.gaps,
+        confirmed: hasAnyBox,
       };
       const updatedLines = source.lines.map(l => (l.id === line.id ? updatedLine : l));
       globalDispatch({
@@ -411,50 +414,71 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const range = editorState.syllableRange;
+  // Use latest state/callbacks via ref so the window listener always sees fresh values
+  const keyHandlerStateRef = useRef({
+    editorState,
+    navigateSource,
+    navigateLines,
+    editorDispatch,
+  });
+  keyHandlerStateRef.current = {
+    editorState,
+    navigateSource,
+    navigateLines,
+    editorDispatch,
+  };
 
-    // Tab / Enter: advance activeSyllableIdx within range; overflow → next line
-    if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter') {
-      // Ctrl+Enter keeps Phase 4 behavior (advance between sources)
-      if (e.key === 'Enter' && e.ctrlKey) {
-        e.preventDefault();
-        navigateSource('next');
+  // Global keyboard handler — avoids focus issues where Tab needs to be pressed
+  // twice because the outer div lost focus after clicking on labels/images.
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      // Skip when user is typing in a real input (e.g. numeric range inputs)
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return;
       }
-      e.preventDefault();
-      if (range && editorState.activeSyllableIdx !== null) {
-        const next = editorState.activeSyllableIdx + 1;
-        if (next <= range.end) {
-          editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: next });
-        } else {
-          // At last syllable in range — advance to next line
-          navigateLines(1);
-        }
-      } else if (range) {
-        // No active syllable yet — activate first
-        editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: range.start });
-      }
-      return;
-    }
+      const { editorState: es, editorDispatch: ed, navigateSource: ns, navigateLines: nl } = keyHandlerStateRef.current;
+      const range = es.syllableRange;
+      if (!range) return;
 
-    // Shift+Tab: go backward within range; underflow → previous line
-    if (e.key === 'Tab' && e.shiftKey) {
-      e.preventDefault();
-      if (range && editorState.activeSyllableIdx !== null) {
-        const prev = editorState.activeSyllableIdx - 1;
-        if (prev >= range.start) {
-          editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: prev });
-        } else {
-          // At first syllable in range — go to previous line
-          navigateLines(-1);
+      if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter') {
+        if (e.key === 'Enter' && e.ctrlKey) {
+          e.preventDefault();
+          ns('next');
+          return;
         }
-      } else if (range) {
-        editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: range.end });
+        e.preventDefault();
+        if (es.activeSyllableIdx !== null) {
+          const next = es.activeSyllableIdx + 1;
+          if (next <= range.end) {
+            ed({ type: 'SET_ACTIVE_SYLLABLE', payload: next });
+          } else {
+            nl(1);
+          }
+        } else {
+          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: range.start });
+        }
+        return;
       }
-      return;
+
+      if (e.key === 'Tab' && e.shiftKey) {
+        e.preventDefault();
+        if (es.activeSyllableIdx !== null) {
+          const prev = es.activeSyllableIdx - 1;
+          if (prev >= range.start) {
+            ed({ type: 'SET_ACTIVE_SYLLABLE', payload: prev });
+          } else {
+            nl(-1);
+          }
+        } else {
+          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: range.end });
+        }
+        return;
+      }
     }
-  }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // ── No project guard ──────────────────────────────────────────────────────
 
@@ -469,11 +493,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      className="flex h-full focus:outline-none"
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-    >
+    <div className="flex h-full focus:outline-none">
       {/* Left sidebar — sources */}
       <SourceSidebar
         sources={project.sources}
@@ -520,7 +540,10 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           <span className="text-sm font-medium text-gray-700 truncate">
             {activeSource?.metadata.siglum ?? 'Nenhuma fonte selecionada'}
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400">
+              Alterações salvas automaticamente
+            </span>
             <button
               type="button"
               className="px-3 py-1.5 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-300"
@@ -528,14 +551,6 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               disabled={!hasImage}
             >
               Limpar
-            </button>
-            <button
-              type="button"
-              className="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-40"
-              onClick={handleConfirm}
-              disabled={!hasImage || isConfirming || !editorState.syllableRange}
-            >
-              {isConfirming ? 'Confirmando…' : 'Confirmar recortes'}
             </button>
           </div>
         </div>
