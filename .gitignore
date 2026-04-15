@@ -3,3 +3,10 @@ out/
 dist/
 .DS_Store
 *.log
+
+# Local-only planning / AI-assistant files — not meant for public repo
+CLAUDE.md
+.planning/
+.claude/
+spec.md
+complemento.md

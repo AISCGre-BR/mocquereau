@@ -2,10 +2,7 @@
   "name": "mocquereau",
   "version": "0.0.1-alpha",
   "description": "Ferramenta de tabelas neumáticas comparativas para canto gregoriano",
-  "author": {
-    "name": "Gabriel Honorato Teixeira Bernardo",
-    "email": "REDACTED@users.noreply.github.com"
-  },
+  "author": "Gabriel Honorato Teixeira Bernardo",
   "license": "Apache-2.0",
   "main": "./out/main/index.js",
   "scripts": {
