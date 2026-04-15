@@ -53,6 +53,18 @@ npm run dist     # gerar instaladores para o OS atual
 
 Projetos são salvos como `.mocquereau.json` — auto-contidos com imagens em base64, portáveis entre máquinas.
 
+## Aviso Legal / Disclaimer
+
+Este software é distribuído **NO ESTADO EM QUE SE ENCONTRA** ("AS IS"), sem garantia de qualquer tipo, expressa ou implícita, incluindo, mas não se limitando a, garantias de comercialização, adequação a um propósito específico e não violação.
+
+Em nenhuma hipótese os autores ou detentores dos direitos autorais serão responsáveis por qualquer reclamação, danos ou outra responsabilidade, seja em ação contratual, delituosa ou de outra natureza, decorrente de, ou em conexão com, o software ou o uso ou outras negociações com o software — incluindo danos por perda de dados, projetos corrompidos, travamentos, ou qualquer outro defeito.
+
+**Versões ALPHA são ativamente instáveis.** Recomenda-se backup regular dos seus projetos `.mocquereau.json` e uso em ambiente não-crítico até que uma versão estável seja publicada.
+
+Ao baixar, instalar ou usar os binários fornecidos nas Releases, você assume integralmente esses riscos.
+
+Cláusulas legais completas: seções 15 e 16 da [GPL-3.0](LICENSE).
+
 ## Licença
 
 [GNU General Public License v3.0 or later](LICENSE) — © 2026 Gabriel Honorato Teixeira Bernardo

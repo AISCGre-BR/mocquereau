@@ -21,6 +21,12 @@ const STEPS: Step[] = [
         <p className="mt-2 text-gray-600">
           O fluxo tem 5 etapas. Vamos caminhar por elas rapidamente.
         </p>
+        <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded text-xs text-orange-900">
+          <strong>⚠ Versão ALPHA — uso por sua conta e risco.</strong><br />
+          O software é fornecido "no estado em que se encontra", sem garantias.
+          Os autores não se responsabilizam por perda de dados, travamentos ou
+          outros defeitos. Faça backup dos seus projetos regularmente.
+        </div>
       </>
     ),
   },
