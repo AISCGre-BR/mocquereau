@@ -7,7 +7,7 @@ import { SourceSidebar } from './slice-editor/SourceSidebar';
 import { LineSidebar } from './slice-editor/LineSidebar';
 import { SyllableRangeBar } from './slice-editor/SyllableRangeBar';
 import { ImageCanvas } from './slice-editor/ImageCanvas';
-import { SlicePreview } from './slice-editor/SlicePreview';
+// SlicePreview import removed per UX feedback 2026-04-20
 import { flattenSyllables, computeSyllableCuts } from '../lib/sliceUtils';
 import type { ManuscriptSource, ManuscriptLine, StoredImage } from '../lib/models';
 
@@ -526,7 +526,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full focus:outline-none">
+    <div className="flex flex-1 min-h-0 focus:outline-none">
       {/* Left sidebar — sources */}
       <SourceSidebar
         sources={project.sources}
@@ -645,12 +645,13 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               </label>
             </div>
 
-            {/* Syllable range bar */}
+            {/* Syllable range bar — horizontal scroll, auto-follows active chip */}
             <SyllableRangeBar
               words={project.text.words}
               syllableRange={editorState.syllableRange}
               gaps={editorState.gaps}
               hoveredSyllableIdx={editorState.hoveredSyllableIdx}
+              activeSyllableIdx={editorState.activeSyllableIdx}
               coveredSyllables={editorState.coveredSyllables}
               onRangeChange={(range) => editorDispatch({ type: 'SET_RANGE', payload: range })}
               onGapToggle={(idx) => editorDispatch({ type: 'TOGGLE_GAP', payload: idx })}
@@ -728,21 +729,6 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               activeSource={activeSource}
             />
           )}
-        </div>
-
-        {/* Slice preview strip */}
-        <div className="flex-shrink-0 max-h-36 border-t border-gray-200">
-          <SlicePreview
-            image={activeLine?.image ?? null}
-            words={project.text.words}
-            syllableBoxes={editorState.syllableBoxes}
-            activeSyllableIdx={editorState.activeSyllableIdx}
-            syllableRange={editorState.syllableRange}
-            gaps={editorState.gaps}
-            hoveredSyllableIdx={editorState.hoveredSyllableIdx}
-            onHover={(idx) => editorDispatch({ type: 'SET_HOVER', payload: idx })}
-            onActivate={(idx) => editorDispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx })}
-          />
         </div>
 
         {/* Navigation footer */}
