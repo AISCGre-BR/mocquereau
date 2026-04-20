@@ -236,6 +236,12 @@ export interface DocxSourceMeta {
   city: string;
   century: string;
   folio: string;
+  /**
+   * Fólios específicos por imagem (Phase 09 / SRC-06). Quando ≥2, o DOCX
+   * consolida no cabeçalho ("fólios 12r, 12v"). Quando undefined/0/1,
+   * DOCX usa apenas `folio` (comportamento v0.0.2).
+   */
+  folios?: string[];
 }
 
 /**

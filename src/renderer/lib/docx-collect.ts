@@ -100,12 +100,17 @@ export async function collectDocxCrops(
         onProgress?.(processedCells, totalCells);
       }
 
+      const perImageFolios = (source.lines ?? [])
+        .map((l) => l.folio)
+        .filter((f): f is string => typeof f === 'string' && f.trim().length > 0);
+
       return {
         meta: {
           siglum: source.metadata.siglum,
           city: source.metadata.city,
           century: source.metadata.century,
           folio: source.metadata.folio,
+          folios: perImageFolios,
         },
         cells,
       };
