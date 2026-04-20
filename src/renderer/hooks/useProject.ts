@@ -23,7 +23,12 @@ type ProjectAction =
   | { type: "UPDATE_SOURCE"; payload: ManuscriptSource }
   | { type: "DUPLICATE_SOURCE"; payload: string }       // source id
   | { type: "REORDER_SOURCE"; payload: { id: string; direction: "up" | "down" } }
-  | { type: "SET_FILE_PATH"; payload: string | null };
+  | { type: "SET_FILE_PATH"; payload: string | null }
+  | { type: "UPDATE_SYLLABLE_TEXT"; payload: { wordIdx: number; sylIdx: number; newText: string } }
+  | {
+      type: "UPDATE_LINE_METADATA";
+      payload: { sourceId: string; lineId: string; folio?: string; label?: string };
+    };
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -203,6 +208,41 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (swapIdx < 0 || swapIdx >= sources.length) return state;
       [sources[idx], sources[swapIdx]] = [sources[swapIdx], sources[idx]];
       sources.forEach((s, i) => { s.order = i + 1; });
+      return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "UPDATE_SYLLABLE_TEXT": {
+      if (!state.project) return state;
+      const { wordIdx, sylIdx, newText } = action.payload;
+      const words = state.project.text.words;
+      if (wordIdx < 0 || wordIdx >= words.length) return state;
+      const word = words[wordIdx];
+      if (sylIdx < 0 || sylIdx >= word.syllables.length) return state;
+      const newWords = words.map((w, wi) =>
+        wi === wordIdx
+          ? { ...w, syllables: w.syllables.map((s, si) => (si === sylIdx ? newText : s)) }
+          : w,
+      );
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          text: { ...state.project.text, words: newWords },
+        },
+        isDirty: true,
+      };
+    }
+
+    case "UPDATE_LINE_METADATA": {
+      if (!state.project) return state;
+      const { sourceId, lineId, folio, label } = action.payload;
+      const sources = state.project.sources.map((s) => {
+        if (s.id !== sourceId) return s;
+        const lines = s.lines.map((l) =>
+          l.id === lineId ? { ...l, folio, label } : l,
+        );
+        return { ...s, lines };
+      });
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
 
