@@ -273,6 +273,7 @@ describe('collectDocxCrops', () => {
       city: 'Paris',
       century: 'XII',
       folio: '45r',
+      folios: [], // Phase 09 / SRC-06: empty because source has no lines with folio set
     });
   });
 
