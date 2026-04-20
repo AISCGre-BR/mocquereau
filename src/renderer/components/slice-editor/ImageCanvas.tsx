@@ -2,8 +2,15 @@
 
 import React, { useRef, useState } from 'react';
 import { StoredImage, SyllabifiedWord, SyllableBox } from '../../lib/models';
+import type { ImageAdjustments } from '../../lib/models';
 import { EditorAction } from './editorReducer';
 import { SyllableBoxOverlay } from './SyllableBoxOverlay';
+import { ImageAdjustmentsPanel } from './ImageAdjustmentsPanel';
+import {
+  buildImageFilter,
+  buildImageTransform,
+  invertGeometricTransform,
+} from '../../lib/image-adjustments';
 
 interface ImageCanvasProps {
   image: StoredImage | null;
@@ -18,6 +25,10 @@ interface ImageCanvasProps {
   words?: SyllabifiedWord[];
   showAllBoxes?: boolean;
   sameSizeMode?: boolean;
+  adjustments?: ImageAdjustments;
+  panelOpen?: boolean;
+  onUpdateAdjustments?: (partial: Partial<ImageAdjustments>) => void;
+  onClosePanel?: () => void;
 }
 
 // Distinguishable color palette for "show all boxes" mode
@@ -45,8 +56,17 @@ export function ImageCanvas({
   words,
   showAllBoxes = false,
   sameSizeMode = false,
+  adjustments,
+  panelOpen = false,
+  onUpdateAdjustments,
+  onClosePanel,
 }: ImageCanvasProps) {
   const imageWrapperRef = useRef<HTMLDivElement>(null);
+
+  // D-04 opção (a): aplicar filter (cor) na <img> e transform (geometria) no
+  // wrapper que contém <img>+overlay, para que boxes acompanhem visualmente.
+  const imageFilter = buildImageFilter(adjustments);
+  const imageTransform = buildImageTransform(adjustments);
 
   // ── Draw-new-box state ─────────────────────────────────────────────────────
   const drawState = useRef<{
@@ -101,8 +121,16 @@ export function ImageCanvas({
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const rect = imageWrapperRef.current!.getBoundingClientRect();
-    const startX = (e.clientX - rect.left) / rect.width;
-    const startY = (e.clientY - rect.top) / rect.height;
+    const rawX = (e.clientX - rect.left) / rect.width;
+    const rawY = (e.clientY - rect.top) / rect.height;
+    // Invert the visual geometric transform (rotation+flip) so that we always
+    // store SyllableBox coords in the canonical image space — D-04 item 2.
+    const invDown = invertGeometricTransform(
+      { xFrac: rawX, yFrac: rawY },
+      adjustments,
+    );
+    const startX = invDown.xFrac;
+    const startY = invDown.yFrac;
     drawState.current = { startX, startY, live: null };
 
     // If same-size mode with a template: pre-populate a box of template size centered at click
@@ -122,8 +150,14 @@ export function ImageCanvas({
   function handleImagePointerMove(e: React.PointerEvent<HTMLDivElement>) {
     if (!drawState.current) return;
     const rect = imageWrapperRef.current!.getBoundingClientRect();
-    const curX = (e.clientX - rect.left) / rect.width;
-    const curY = (e.clientY - rect.top) / rect.height;
+    const rawX = (e.clientX - rect.left) / rect.width;
+    const rawY = (e.clientY - rect.top) / rect.height;
+    const invMove = invertGeometricTransform(
+      { xFrac: rawX, yFrac: rawY },
+      adjustments,
+    );
+    const curX = invMove.xFrac;
+    const curY = invMove.yFrac;
     const { startX, startY } = drawState.current;
     const x = Math.min(startX, curX);
     const y = Math.min(startY, curY);
@@ -164,6 +198,15 @@ export function ImageCanvas({
     <div className="flex flex-col h-full bg-gray-100" onWheel={handleWheel}>
       {/* Image + boxes area */}
       <div className="relative flex-1 min-h-0 overflow-auto">
+        {/* Adjustments panel — sibling of the transformed wrapper so it stays
+            readable even when the image is rotated/flipped. */}
+        {panelOpen && onUpdateAdjustments && onClosePanel && (
+          <ImageAdjustmentsPanel
+            adjustments={adjustments}
+            onUpdate={onUpdateAdjustments}
+            onClose={onClosePanel}
+          />
+        )}
         {/* Inner wrapper sized to fit width; boxes positioned relative to this */}
         <div
           ref={imageWrapperRef}
@@ -181,7 +224,13 @@ export function ImageCanvas({
           style={{
             width: `${100 * zoom}%`,
             minWidth: '100%',
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+            transform: [
+              `translate(${panOffset.x}px, ${panOffset.y}px)`,
+              imageTransform ?? '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            transformOrigin: 'center center',
           }}
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
@@ -192,6 +241,7 @@ export function ImageCanvas({
             alt="Manuscript"
             className="block w-full h-auto select-none pointer-events-none"
             draggable={false}
+            style={imageFilter ? { filter: imageFilter } : undefined}
           />
 
           {/* Non-active boxes — clickable to switch active syllable. Always rendered
