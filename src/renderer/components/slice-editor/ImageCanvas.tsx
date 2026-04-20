@@ -56,38 +56,17 @@ export function ImageCanvas({
   } | null>(null);
   const [liveDrawBox, setLiveDrawBox] = useState<SyllableBox | null>(null);
 
-  // ── Compute syllable labels ────────────────────────────────────────────────
-  function computeSliceLabels(): Array<{
-    text: string;
-    isLastOfWord: boolean;
-    globalIdx: number;
-    isGap: boolean;
-  }> {
-    if (!words || !syllableRange) return [];
-    const gapSet = new Set(gaps);
-    const labels: Array<{
-      text: string;
-      isLastOfWord: boolean;
-      globalIdx: number;
-      isGap: boolean;
-    }> = [];
-    let globalIdx = 0;
-    for (let wi = 0; wi < words.length; wi++) {
-      const word = words[wi];
-      for (let si = 0; si < word.syllables.length; si++) {
-        if (globalIdx >= syllableRange.start && globalIdx <= syllableRange.end) {
-          const isLast = si === word.syllables.length - 1;
-          labels.push({
-            text: isLast ? word.syllables[si] : word.syllables[si] + '-',
-            isLastOfWord: isLast,
-            globalIdx,
-            isGap: gapSet.has(globalIdx),
-          });
-        }
-        globalIdx++;
+  // Resolve syllable text for a given global idx (used by box overlay labels/titles)
+  function syllableTextAt(globalIdx: number): string {
+    if (!words) return String(globalIdx);
+    let cursor = 0;
+    for (const w of words) {
+      for (const s of w.syllables) {
+        if (cursor === globalIdx) return s;
+        cursor++;
       }
     }
-    return labels;
+    return String(globalIdx);
   }
 
   // ── Zoom via scroll ────────────────────────────────────────────────────────
@@ -181,59 +160,8 @@ export function ImageCanvas({
     );
   }
 
-  const sliceLabels = computeSliceLabels();
-  const totalLabels = sliceLabels.length;
-
   return (
     <div className="flex flex-col h-full bg-gray-100" onWheel={handleWheel}>
-      {/* Labels row — clickable syllable labels at top */}
-      <div className="h-8 bg-white border-b border-gray-300 flex-shrink-0 overflow-hidden">
-        <div
-          className="relative h-full"
-          style={{ width: `${100 * zoom}%`, minWidth: '100%' }}
-        >
-          {sliceLabels.map((label, i) => {
-            const isActive =
-              activeSyllableIdx !== null && label.globalIdx === activeSyllableIdx;
-            const isHovered =
-              !isActive &&
-              hoveredSyllableIdx !== null &&
-              label.globalIdx === hoveredSyllableIdx;
-            return (
-              <div
-                key={label.globalIdx}
-                className={[
-                  'absolute top-0 bottom-0 flex items-center justify-center text-sm font-medium truncate px-1 cursor-pointer',
-                  label.isLastOfWord
-                    ? 'border-r-2 border-gray-700'
-                    : 'border-r border-gray-300',
-                  isActive
-                    ? 'bg-blue-500 text-white'
-                    : isHovered
-                    ? 'bg-yellow-200 text-yellow-900'
-                    : label.isGap
-                    ? 'text-gray-400 line-through hover:bg-gray-50'
-                    : 'text-gray-800 hover:bg-gray-50',
-                ].join(' ')}
-                style={{
-                  left: `${(i / totalLabels) * 100}%`,
-                  width: `${(1 / totalLabels) * 100}%`,
-                }}
-                onClick={() =>
-                  dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: label.globalIdx })
-                }
-                onMouseEnter={() =>
-                  dispatch({ type: 'SET_HOVER', payload: label.globalIdx })
-                }
-                onMouseLeave={() => dispatch({ type: 'SET_HOVER', payload: null })}
-              >
-                {label.text}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Image + boxes area */}
       <div className="relative flex-1 min-h-0 overflow-auto">
         {/* Inner wrapper sized to fit width; boxes positioned relative to this */}
@@ -268,8 +196,10 @@ export function ImageCanvas({
 
           {/* Non-active boxes — clickable to switch active syllable. Always rendered
               when there's a box (visible styling only when showAllBoxes is on). */}
-          {sliceLabels.map((label) => {
-            const idx = label.globalIdx;
+          {(syllableRange
+            ? Array.from({ length: syllableRange.end - syllableRange.start + 1 }, (_, k) => syllableRange.start + k)
+            : []
+          ).map((idx) => {
             const box = syllableBoxes[idx];
             if (!box || idx === activeSyllableIdx) return null;
             const color = BOX_COLORS[idx % BOX_COLORS.length];
@@ -293,7 +223,7 @@ export function ImageCanvas({
                   e.stopPropagation();
                   dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx });
                 }}
-                title={`Clique para editar "${label.text}"`}
+                title={`Clique para editar "${syllableTextAt(idx)}"`}
               >
                 {showAllBoxes && (
                   <div
@@ -306,7 +236,7 @@ export function ImageCanvas({
                       borderLeft: 'none',
                     }}
                   >
-                    {label.text}
+                    {syllableTextAt(idx)}
                   </div>
                 )}
               </div>
