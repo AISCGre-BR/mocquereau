@@ -563,6 +563,13 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           onSelectLine={handleSelectLine}
           onAddLine={handleAddLine}
           onRemoveLine={handleRemoveLine}
+          onUpdateMetadata={(lineId, folio, label) => {
+            if (!activeSource) return;
+            globalDispatch({
+              type: 'UPDATE_LINE_METADATA',
+              payload: { sourceId: activeSource.id, lineId, folio, label },
+            });
+          }}
         />
       )}
 
