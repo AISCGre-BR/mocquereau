@@ -1,8 +1,9 @@
 // src/renderer/components/slice-editor/SyllableRangeBar.tsx
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SyllabifiedWord } from '../../lib/models';
 import { flattenSyllables } from '../../lib/sliceUtils';
+import { SyllableChip } from '../SyllableChip';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,8 @@ interface SyllableRangeBarProps {
   onRangeChange: (range: { start: number; end: number }) => void;
   onGapToggle: (globalIdx: number) => void;
   onHover: (globalIdx: number | null) => void;
+  /** Rename-only: receive new text for a global syllable index. */
+  onRename: (globalIdx: number, newText: string) => void;
 }
 
 // ── Chip state ────────────────────────────────────────────────────────────────
@@ -105,10 +108,12 @@ export function SyllableRangeBar({
   onRangeChange,
   onGapToggle,
   onHover,
+  onRename,
 }: SyllableRangeBarProps) {
   const allSyllables = flattenSyllables(words);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const [editingKey, setEditingKey] = useState<number | null>(null);
 
   // Build word boundary set — boundary falls AFTER the last syllable of each word
   const wordBoundarySet = new Set<number>();
@@ -137,6 +142,12 @@ export function SyllableRangeBar({
         {allSyllables.map((syllable, i) => {
           const state = getChipState(i, syllableRange, gaps, coveredSyllables);
           const isHovered = i === hoveredSyllableIdx;
+          const isEditing = editingKey === i;
+          // Rename is purely textual (D-01 item 6 — count invariant preserved),
+          // so it applies to ANY syllable, including covered ones. Editing text
+          // on a covered syllable doesn't affect boxes — just updates
+          // words[].syllables[].
+          const canEdit = true;
           const label =
             state === 'gap' ? `✕ ${syllable}` :
             state === 'covered' ? `✓ ${syllable}` :
@@ -148,23 +159,48 @@ export function SyllableRangeBar({
               ref={(el) => { chipRefs.current[i] = el; }}
               className="inline-flex items-center flex-shrink-0"
             >
-              <span
-                className={chipClassName(state, isHovered)}
-                onMouseEnter={() => onHover(i)}
-                onMouseLeave={() => onHover(null)}
-                onClick={() =>
-                  handleChipClick(i, syllableRange, gaps, coveredSyllables, onRangeChange, onGapToggle)
-                }
-                role={state === 'covered' ? undefined : 'button'}
-                tabIndex={state === 'covered' ? -1 : 0}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    handleChipClick(i, syllableRange, gaps, coveredSyllables, onRangeChange, onGapToggle);
+              {isEditing ? (
+                <SyllableChip
+                  syllable={syllable}
+                  isEditing={true}
+                  onEnterEdit={() => {}}
+                  onCommitEdit={(value) => {
+                    const trimmed = value.trim();
+                    if (trimmed.length > 0 && trimmed !== syllable) {
+                      onRename(i, trimmed);
+                    }
+                    setEditingKey(null);
+                  }}
+                  onCancelEdit={() => setEditingKey(null)}
+                />
+              ) : (
+                <span
+                  className={chipClassName(state, isHovered)}
+                  onMouseEnter={() => onHover(i)}
+                  onMouseLeave={() => onHover(null)}
+                  onClick={() =>
+                    handleChipClick(i, syllableRange, gaps, coveredSyllables, onRangeChange, onGapToggle)
                   }
-                }}
-              >
-                {label}
-              </span>
+                  onDoubleClick={(e) => {
+                    if (!canEdit) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditingKey(i);
+                  }}
+                  role={state === 'covered' ? undefined : 'button'}
+                  tabIndex={state === 'covered' ? -1 : 0}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleChipClick(i, syllableRange, gaps, coveredSyllables, onRangeChange, onGapToggle);
+                    } else if (e.key === 'F2' && canEdit) {
+                      e.preventDefault();
+                      setEditingKey(i);
+                    }
+                  }}
+                >
+                  {label}
+                </span>
+              )}
               {/* Word boundary separator after each chip (except the last) */}
               {i < allSyllables.length - 1 && (
                 wordBoundarySet.has(i) ? (
