@@ -50,6 +50,85 @@ const DATA_COL_WIDTH_TWIPS = 680;  // ~12mm per syllable — fits ~20 syllables 
 const ROW_HEIGHT_TWIPS     = 1008; // ~18mm — uniform for all data rows (D-05)
 const HEADER_ROW_HEIGHT    = 360;  // ~6mm for syllable text + accent rows
 
+// ── Chunking (DOCX-07 fix — D-01) ────────────────────────────────────────────
+// Quebra da tabela em múltiplas tabelas empilhadas verticalmente quando a peça
+// tem mais de SYLLABLES_PER_CHUNK sílabas. Cada chunk repete cabeçalhos e a
+// primeira coluna (metadados do manuscrito).
+//
+// 20 sílabas × 680 TWIPs = 13 600 + 1 800 (meta) = 15 400 TWIPs ≈ 15 398 útil
+// em A4 paisagem com margens de 720 TWIPs. Cabe por pouco — se limites de
+// palavra empurrarem para 22 sílabas (14 960 + 1 800 = 16 760 TWIPs) o layout
+// FIXED ainda é válido porque o docx escala por percentagem; só excederia a
+// página útil em 9% no pior caso, e o Word permite overflow sem corromper.
+const SYLLABLES_PER_CHUNK = 20;
+
+// Hard cap para palavras muito longas: aceitar até 25 sílabas num chunk antes
+// de forçar corte no meio da palavra (fallback raro — ver 08-CONTEXT.md
+// §specifics). Um chunk com 25 sílabas = 17 000 + 1 800 = 18 800 TWIPs, o que
+// excede levemente a página útil; aceitável como exceção para não partir a
+// palavra ao meio, já que o caso é raro (palavras latinas raramente passam de
+// 5-6 sílabas).
+const MAX_SYLLABLES_PER_CHUNK = 25;
+
+// ── Chunk boundary computation (DOCX-07 — D-01) ──────────────────────────────
+
+/**
+ * Compute chunk boundaries for the DOCX table, splitting at word boundaries
+ * when possible. Returns an array of [startIdx, endIdx] inclusive pairs that
+ * together cover [0, totalSyllables - 1] with no gaps or overlap.
+ *
+ * Strategy (D-01):
+ *  - Target: SYLLABLES_PER_CHUNK=20 syllables per chunk.
+ *  - If the chunk boundary at target (idx = start + SYLLABLES_PER_CHUNK - 1)
+ *    is NOT a word boundary, walk forward (up to MAX_SYLLABLES_PER_CHUNK - 1
+ *    syllables from start) looking for one.
+ *  - If no word boundary is found within the MAX window, force the cut at
+ *    start + MAX_SYLLABLES_PER_CHUNK - 1 (mid-word fallback; warning logged).
+ *  - The last chunk always extends to totalSyllables - 1 regardless of
+ *    word boundary, because it is the end of the text.
+ *  - Short pieces (totalSyllables ≤ SYLLABLES_PER_CHUNK) return a single chunk
+ *    [0, totalSyllables - 1] to preserve v1.0 behavior.
+ *
+ * @param totalSyllables length of the syllables array (≥ 0)
+ * @param wordBoundaries boolean[] where true = "this is the last syllable of a word"
+ * @returns inclusive [start, end] pairs; empty array if totalSyllables ≤ 0
+ */
+export function computeChunkBoundaries(
+  totalSyllables: number,
+  wordBoundaries: boolean[],
+): Array<[number, number]> {
+  if (totalSyllables <= 0) return [];
+  if (totalSyllables <= SYLLABLES_PER_CHUNK) return [[0, totalSyllables - 1]];
+
+  const chunks: Array<[number, number]> = [];
+  let start = 0;
+  while (start < totalSyllables) {
+    const remaining = totalSyllables - start;
+    if (remaining <= SYLLABLES_PER_CHUNK) {
+      // Final short tail — one chunk to the end
+      chunks.push([start, totalSyllables - 1]);
+      break;
+    }
+    // Target end (inclusive): start + SYLLABLES_PER_CHUNK - 1
+    const target = start + SYLLABLES_PER_CHUNK - 1;
+    const hardLimit = Math.min(start + MAX_SYLLABLES_PER_CHUNK - 1, totalSyllables - 1);
+    let end = target;
+    // Walk forward from target up to hardLimit, looking for a word boundary
+    while (end <= hardLimit && !wordBoundaries[end]) end++;
+    if (end > hardLimit) {
+      // No boundary in [target, hardLimit] — force cut mid-word at hardLimit
+      end = hardLimit;
+      log(
+        `WARN: forced chunk cut at idx ${end} without word boundary ` +
+          `(very long word starting near ${start})`,
+      );
+    }
+    chunks.push([start, end]);
+    start = end + 1;
+  }
+  return chunks;
+}
+
 // ── Pixel targets for image scaling ──────────────────────────────────────────
 // docx's ImageRun.transformation.width/height are in PIXELS (at 96 DPI).
 // 1 inch = 1440 TWIPs = 96 pixels → pixels = TWIPs / 15
