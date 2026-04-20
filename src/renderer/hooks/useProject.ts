@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer } from "react";
-import type { MocquereauProject, SyllabifiedWord, Section, ManuscriptSource } from "../lib/models";
+import type { MocquereauProject, SyllabifiedWord, Section, ManuscriptSource, ImageAdjustments } from "../lib/models";
 import type { HyphenationMode } from "../lib/syllabify";
 
 // ── Action types ─────────────────────────────────────────────────────────────
@@ -28,6 +28,14 @@ type ProjectAction =
   | {
       type: "UPDATE_LINE_METADATA";
       payload: { sourceId: string; lineId: string; folio?: string; label?: string };
+    }
+  | {
+      type: "UPDATE_LINE_ADJUSTMENTS";
+      payload: {
+        sourceId: string;
+        lineId: string;
+        adjustments: Partial<ImageAdjustments>;
+      };
     };
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -46,6 +54,32 @@ const initialState: ProjectState = {
 
 /** Exported for unit testing only */
 export const initialStateForTest = initialState;
+
+// ── Image adjustments helpers ────────────────────────────────────────────────
+
+const ADJ_DEFAULT = {
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
+  grayscale: 0,
+  invert: false,
+  rotation: 0 as 0 | 90 | 180 | 270,
+  flipH: false,
+  flipV: false,
+} as const;
+
+function isAllDefaultAdjustments(a: ImageAdjustments): boolean {
+  return (
+    a.brightness === 100 &&
+    a.contrast === 100 &&
+    a.saturation === 100 &&
+    a.grayscale === 0 &&
+    a.invert === false &&
+    a.rotation === 0 &&
+    a.flipH === false &&
+    a.flipV === false
+  );
+}
 
 // ── Reducer ──────────────────────────────────────────────────────────────────
 
@@ -241,6 +275,30 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         const lines = s.lines.map((l) =>
           l.id === lineId ? { ...l, folio, label } : l,
         );
+        return { ...s, lines };
+      });
+      return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "UPDATE_LINE_ADJUSTMENTS": {
+      if (!state.project) return state;
+      const { sourceId, lineId, adjustments } = action.payload;
+      const src = state.project.sources.find((s) => s.id === sourceId);
+      if (!src) return state;
+      const tgt = src.lines.find((l) => l.id === lineId);
+      if (!tgt) return state;
+      const current: ImageAdjustments = tgt.imageAdjustments ?? { ...ADJ_DEFAULT };
+      const merged: ImageAdjustments = { ...current, ...adjustments };
+      const sources = state.project.sources.map((s) => {
+        if (s.id !== sourceId) return s;
+        const lines = s.lines.map((l) => {
+          if (l.id !== lineId) return l;
+          if (isAllDefaultAdjustments(merged)) {
+            const { imageAdjustments: _drop, ...rest } = l;
+            return rest as typeof l;
+          }
+          return { ...l, imageAdjustments: merged };
+        });
         return { ...s, lines };
       });
       return { ...state, project: { ...state.project, sources }, isDirty: true };
