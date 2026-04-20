@@ -1,5 +1,6 @@
 // src/renderer/components/slice-editor/SyllableRangeBar.tsx
 
+import { useEffect, useRef } from 'react';
 import type { SyllabifiedWord } from '../../lib/models';
 import { flattenSyllables } from '../../lib/sliceUtils';
 
@@ -10,6 +11,7 @@ interface SyllableRangeBarProps {
   syllableRange: { start: number; end: number } | null;
   gaps: number[];
   hoveredSyllableIdx: number | null;
+  activeSyllableIdx: number | null;   // which chip is currently being marked — auto-scrolls into view
   coveredSyllables: number[];   // indices confirmed in other lines
   onRangeChange: (range: { start: number; end: number }) => void;
   onGapToggle: (globalIdx: number) => void;
@@ -98,12 +100,15 @@ export function SyllableRangeBar({
   syllableRange,
   gaps,
   hoveredSyllableIdx,
+  activeSyllableIdx,
   coveredSyllables,
   onRangeChange,
   onGapToggle,
   onHover,
 }: SyllableRangeBarProps) {
   const allSyllables = flattenSyllables(words);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const chipRefs = useRef<Array<HTMLSpanElement | null>>([]);
 
   // Build word boundary set — boundary falls AFTER the last syllable of each word
   const wordBoundarySet = new Set<number>();
@@ -113,9 +118,22 @@ export function SyllableRangeBar({
     wordBoundarySet.add(offset - 1); // index of last syllable of this word
   }
 
+  // Auto-scroll: keep the active syllable chip in view as the user advances
+  // (replaces the old flex-wrap layout that stacked chips vertically for long pieces)
+  useEffect(() => {
+    if (activeSyllableIdx == null) return;
+    const chip = chipRefs.current[activeSyllableIdx];
+    if (chip && scrollRef.current) {
+      chip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [activeSyllableIdx]);
+
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-row flex-wrap items-center gap-y-1 overflow-x-auto py-2 px-1">
+      <div
+        ref={scrollRef}
+        className="flex flex-row flex-nowrap items-center gap-y-1 overflow-x-auto py-2 px-1"
+      >
         {allSyllables.map((syllable, i) => {
           const state = getChipState(i, syllableRange, gaps, coveredSyllables);
           const isHovered = i === hoveredSyllableIdx;
@@ -125,7 +143,11 @@ export function SyllableRangeBar({
             syllable;
 
           return (
-            <span key={i} className="inline-flex items-center">
+            <span
+              key={i}
+              ref={(el) => { chipRefs.current[i] = el; }}
+              className="inline-flex items-center flex-shrink-0"
+            >
               <span
                 className={chipClassName(state, isHovered)}
                 onMouseEnter={() => onHover(i)}

@@ -134,7 +134,7 @@ export interface MocquereauProject {
   text: {
     raw: string;
     words: SyllabifiedWord[];
-    hyphenationMode: "liturgical" | "classical" | "modern" | "manual";
+    hyphenationMode: "sung" | "liturgical-typographic" | "classical" | "modern" | "manual";
   };
 
   /** Seções da peça */

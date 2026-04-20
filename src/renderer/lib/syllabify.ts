@@ -1,8 +1,10 @@
 // src/renderer/lib/syllabify.ts
-// Syllabification engine for all four Latin hyphenation modes.
+// Syllabification engine for all five Latin hyphenation modes.
 //
-// Liturgical mode: Hypher with bundled gregorio-project patterns (la-liturgical.ts)
-// Classical/Modern modes: `hyphen` npm package (Strategy B, per RESEARCH.md §Strategy B)
+// Sung mode (default, SYLL-06 / D-02): Hypher with bundled gregorio-project
+//   patterns (la-liturgical.ts) + Clayton Dias post-processor + override dict.
+// Liturgical-typographic mode: Hypher only (previous 'liturgical' behavior).
+// Classical/Modern modes: `hyphen` npm package (Strategy B per RESEARCH.md).
 // Manual mode: parses user-typed hyphens directly — no Hypher involved.
 
 import Hypher from 'hypher';
@@ -10,8 +12,18 @@ import liturgicalPatterns from './patterns/la-liturgical';
 import { hyphenateSync as classicalHyphenate } from './patterns/la-classical';
 import { hyphenateSync as modernHyphenate } from './patterns/la-modern';
 import type { SyllabifiedWord } from './models';
+import { applySungRules } from './syllabify-sung-rules';
+import { liturgicalOverrides, normalizeOverrideKey } from './syllabify-overrides';
 
-export type HyphenationMode = 'liturgical' | 'classical' | 'modern' | 'manual';
+// SYLL-06 / D-02: 'liturgical' was renamed. 'sung' (new default) runs the
+// Hypher+hyphen-la output through a Clayton-Dias-aligned post-processor;
+// 'liturgical-typographic' preserves the pre-SYLL-06 Hypher-only behavior.
+export type HyphenationMode =
+  | 'sung'
+  | 'liturgical-typographic'
+  | 'classical'
+  | 'modern'
+  | 'manual';
 
 // Instantiate the Hypher engine once at module load (not per call).
 const liturgicalEngine = new Hypher(liturgicalPatterns);
@@ -90,8 +102,20 @@ export function syllabifyText(
     if (!core || !LETTER_RE.test(core)) continue;
 
     let syllables: string[];
-    if (mode === 'liturgical') {
-      syllables = liturgicalEngine.hyphenate(normalizeLigatures(core));
+    if (mode === 'sung' || mode === 'liturgical-typographic') {
+      const normalized = normalizeLigatures(core);
+      syllables = liturgicalEngine.hyphenate(normalized);
+      if (mode === 'sung') {
+        // Clayton R1-R11 post-processor (sung convention). Pass the
+        // ligature-expanded word so position-based rules (R11 ae/oe digraph)
+        // can match `æ`/`œ` inputs that Hypher already saw as `ae`/`oe`.
+        syllables = applySungRules(syllables, normalized);
+        // Override dictionary wins over rule output when the word matches.
+        const overrideKey = normalizeOverrideKey(core);
+        if (overrideKey in liturgicalOverrides) {
+          syllables = liturgicalOverrides[overrideKey];
+        }
+      }
     } else if (mode === 'classical') {
       syllables = splitWithHyphen(core, classicalHyphenate);
     } else {

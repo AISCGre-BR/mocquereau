@@ -64,7 +64,7 @@ function makeProject(overrides: Partial<MocquereauProject> = {}): MocquereauProj
         { original: 'Sanctus', syllables: ['Sanc', 'tus'] },
         { original: 'Dominus', syllables: ['Do', 'mi', 'nus'] },
       ],
-      hyphenationMode: 'liturgical',
+      hyphenationMode: 'sung',
     },
     sections: [],
     sources: [],

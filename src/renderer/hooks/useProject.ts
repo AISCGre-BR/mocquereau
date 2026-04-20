@@ -239,7 +239,7 @@ export function createNewProject(title: string, author: string): MocquereauProje
   const now = new Date().toISOString();
   return {
     meta: { title, author, createdAt: now, updatedAt: now },
-    text: { raw: "", words: [], hyphenationMode: "liturgical" },
+    text: { raw: "", words: [], hyphenationMode: "sung" },
     sections: [],
     sources: [],
   };

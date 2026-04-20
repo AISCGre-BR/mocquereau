@@ -40,6 +40,13 @@ export function registerProjectHandlers(): void {
     if (canceled || !filePaths[0]) return null;
     const raw = await readFile(filePaths[0], 'utf-8');
     const project = JSON.parse(raw);
+    // SYLL-06 compat: v1.0 saved as 'liturgical'; v1.1 renamed the exact-same
+    // behavior to 'liturgical-typographic'. Map legacy → renamed to preserve
+    // syllableBox indices (changing to 'sung' would shift word boundaries and
+    // desalign crops in existing projects). New projects default to 'sung'.
+    if (project?.text?.hyphenationMode === 'liturgical') {
+      project.text.hyphenationMode = 'liturgical-typographic';
+    }
     return { project, filePath: filePaths[0] };
   });
 
@@ -48,6 +55,10 @@ export function registerProjectHandlers(): void {
     try {
       const raw = await readFile(filePath, 'utf-8');
       const project = JSON.parse(raw);
+      // Same legacy compat as project:open — preserve syllableBox alignment.
+      if (project?.text?.hyphenationMode === 'liturgical') {
+        project.text.hyphenationMode = 'liturgical-typographic';
+      }
       return { project, filePath };
     } catch {
       return null;

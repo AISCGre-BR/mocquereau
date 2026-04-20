@@ -23,6 +23,14 @@ function createWindow(): void {
     },
   });
 
+  // LPUI-01 fix: lock page zoom so Ctrl+wheel / trackpad pinch never zoom
+  // the whole app (the TablePreview has its own discrete zoom controls).
+  win.webContents.setVisualZoomLevelLimits(1, 1);
+  win.webContents.setZoomFactor(1);
+  win.webContents.on('zoom-changed', () => {
+    win.webContents.setZoomFactor(1);
+  });
+
   // Intercept close to prompt when there are unsaved changes
   win.on('close', (e) => {
     if (projectIsDirty && !bypassCloseConfirm) {

@@ -25,7 +25,7 @@ function makeStateWithSources(sources: ManuscriptSource[]) {
   return {
     project: {
       meta: { title: "Test", author: "Author", createdAt: "2026-01-01", updatedAt: "2026-01-01" },
-      text: { raw: "", words: [], hyphenationMode: "liturgical" as const },
+      text: { raw: "", words: [], hyphenationMode: "sung" as const },
       sections: [],
       sources,
     },
