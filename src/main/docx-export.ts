@@ -163,8 +163,28 @@ function scaleToFit(cropW: number, cropH: number): { width: number; height: numb
   };
 }
 
+// ── Folio consolidation (SRC-06 D-02 item 4) ─────────────────────────────────
+/**
+ * Determina o texto do fólio exibido no cabeçalho do manuscrito.
+ *
+ * Regra:
+ *  - `folios` com ≥2 entries → `"fólios A, B[, C...]"` (ordem = ordem de lines[])
+ *  - Caso contrário (undefined, [], [1 só entry]) → retorna `folio` cru
+ *    (comportamento v0.0.2 preservado)
+ *
+ * Função pura, exportada para testabilidade isolada (sem mockar docx).
+ */
+export function formatFolioText(folio: string, folios?: string[]): string {
+  return Array.isArray(folios) && folios.length >= 2
+    ? `fólios ${folios.join(', ')}`
+    : folio;
+}
+
 // ── Meta cell (first column) ──────────────────────────────────────────────────
-function buildMetaCell(meta: { siglum: string; city: string; century: string; folio: string }): TableCell {
+function buildMetaCell(
+  meta: { siglum: string; city: string; century: string; folio: string; folios?: string[] },
+): TableCell {
+  const folioText = formatFolioText(meta.folio, meta.folios);
   return new TableCell({
     children: [
       new Paragraph({
@@ -172,7 +192,7 @@ function buildMetaCell(meta: { siglum: string; city: string; century: string; fo
           new TextRun({ text: meta.siglum, bold: true, size: 16 }),
           new TextRun({ text: '\n' + meta.city, size: 14, break: 1 }),
           new TextRun({ text: meta.century, size: 14, break: 1 }),
-          new TextRun({ text: meta.folio, size: 14, break: 1 }),
+          new TextRun({ text: folioText, size: 14, break: 1 }),
         ],
       }),
     ],
