@@ -6,7 +6,7 @@
 // extension up to 25 (MAX) for very long words, force cut at MAX-1 as fallback.
 
 import { describe, it, expect } from 'vitest';
-import { computeChunkBoundaries } from './docx-export';
+import { computeChunkBoundaries, formatFolioText } from './docx-export';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -123,5 +123,32 @@ describe('computeChunkBoundaries', () => {
     const boundaries = boundariesAt(21, [20]);
     const chunks = computeChunkBoundaries(21, boundaries);
     expect(chunks).toEqual([[0, 20]]);
+  });
+});
+
+// ── formatFolioText (SRC-06 D-02 item 4 — consolidação de fólios) ───────────
+//
+// Regra: se folios tem ≥2 entries, renderiza "fólios A, B[, C...]" (ordem =
+// ordem de lines[]); caso contrário retorna `folio` cru (comportamento v0.0.2).
+
+describe('formatFolioText (SRC-06 consolidation)', () => {
+  it('returns bare folio when folios is undefined', () => {
+    expect(formatFolioText('12r', undefined)).toBe('12r');
+  });
+
+  it('returns bare folio when folios is empty array', () => {
+    expect(formatFolioText('12r', [])).toBe('12r');
+  });
+
+  it('returns bare folio when folios has exactly 1 entry', () => {
+    expect(formatFolioText('12r', ['12r'])).toBe('12r');
+  });
+
+  it('consolidates 2 folios with "fólios" prefix and comma-separated list', () => {
+    expect(formatFolioText('12r', ['12r', '12v'])).toBe('fólios 12r, 12v');
+  });
+
+  it('consolidates 3+ folios in order', () => {
+    expect(formatFolioText('12r', ['12r', '12v', '13r'])).toBe('fólios 12r, 12v, 13r');
   });
 });
