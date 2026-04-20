@@ -663,6 +663,23 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               onRangeChange={(range) => editorDispatch({ type: 'SET_RANGE', payload: range })}
               onGapToggle={(idx) => editorDispatch({ type: 'TOGGLE_GAP', payload: idx })}
               onHover={(idx) => editorDispatch({ type: 'SET_HOVER', payload: idx })}
+              onRename={(globalIdx, newText) => {
+                if (!project) return;
+                // Convert globalIdx → (wordIdx, sylIdx)
+                let offset = 0;
+                for (let w = 0; w < project.text.words.length; w++) {
+                  const len = project.text.words[w].syllables.length;
+                  if (globalIdx < offset + len) {
+                    const sylIdx = globalIdx - offset;
+                    globalDispatch({
+                      type: 'UPDATE_SYLLABLE_TEXT',
+                      payload: { wordIdx: w, sylIdx, newText },
+                    });
+                    return;
+                  }
+                  offset += len;
+                }
+              }}
             />
           </div>
         )}
