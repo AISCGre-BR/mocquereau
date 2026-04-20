@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { syllabifyText, type HyphenationMode } from '../lib/syllabify';
 import { useProject, createNewProject } from '../hooks/useProject';
 import { SectionPanel } from './SectionPanel';
+import { migrateHyphenation, previewMigration } from '../lib/migrate-hyphenation';
 import type { GuerangerExport, SyllabifiedWord } from '../lib/models';
 
 interface ScreenProps {
@@ -41,6 +42,30 @@ const MODES: HyphenationMode[] = [
 /** Convert SyllabifiedWord[] to a human-readable hyphenated string */
 function wordsToHyphenated(words: SyllabifiedWord[]): string {
   return words.map((w) => w.syllables.join('-')).join(' ');
+}
+
+/** Build the confirmation message shown before migrating syllable indices. */
+function buildMigrationMessage(
+  newMode: HyphenationMode,
+  stats: ReturnType<typeof previewMigration>,
+): string {
+  const head = `Trocar para o modo "${MODE_LABELS[newMode]}" altera a divisão silábica. O app pode remapear as caixas de recorte automaticamente:\n`;
+  const kept = `  • Caixas preservadas (palavras com mesma contagem): ${stats.preservedBoxes}\n`;
+  const dropped = `  • Caixas descartadas (palavras com contagem diferente): ${stats.droppedBoxes}\n`;
+  const total = `  • Total de sílabas: ${stats.oldSyllableCount} → ${stats.newSyllableCount}\n`;
+  const wordsList =
+    stats.changedWords.length > 0
+      ? `\nPalavras que mudam de divisão:\n` +
+        stats.changedWords
+          .slice(0, 10)
+          .map((w) => `  • ${w.word}: ${w.oldSplit} → ${w.newSplit}`)
+          .join('\n') +
+        (stats.changedWords.length > 10 ? `\n  … e mais ${stats.changedWords.length - 10}` : '')
+      : '\nNenhuma palavra muda de divisão — todas as caixas serão preservadas.';
+  const foot = stats.droppedBoxes > 0
+    ? '\n\nAs caixas descartadas precisam ser refeitas no editor de recorte. Continuar?'
+    : '\n\nContinuar?';
+  return head + kept + dropped + total + wordsList + foot;
 }
 
 /** Parse a hyphenated string back into SyllabifiedWord[] */
@@ -128,6 +153,32 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
       if (!ok) return;
       setHasManualEdits(false);
     }
+
+    // If the project has any syllable-indexed data (boxes, gaps, cuts) we
+    // need to remap indices because word splits may differ between modes.
+    // Offer automatic migration (preserves boxes on unchanged words, drops
+    // boxes on words whose syllable count shifts).
+    if (state.project && newMode !== 'manual' && hyphenationMode !== 'manual') {
+      const hasAnyBoxes = state.project.sources.some((s) =>
+        s.lines.some(
+          (l) =>
+            (l.syllableBoxes && Object.keys(l.syllableBoxes).length > 0) ||
+            (l.gaps && l.gaps.length > 0)
+        )
+      );
+      if (hasAnyBoxes) {
+        const stats = previewMigration(state.project, newMode);
+        const msg = buildMigrationMessage(newMode, stats);
+        const confirmed = window.confirm(msg);
+        if (!confirmed) return;
+        const { project: migrated } = migrateHyphenation(state.project, newMode);
+        dispatch({ type: 'SET_PROJECT', payload: migrated });
+        setHyphenationMode(newMode);
+        setSyllabifiedText(wordsToHyphenated(migrated.text.words));
+        return;
+      }
+    }
+
     setHyphenationMode(newMode);
     // Re-syllabify immediately
     const words = syllabifyText(rawText, newMode);
