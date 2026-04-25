@@ -1,6 +1,7 @@
 import { createContext, useContext, useReducer } from "react";
 import type { MocquereauProject, SyllabifiedWord, Section, ManuscriptSource, ImageAdjustments } from "../lib/models";
 import type { HyphenationMode } from "../lib/syllabify";
+import { normalizeRotation } from "../lib/image-adjustments";
 
 // ── Action types ─────────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ const ADJ_DEFAULT = {
   saturation: 100,
   grayscale: 0,
   invert: false,
-  rotation: 0 as 0 | 90 | 180 | 270,
+  rotation: 0 as number,
   flipH: false,
   flipV: false,
 } as const;
@@ -288,7 +289,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const tgt = src.lines.find((l) => l.id === lineId);
       if (!tgt) return state;
       const current: ImageAdjustments = tgt.imageAdjustments ?? { ...ADJ_DEFAULT };
-      const merged: ImageAdjustments = { ...current, ...adjustments };
+      const mergedRaw: ImageAdjustments = { ...current, ...adjustments };
+      // Phase 11 / IMG-07: normaliza rotation no merge (idempotente; barato).
+      const merged: ImageAdjustments = {
+        ...mergedRaw,
+        rotation: normalizeRotation(mergedRaw.rotation),
+      };
       const sources = state.project.sources.map((s) => {
         if (s.id !== sourceId) return s;
         const lines = s.lines.map((l) => {
