@@ -468,17 +468,23 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           ns('next');
           return;
         }
+        // Tab/Enter avança a sílaba ativa em 1. Se passar de range.end, EXPANDE o
+        // range automaticamente (mesma linha cobrindo mais sílabas). Limita pelo
+        // total global de sílabas do projeto. Nunca pula para outra imagem —
+        // troca de imagem é click no LineSidebar; troca de fonte é Ctrl+Enter.
         e.preventDefault();
         if (es.activeSyllableIdx !== null) {
           const next = es.activeSyllableIdx + 1;
-          if (next <= range.end) {
-            ed({ type: 'SET_ACTIVE_SYLLABLE', payload: next });
-          } else {
-            nl(1);
+          if (next >= totalSyllableCount) return; // já no fim global; nada a fazer
+          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: next });
+          // Expande range.end se necessário para incluir a nova sílaba ativa.
+          if (next > range.end) {
+            ed({ type: 'SET_RANGE', payload: { start: range.start, end: next } });
           }
         } else {
           ed({ type: 'SET_ACTIVE_SYLLABLE', payload: range.start });
         }
+        void nl;
         return;
       }
 
@@ -486,10 +492,11 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
         e.preventDefault();
         if (es.activeSyllableIdx !== null) {
           const prev = es.activeSyllableIdx - 1;
-          if (prev >= range.start) {
-            ed({ type: 'SET_ACTIVE_SYLLABLE', payload: prev });
-          } else {
-            nl(-1);
+          if (prev < 0) return; // antes do início global; nada a fazer
+          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: prev });
+          // Encolhe range.start se necessário (puxa o início da linha para incluir).
+          if (prev < range.start) {
+            ed({ type: 'SET_RANGE', payload: { start: prev, end: range.end } });
           }
         } else {
           ed({ type: 'SET_ACTIVE_SYLLABLE', payload: range.end });
