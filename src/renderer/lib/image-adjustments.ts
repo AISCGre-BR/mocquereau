@@ -122,29 +122,52 @@ function rotatePointCw(
   deg: number,
 ): { xFrac: number; yFrac: number } {
   // Rotação horária em CSS coords (y-down) em torno de (0.5, 0.5).
-  // Phase 11 widened o tipo para `number`; o switch cardinal abaixo
-  // segue funcional para múltiplos de 90°. Plan 2 desta fase substitui
-  // a implementação por seno/cosseno geral. Para ângulos não-cardinais
-  // antes do Plan 2, retornamos identidade (não há código vivo que
-  // exercite esse path sem o painel de slider, ainda não shipado).
-  const { xFrac: x, yFrac: y } = p;
+  // Phase 11 / Plan 2: implementação trigonométrica geral via Math.cos/sin.
+  // Para qualquer θ ∈ ℝ — após `normalizeRotation`, θ ∈ [0, 360).
+  //
+  // Fórmula matricial CW em y-down (equivalente a CCW em y-up):
+  //   [x' - 0.5]   [ cos θ  -sin θ ] [x - 0.5]
+  //   [y' - 0.5] = [ sin θ   cos θ ] [y - 0.5]
+  //
+  // Cardinais byte-idênticos via álgebra (não via switch):
+  //   90°  → cos=0, sin=1  → (0.5 - dy, 0.5 + dx)  ≡ (1-y, x)
+  //   180° → cos=-1, sin=0 → (0.5 - dx, 0.5 - dy)  ≡ (1-x, 1-y)
+  //   270° → cos=0, sin=-1 → (0.5 + dy, 0.5 - dx)  ≡ (y,   1-x)
   const n = normalizeRotation(deg);
-  if (n === 0) return { xFrac: x, yFrac: y };
-  if (n === 90) return { xFrac: 1 - y, yFrac: x };
-  if (n === 180) return { xFrac: 1 - x, yFrac: 1 - y };
-  if (n === 270) return { xFrac: y, yFrac: 1 - x };
-  return { xFrac: x, yFrac: y };
+  if (n === 0) return { xFrac: p.xFrac, yFrac: p.yFrac };
+  const rad = (n * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = p.xFrac - 0.5;
+  const dy = p.yFrac - 0.5;
+  return {
+    xFrac: 0.5 + dx * cos - dy * sin,
+    yFrac: 0.5 + dx * sin + dy * cos,
+  };
 }
 
+/**
+ * Retorna o ângulo θ' tal que rotate(θ') desfaz rotate(θ): θ' = -θ mod 360.
+ * Para qualquer θ ∈ ℝ. Usado por invertGeometricTransform.
+ */
 function inverseRotationDeg(deg: number): number {
-  const n = normalizeRotation(deg);
-  return normalizeRotation(360 - n);
+  return normalizeRotation(-deg);
 }
 
 /**
  * Dado um `SyllableBox` em coords canônicas, retorna o bounding box
- * axis-aligned no espaço visual após flip + rotação. Correto porque
- * rotações são múltiplos de 90° (preservam axis-alignment).
+ * AABB axis-aligned do quadrilátero resultante após flip + rotação.
+ *
+ * Para múltiplos de 90°: rotação preserva axis-alignment, AABB === quadrilátero
+ * rotacionado (caso da Phase 10).
+ *
+ * Para ângulos não-cardinais (ex: 45°): o quadrilátero rotacionado NÃO é
+ * axis-aligned; o AABB retornado é maior que o box original (cresce ~√2× para
+ * 45°). Isso é intencional — a função é usada principalmente em testes de
+ * invariância e em lookup de bounding region; consumidores que precisem das
+ * coords exatas devem aplicar `rotatePointCw` aos 4 cantos diretamente.
+ *
+ * Phase 11 / IMG-07: generalizado para qualquer θ ∈ ℝ.
  */
 export function applyGeometricTransform(
   box: SyllableBox,
@@ -170,9 +193,11 @@ export function applyGeometricTransform(
 
 /**
  * Dado um ponto VISUAL (fração [0,1]x[0,1] no espaço pós-transform), retorna
- * o ponto CANÔNICO correspondente. Usado pelos pointer handlers do
- * ImageCanvas para gravar boxes em coords da imagem original mesmo quando
- * rotação/flip estão ativos.
+ * o ponto CANÔNICO correspondente. Para qualquer θ ∈ ℝ — usa rotação inversa
+ * via seno/cosseno em torno de (0.5, 0.5). Phase 11 / IMG-07.
+ *
+ * Usado pelos pointer handlers do ImageCanvas para gravar boxes em coords da
+ * imagem original mesmo quando rotação/flip estão ativos.
  */
 export function invertGeometricTransform(
   point: { xFrac: number; yFrac: number },
