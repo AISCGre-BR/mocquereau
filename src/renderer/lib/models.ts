@@ -59,8 +59,8 @@ export interface ImageAdjustments {
   grayscale: number;
   /** Inversão de cores (modo negativo). */
   invert: boolean;
-  /** Rotação discreta em graus. Só 0/90/180/270 (free-angle deferido). */
-  rotation: 0 | 90 | 180 | 270;
+  /** Rotação em graus, normalizada para [0, 360). Aceita decimais (Phase 11 / IMG-07). */
+  rotation: number;
   /** Espelhamento horizontal. */
   flipH: boolean;
   /** Espelhamento vertical. */

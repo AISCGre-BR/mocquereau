@@ -20,6 +20,27 @@ export const IMAGE_ADJUSTMENTS_DEFAULT: ImageAdjustments = {
   flipV: false,
 };
 
+/**
+ * Normaliza um ângulo em graus para o range canônico [0, 360).
+ * Aceita qualquer number (incluindo negativos, > 360, decimais).
+ * Trata `NaN`/`Infinity` retornando `0` (defensivo contra projetos
+ * editados manualmente / valores corrompidos). Phase 11 / IMG-07.
+ *
+ * Exemplos:
+ *   normalizeRotation(0)        === 0
+ *   normalizeRotation(90)       === 90
+ *   normalizeRotation(360)      === 0
+ *   normalizeRotation(-90)      === 270
+ *   normalizeRotation(720)      === 0
+ *   normalizeRotation(17.5)     === 17.5
+ *   normalizeRotation(NaN)      === 0
+ *   normalizeRotation(Infinity) === 0
+ */
+export function normalizeRotation(deg: number): number {
+  if (!Number.isFinite(deg)) return 0;
+  return ((deg % 360) + 360) % 360;
+}
+
 /** True se o ajuste é indistinguível do default (ou undefined). */
 export function isDefaultAdjustments(adj?: ImageAdjustments): boolean {
   if (!adj) return true;
@@ -98,26 +119,26 @@ function applyFlip(
 
 function rotatePointCw(
   p: { xFrac: number; yFrac: number },
-  deg: 0 | 90 | 180 | 270,
+  deg: number,
 ): { xFrac: number; yFrac: number } {
   // Rotação horária em CSS coords (y-down) em torno de (0.5, 0.5).
+  // Phase 11 widened o tipo para `number`; o switch cardinal abaixo
+  // segue funcional para múltiplos de 90°. Plan 2 desta fase substitui
+  // a implementação por seno/cosseno geral. Para ângulos não-cardinais
+  // antes do Plan 2, retornamos identidade (não há código vivo que
+  // exercite esse path sem o painel de slider, ainda não shipado).
   const { xFrac: x, yFrac: y } = p;
-  switch (deg) {
-    case 0:
-      return { xFrac: x, yFrac: y };
-    case 90:
-      return { xFrac: 1 - y, yFrac: x };
-    case 180:
-      return { xFrac: 1 - x, yFrac: 1 - y };
-    case 270:
-      return { xFrac: y, yFrac: 1 - x };
-  }
+  const n = normalizeRotation(deg);
+  if (n === 0) return { xFrac: x, yFrac: y };
+  if (n === 90) return { xFrac: 1 - y, yFrac: x };
+  if (n === 180) return { xFrac: 1 - x, yFrac: 1 - y };
+  if (n === 270) return { xFrac: y, yFrac: 1 - x };
+  return { xFrac: x, yFrac: y };
 }
 
-function inverseRotationDeg(deg: 0 | 90 | 180 | 270): 0 | 90 | 180 | 270 {
-  if (deg === 90) return 270;
-  if (deg === 270) return 90;
-  return deg;
+function inverseRotationDeg(deg: number): number {
+  const n = normalizeRotation(deg);
+  return normalizeRotation(360 - n);
 }
 
 /**
