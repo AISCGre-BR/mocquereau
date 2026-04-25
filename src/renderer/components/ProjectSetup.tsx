@@ -138,6 +138,26 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syllabifiedText, autoSyllabified, hasManualEdits]);
 
+  // Persist title/author edits to project state (debounced).
+  // Without this, local input changes were lost — name reverted on save/export
+  // because handleSave/DOCX read from state.project.meta, not local state.
+  useEffect(() => {
+    if (!state.project) return;
+    const t = title.trim();
+    if (t === '') return; // não permite gravar título vazio
+    if (
+      state.project.meta.title === title &&
+      state.project.meta.author === author
+    ) {
+      return; // nada mudou — evita re-dispatch em loop
+    }
+    const timer = setTimeout(() => {
+      dispatch({ type: 'SET_META', payload: { title, author } });
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, author]);
+
   // ── Syllabified text editing ──────────────────────────────────────────────
   function handleSyllabifiedChange(value: string) {
     setSyllabifiedText(value);
