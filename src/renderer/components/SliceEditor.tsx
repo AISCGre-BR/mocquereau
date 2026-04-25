@@ -468,29 +468,36 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           ns('next');
           return;
         }
-        // Tab/Enter cicla SEMPRE dentro do range da linha ativa (próxima sílaba),
-        // wrap para range.start ao chegar no fim. Nunca pula automaticamente para
-        // outra imagem/manuscrito — usuário troca imagem clicando no LineSidebar
-        // ou usa Ctrl+Enter para próximo manuscrito.
+        // Tab/Enter avança a sílaba ativa em 1. Se passar de range.end, EXPANDE o
+        // range automaticamente (mesma linha cobrindo mais sílabas). Limita pelo
+        // total global de sílabas do projeto. Nunca pula para outra imagem —
+        // troca de imagem é click no LineSidebar; troca de fonte é Ctrl+Enter.
         e.preventDefault();
-        e.stopPropagation();
         if (es.activeSyllableIdx !== null) {
           const next = es.activeSyllableIdx + 1;
-          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: next <= range.end ? next : range.start });
+          if (next >= totalSyllableCount) return; // já no fim global; nada a fazer
+          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: next });
+          // Expande range.end se necessário para incluir a nova sílaba ativa.
+          if (next > range.end) {
+            ed({ type: 'SET_RANGE', payload: { start: range.start, end: next } });
+          }
         } else {
           ed({ type: 'SET_ACTIVE_SYLLABLE', payload: range.start });
         }
-        // Suprime que `nl` (navigateLines) seja referenciado quando não é mais usado
         void nl;
         return;
       }
 
       if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault();
-        e.stopPropagation();
         if (es.activeSyllableIdx !== null) {
           const prev = es.activeSyllableIdx - 1;
-          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: prev >= range.start ? prev : range.end });
+          if (prev < 0) return; // antes do início global; nada a fazer
+          ed({ type: 'SET_ACTIVE_SYLLABLE', payload: prev });
+          // Encolhe range.start se necessário (puxa o início da linha para incluir).
+          if (prev < range.start) {
+            ed({ type: 'SET_RANGE', payload: { start: prev, end: range.end } });
+          }
         } else {
           ed({ type: 'SET_ACTIVE_SYLLABLE', payload: range.end });
         }
@@ -530,11 +537,8 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
         return;
       }
     }
-    // Capture phase: garante que nosso handler de Tab roda ANTES de qualquer
-    // listener de focus traversal nativo (Electron/macOS) que poderia mover o
-    // foco para fora do SliceEditor antes do nosso preventDefault().
-    window.addEventListener('keydown', handler, { capture: true });
-    return () => window.removeEventListener('keydown', handler, { capture: true });
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   // ── No project guard ──────────────────────────────────────────────────────

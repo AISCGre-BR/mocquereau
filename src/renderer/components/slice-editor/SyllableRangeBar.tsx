@@ -195,6 +195,12 @@ export function SyllableRangeBar({
                     } else if (e.key === 'F2' && canEdit) {
                       e.preventDefault();
                       setEditingKey(i);
+                    } else if (e.key === 'Tab') {
+                      // Suprimimos o focus traversal nativo do browser — o
+                      // window-level handler do SliceEditor é a ÚNICA autoridade
+                      // sobre activeSyllableIdx. Sem isso, o browser e o
+                      // handler global brigavam pelo scroll/foco do bar.
+                      e.preventDefault();
                     }
                   }}
                 >
