@@ -12,6 +12,7 @@ import {
   buildImageTransform,
   applyGeometricTransform,
   invertGeometricTransform,
+  normalizeRotation,
 } from "./image-adjustments";
 
 const TOL = 9; // casas decimais para toBeCloseTo (≈ 1e-9)
@@ -80,6 +81,46 @@ describe("isDefaultAdjustments", () => {
     expect(
       isDefaultAdjustments({ ...IMAGE_ADJUSTMENTS_DEFAULT, flipV: true }),
     ).toBe(false);
+  });
+});
+
+describe("normalizeRotation", () => {
+  it("identidade para 0", () => {
+    expect(normalizeRotation(0)).toBe(0);
+  });
+  it("preserva múltiplos de 90 (90/180/270)", () => {
+    expect(normalizeRotation(90)).toBe(90);
+    expect(normalizeRotation(180)).toBe(180);
+    expect(normalizeRotation(270)).toBe(270);
+  });
+  it("360 → 0", () => {
+    expect(normalizeRotation(360)).toBe(0);
+  });
+  it("720 → 0", () => {
+    expect(normalizeRotation(720)).toBe(0);
+  });
+  it("-90 → 270", () => {
+    expect(normalizeRotation(-90)).toBe(270);
+  });
+  it("-180 → 180", () => {
+    expect(normalizeRotation(-180)).toBe(180);
+  });
+  it("preserva decimais ∈ [0, 360)", () => {
+    expect(normalizeRotation(17.5)).toBeCloseTo(17.5, 9);
+    expect(normalizeRotation(142.5)).toBeCloseTo(142.5, 9);
+    expect(normalizeRotation(359.5)).toBeCloseTo(359.5, 9);
+  });
+  it("decimal > 360 → mod 360", () => {
+    expect(normalizeRotation(720.5)).toBeCloseTo(0.5, 9);
+  });
+  it("NaN → 0", () => {
+    expect(normalizeRotation(NaN)).toBe(0);
+  });
+  it("Infinity → 0", () => {
+    expect(normalizeRotation(Infinity)).toBe(0);
+  });
+  it("-Infinity → 0", () => {
+    expect(normalizeRotation(-Infinity)).toBe(0);
   });
 });
 
@@ -291,4 +332,98 @@ describe("round-trip: applyPoint ∘ invertGeometricTransform = identity (revers
       }
     }
   }
+});
+
+describe("round-trip: non-cardinal angles preserve points", () => {
+  const angles = [17, 142.5, 273, 0.5, 359.5];
+  const flips = [false, true];
+  const samples: Array<{ xFrac: number; yFrac: number }> = [
+    { xFrac: 0.5, yFrac: 0.5 }, // centro: ponto fixo
+    { xFrac: 0.3, yFrac: 0.7 },
+    { xFrac: 0.1, yFrac: 0.2 },
+    { xFrac: 0.9, yFrac: 0.8 },
+    { xFrac: 0.25, yFrac: 0.5 },
+  ];
+  const TOL_NONCARDINAL = 9; // 1e-9, mesma tolerância dos cardinais — sin/cos em IEEE-754
+  for (const rotation of angles) {
+    for (const flipH of flips) {
+      for (const flipV of flips) {
+        const adj: ImageAdjustments = {
+          ...IMAGE_ADJUSTMENTS_DEFAULT,
+          rotation,
+          flipH,
+          flipV,
+        };
+        it(`rotation=${rotation} flipH=${flipH} flipV=${flipV}`, () => {
+          for (const pt of samples) {
+            const visual = applyPointForTest(pt, adj);
+            const back = invertGeometricTransform(visual, adj);
+            expect(back.xFrac).toBeCloseTo(pt.xFrac, TOL_NONCARDINAL);
+            expect(back.yFrac).toBeCloseTo(pt.yFrac, TOL_NONCARDINAL);
+          }
+        });
+      }
+    }
+  }
+});
+
+describe("applyGeometricTransform AABB growth for non-cardinal angles", () => {
+  it("rotation=45 cresce o AABB de um quadrado centrado por ~√2", () => {
+    // Box 0.4 × 0.4 centrado em (0.5, 0.5): canto NW (0.3, 0.3), SE (0.7, 0.7)
+    const box: SyllableBox = { x: 0.3, y: 0.3, w: 0.4, h: 0.4 };
+    const out = applyGeometricTransform(box, {
+      ...IMAGE_ADJUSTMENTS_DEFAULT,
+      rotation: 45,
+    });
+    // Após rotação 45° em torno do centro: diagonal vira lado, AABB tem lado = 0.4·√2
+    const expected = 0.4 * Math.SQRT2;
+    expect(out.w).toBeCloseTo(expected, 9);
+    expect(out.h).toBeCloseTo(expected, 9);
+    // Centro permanece (0.5, 0.5)
+    expect(out.x + out.w / 2).toBeCloseTo(0.5, 9);
+    expect(out.y + out.h / 2).toBeCloseTo(0.5, 9);
+  });
+  it("rotation=360.5 é equivalente a rotation=0.5 (idempotência mod 360)", () => {
+    // applyGeometricTransform delega a rotatePointCw, que normaliza via
+    // normalizeRotation. Verifica que rotation=360.5 produz mesmo resultado
+    // que rotation=0.5.
+    const box: SyllableBox = { x: 0.2, y: 0.2, w: 0.3, h: 0.3 };
+    const a = applyGeometricTransform(box, {
+      ...IMAGE_ADJUSTMENTS_DEFAULT,
+      rotation: 360.5,
+    });
+    const b = applyGeometricTransform(box, {
+      ...IMAGE_ADJUSTMENTS_DEFAULT,
+      rotation: 0.5,
+    });
+    expect(a.x).toBeCloseTo(b.x, 9);
+    expect(a.y).toBeCloseTo(b.y, 9);
+    expect(a.w).toBeCloseTo(b.w, 9);
+    expect(a.h).toBeCloseTo(b.h, 9);
+  });
+  it("rotation=17 com flipH é diferente de rotation=17 sem flip (verifica ordem flip → rotate)", () => {
+    // Sanidade: a ordem importa em geral; AABBs com mesmas dimensões mas
+    // posições diferentes para flipH:true vs false.
+    const box: SyllableBox = { x: 0.1, y: 0.4, w: 0.2, h: 0.2 };
+    const withFlipThenRotate = applyGeometricTransform(box, {
+      ...IMAGE_ADJUSTMENTS_DEFAULT,
+      rotation: 17,
+      flipH: true,
+    });
+    const rotateNegative = applyGeometricTransform(box, {
+      ...IMAGE_ADJUSTMENTS_DEFAULT,
+      rotation: -17,
+    });
+    // AABBs podem ter mesmas dimensões (rotação não-cardinal de mesmo |θ|)
+    // mas posição (x, y) tipicamente diferente.
+    expect(withFlipThenRotate.w).toBeCloseTo(rotateNegative.w, 9);
+    expect(withFlipThenRotate.h).toBeCloseTo(rotateNegative.h, 9);
+    // Verificar que flipH mudou a posição em relação a um rotation=17 sem flip.
+    const original = applyGeometricTransform(box, {
+      ...IMAGE_ADJUSTMENTS_DEFAULT,
+      rotation: 17,
+      flipH: false,
+    });
+    expect(Math.abs(withFlipThenRotate.x - original.x) > 1e-6).toBe(true);
+  });
 });
