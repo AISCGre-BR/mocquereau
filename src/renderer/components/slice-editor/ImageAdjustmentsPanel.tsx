@@ -11,6 +11,7 @@ import type { ImageAdjustments } from "../../lib/models";
 import {
   IMAGE_ADJUSTMENTS_DEFAULT,
   isDefaultAdjustments,
+  normalizeRotation,
 } from "../../lib/image-adjustments";
 
 interface Props {
@@ -23,9 +24,13 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
   const adj = adjustments ?? IMAGE_ADJUSTMENTS_DEFAULT;
   const isDefault = isDefaultAdjustments(adjustments);
 
-  const rotate = (delta: 90 | -90) => {
-    const next = ((adj.rotation + 360 + delta) % 360) as 0 | 90 | 180 | 270;
-    onUpdate({ rotation: next });
+  // Botões preset ±90° INCREMENTAM o ângulo atual (D-06):
+  // usuário em 17° + clique +90° → 107°. Slider/input REPLACE.
+  // Chamamos normalizeRotation aqui mesmo o reducer já normalizando — defesa
+  // adicional contra flicker visual em frames onde o painel re-renderiza
+  // antes do dispatch fechar.
+  const rotate = (delta: number) => {
+    onUpdate({ rotation: normalizeRotation(adj.rotation + delta) });
   };
 
   return (
@@ -191,28 +196,73 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
           Geometria
         </h4>
 
+        {/* Girar — slider 0-360° + input numérico decimal + reset rotation (D-01) */}
         <div className="flex items-center gap-2 text-xs">
-          <label className="w-20 text-gray-700">Girar</label>
+          <label className="w-20 text-gray-700" htmlFor="rotation-slider">
+            Girar
+          </label>
+          <input
+            id="rotation-slider"
+            type="range"
+            min={0}
+            max={360}
+            step={1}
+            value={adj.rotation}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (!Number.isNaN(v)) onUpdate({ rotation: v });
+            }}
+            className="flex-1 accent-blue-600"
+          />
+          <input
+            type="number"
+            min={0}
+            max={360}
+            step={0.1}
+            value={adj.rotation}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (!Number.isNaN(v)) onUpdate({ rotation: v });
+            }}
+            className="w-14 px-1 py-0.5 text-right text-gray-700 border border-gray-300 rounded tabular-nums"
+            aria-label="Ângulo em graus"
+          />
+          <span className="text-gray-600">°</span>
           <button
             type="button"
-            onClick={() => rotate(-90)}
-            className="px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-100"
-            aria-label="Girar 90° anti-horário"
-            title="Girar 90° ←"
+            onClick={() => onUpdate({ rotation: 0 })}
+            className="text-gray-400 hover:text-gray-700"
+            aria-label="Resetar rotação"
+            title="Resetar rotação para 0°"
           >
-            <RotateCcw size={12} />
+            ×
           </button>
-          <span className="tabular-nums text-gray-600 w-10 text-center">
-            {adj.rotation}°
+        </div>
+
+        {/* Presets ±90° — incrementam (D-06), não substituem */}
+        <div className="flex items-center gap-2 text-xs mt-1">
+          <span className="w-20 text-gray-500 text-[10px] uppercase">
+            Presets
           </span>
           <button
             type="button"
+            onClick={() => rotate(-90)}
+            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
+            aria-label="Girar 90° anti-horário"
+            title="Girar 90° ← (incrementa rotação atual)"
+          >
+            <RotateCcw size={12} />
+            <span>-90°</span>
+          </button>
+          <button
+            type="button"
             onClick={() => rotate(90)}
-            className="px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-100"
+            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
             aria-label="Girar 90° horário"
-            title="Girar 90° →"
+            title="Girar 90° → (incrementa rotação atual)"
           >
             <RotateCw size={12} />
+            <span>+90°</span>
           </button>
         </div>
 
