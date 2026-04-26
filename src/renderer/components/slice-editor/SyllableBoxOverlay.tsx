@@ -6,6 +6,8 @@
 
 import React, { useRef } from 'react';
 import { SyllableBox } from '../../lib/models';
+import type { ImageAdjustments } from '../../lib/models';
+import { normalizeRotation } from '../../lib/image-adjustments';
 
 // ── Handle types ─────────────────────────────────────────────────────────────
 
@@ -16,6 +18,14 @@ type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 interface SyllableBoxOverlayProps {
   box: SyllableBox;
   containerRef: React.RefObject<HTMLDivElement | null>; // the image wrapper div
+  /**
+   * Image geometric adjustments (rotation/flip) currently applied to the
+   * container via CSS transform. When set, pixel deltas from pointer events
+   * are converted to canonical-space deltas via `pixelDeltaToCanonicalDelta`
+   * (Phase 11 / IMG-07). When omitted or default, behavior is byte-identical
+   * to Phase 10.
+   */
+  adjustments?: ImageAdjustments;
   onBoxChange: (newBox: SyllableBox) => void;           // called on every pointermove (live feedback)
   onBoxCommit: (newBox: SyllableBox) => void;           // called on pointerup (dispatch to reducer)
   onDeleteBox: () => void;                              // called on Delete/Backspace keydown
@@ -85,11 +95,58 @@ function applyHandleDelta(
   return clampBox({ x, y, w, h });
 }
 
+// ── Pixel-delta → canonical-fraction-delta helper (Phase 11 / IMG-07) ─────────
+
+/**
+ * Converte um delta em PIXELS no espaço da tela para um delta em FRAÇÃO no
+ * espaço canônico da imagem original (Phase 11 / IMG-07).
+ *
+ * Rationale:
+ *  - O container usa CSS `transform: rotate(N°)` quando há ajustes ativos.
+ *  - `getBoundingClientRect().width/height` retornam o AABB do elemento
+ *    rotacionado — não servem como denominador para frações canônicas.
+ *  - `offsetWidth/offsetHeight` retornam o tamanho NATURAL do elemento
+ *    (não afetado por CSS transforms). É o denominador correto.
+ *  - Para um VETOR (delta), só aplicamos rotação inversa em torno de (0,0)
+ *    e flip de sinal por eixo (sem translação para 0.5).
+ *
+ * Cobre os 9 sites lógicos: 1 body drag + 8 resize handles (compartilhando
+ * onOuterPointerMove/Up via dragState). O mesmo helper é usado para arrow-key
+ * nudge no onKeyDown.
+ */
+function pixelDeltaToCanonicalDelta(
+  dxPx: number,
+  dyPx: number,
+  adj: ImageAdjustments | undefined,
+  offsetW: number,
+  offsetH: number,
+): { dxFrac: number; dyFrac: number } {
+  const dxRaw = dxPx / offsetW;
+  const dyRaw = dyPx / offsetH;
+  if (!adj) return { dxFrac: dxRaw, dyFrac: dyRaw };
+  const noGeometry = adj.rotation === 0 && !adj.flipH && !adj.flipV;
+  if (noGeometry) return { dxFrac: dxRaw, dyFrac: dyRaw };
+  // Rotação inversa do vetor: ângulo -θ (sinal negativo = inverso de CW em y-down).
+  const n = normalizeRotation(adj.rotation);
+  const rad = (-n * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dxR = dxRaw * cos - dyRaw * sin;
+  const dyR = dxRaw * sin + dyRaw * cos;
+  // Para deltas (vetores), flip aplica como inversão de sinal no eixo afetado.
+  // (Para pontos, o flip também tem translação 1-x; para vetores não.)
+  return {
+    dxFrac: adj.flipH ? -dxR : dxR,
+    dyFrac: adj.flipV ? -dyR : dyR,
+  };
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SyllableBoxOverlay({
   box,
   containerRef,
+  adjustments,
   onBoxChange,
   onBoxCommit,
   onDeleteBox,
@@ -122,9 +179,15 @@ export function SyllableBoxOverlay({
     const container = containerRef.current;
     if (!container) return;
 
-    const rect = container.getBoundingClientRect();
-    const dx = (e.clientX - state.startClientX) / rect.width;
-    const dy = (e.clientY - state.startClientY) / rect.height;
+    const offW = container.offsetWidth;
+    const offH = container.offsetHeight;
+    const { dxFrac: dx, dyFrac: dy } = pixelDeltaToCanonicalDelta(
+      e.clientX - state.startClientX,
+      e.clientY - state.startClientY,
+      adjustments,
+      offW,
+      offH,
+    );
 
     let newBox: SyllableBox;
 
@@ -156,9 +219,15 @@ export function SyllableBoxOverlay({
       return;
     }
 
-    const rect = container.getBoundingClientRect();
-    const dx = (e.clientX - state.startClientX) / rect.width;
-    const dy = (e.clientY - state.startClientY) / rect.height;
+    const offW = container.offsetWidth;
+    const offH = container.offsetHeight;
+    const { dxFrac: dx, dyFrac: dy } = pixelDeltaToCanonicalDelta(
+      e.clientX - state.startClientX,
+      e.clientY - state.startClientY,
+      adjustments,
+      offW,
+      offH,
+    );
 
     let finalBox: SyllableBox;
 
@@ -216,19 +285,30 @@ export function SyllableBoxOverlay({
     const container = containerRef.current;
     if (!container) return;
 
-    const rect = container.getBoundingClientRect();
+    const offW = container.offsetWidth;
+    const offH = container.offsetHeight;
     const pixels = e.shiftKey ? 10 : 1;
-    const dxFrac = pixels / rect.width;
-    const dyFrac = pixels / rect.height;
+    // Mapear o deslocamento de "tela" da seta (visual) para canônico.
+    // ArrowRight/Left = ±x visual; ArrowDown/Up = ±y visual.
+    let dxPx = 0;
+    let dyPx = 0;
+    switch (e.key) {
+      case 'ArrowLeft':  dxPx = -pixels; break;
+      case 'ArrowRight': dxPx = +pixels; break;
+      case 'ArrowUp':    dyPx = -pixels; break;
+      case 'ArrowDown':  dyPx = +pixels; break;
+    }
+    const { dxFrac, dyFrac } = pixelDeltaToCanonicalDelta(
+      dxPx,
+      dyPx,
+      adjustments,
+      offW,
+      offH,
+    );
 
     let { x, y, w, h } = box;
-
-    switch (e.key) {
-      case 'ArrowLeft':  x -= dxFrac; break;
-      case 'ArrowRight': x += dxFrac; break;
-      case 'ArrowUp':    y -= dyFrac; break;
-      case 'ArrowDown':  y += dyFrac; break;
-    }
+    x += dxFrac;
+    y += dyFrac;
 
     const newBox = clampBox({ x, y, w, h });
     onBoxCommit(newBox);
