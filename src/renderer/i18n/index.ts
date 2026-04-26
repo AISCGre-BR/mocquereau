@@ -34,18 +34,31 @@ i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
+    // Aliases para todas as variantes que o detector pode retornar para PT
+    // (`pt`, `pt-BR`, `pt-br`, `pt-PT`). Catalog é o mesmo. Sem isso o i18next
+    // pode normalizar pt-BR → pt e não achar o resource.
     resources: {
       'pt-BR': { translation: ptBR },
+      'pt-br': { translation: ptBR },
+      'pt-PT': { translation: ptBR },
+      pt:      { translation: ptBR },
       en:      { translation: en },
+      'en-US': { translation: en },
+      'en-GB': { translation: en },
       it:      { translation: it },
+      'it-IT': { translation: it },
       es:      { translation: es },
+      'es-ES': { translation: es },
       de:      { translation: de },
+      'de-DE': { translation: de },
       pl:      { translation: pl },
+      'pl-PL': { translation: pl },
       ja:      { translation: ja },
+      'ja-JP': { translation: ja },
     },
+    lng: 'pt-BR',
     fallbackLng: 'pt-BR',
-    supportedLngs: SUPPORTED_LANGS as unknown as string[],
-    nonExplicitSupportedLngs: true,
+    supportedLngs: false,
     // Catalog é flat com chaves literais ("foo.bar"); desligar separadores.
     keySeparator: false,
     nsSeparator: false,
