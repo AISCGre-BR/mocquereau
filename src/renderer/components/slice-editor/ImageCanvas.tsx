@@ -1,6 +1,6 @@
 // src/renderer/components/slice-editor/ImageCanvas.tsx
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StoredImage, SyllabifiedWord, SyllableBox } from '../../lib/models';
 import type { ImageAdjustments } from '../../lib/models';
 import { EditorAction } from './editorReducer';
@@ -9,7 +9,7 @@ import { ImageAdjustmentsPanel } from './ImageAdjustmentsPanel';
 import {
   buildImageFilter,
   buildImageTransform,
-  invertGeometricTransform,
+  normalizeRotation,
 } from '../../lib/image-adjustments';
 
 interface ImageCanvasProps {
@@ -63,10 +63,38 @@ export function ImageCanvas({
 }: ImageCanvasProps) {
   const imageWrapperRef = useRef<HTMLDivElement>(null);
 
-  // D-04 opção (a): aplicar filter (cor) na <img> e transform (geometria) no
-  // wrapper que contém <img>+overlay, para que boxes acompanhem visualmente.
+  // Phase 12 (UX revisão): a imagem rotaciona, mas as boxes ficam axis-aligned
+  // com a tela (manuscrito torto pode ser endireitado sem inclinar as caixas).
+  // O `<img>` recebe rotation/flip via CSS transform; o wrapper recebe o tamanho
+  // do AABB do retângulo rotacionado, e as boxes são posicionadas em fração desse
+  // AABB. Pointer math volta a ser linear (rect.width/height como denominador).
   const imageFilter = buildImageFilter(adjustments);
   const imageTransform = buildImageTransform(adjustments);
+
+  // Intrinsic image dims — necessárias para computar o AABB do retângulo
+  // rotacionado (escala que faz a imagem caber dentro do wrapper).
+  const [intrinsic, setIntrinsic] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    if (!image) { setIntrinsic(null); return; }
+    const probe = new Image();
+    probe.onload = () => setIntrinsic({ w: probe.naturalWidth, h: probe.naturalHeight });
+    probe.src = image.dataUrl;
+  }, [image?.dataUrl]);
+
+  const rot = adjustments?.rotation ?? 0;
+  const θ = (normalizeRotation(rot) * Math.PI) / 180;
+  const absCos = Math.abs(Math.cos(θ));
+  const absSin = Math.abs(Math.sin(θ));
+  // AABB ratio (height / width) do retângulo rotacionado, dado o aspect intrinsic
+  // da imagem. Ratio canônico = h/w; após rotação por θ:
+  //   AABB_W ∝ cos + ratio·sin
+  //   AABB_H ∝ sin + ratio·cos
+  const intrinsicRatio = intrinsic ? intrinsic.h / intrinsic.w : 1;
+  const aabbRatio = (absSin + intrinsicRatio * absCos) / (absCos + intrinsicRatio * absSin);
+  // Largura percentual da imagem dentro do wrapper (rotação faz o AABB crescer,
+  // então a imagem ocupa < 100% do wrapper para caber). Reduz a 100% quando rot=0.
+  const imgWidthPct = 100 / (absCos + intrinsicRatio * absSin);
+  const imgHeightPct = 100 * intrinsicRatio / (absSin + intrinsicRatio * absCos);
 
   // ── Draw-new-box state ─────────────────────────────────────────────────────
   const drawState = useRef<{
@@ -120,28 +148,13 @@ export function ImageCanvas({
 
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    // IMPORTANT (Phase 11 / IMG-07): rect.width/height are AFFECTED by CSS
-    // `transform: rotate(...)` (they return the AABB of the rotated element).
-    // We use offsetWidth/offsetHeight (NOT affected by CSS transforms) as the
-    // fraction denominator, and compute the click position relative to the
-    // CENTER of the wrapper. invertGeometricTransform then performs the
-    // inverse rotation around (0.5, 0.5) in canonical image space.
+    // Boxes vivem no espaço do AABB do wrapper (axis-aligned com a tela).
+    // O wrapper NÃO é rotacionado — só a `<img>` interna é. Logo rect.width/height
+    // refletem o tamanho real do AABB e podem ser usados como denominador direto.
     const wrapper = imageWrapperRef.current!;
     const rect = wrapper.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const offW = wrapper.offsetWidth;
-    const offH = wrapper.offsetHeight;
-    const rawX = (e.clientX - cx) / offW + 0.5;
-    const rawY = (e.clientY - cy) / offH + 0.5;
-    // Invert the visual geometric transform (rotation+flip) so that we always
-    // store SyllableBox coords in the canonical image space — D-04 item 2.
-    const invDown = invertGeometricTransform(
-      { xFrac: rawX, yFrac: rawY },
-      adjustments,
-    );
-    const startX = invDown.xFrac;
-    const startY = invDown.yFrac;
+    const startX = (e.clientX - rect.left) / rect.width;
+    const startY = (e.clientY - rect.top) / rect.height;
     drawState.current = { startX, startY, live: null };
 
     // If same-size mode with a template: pre-populate a box of template size centered at click
@@ -160,21 +173,10 @@ export function ImageCanvas({
 
   function handleImagePointerMove(e: React.PointerEvent<HTMLDivElement>) {
     if (!drawState.current) return;
-    // See handleImagePointerDown for rationale on offsetWidth/Height + center math.
     const wrapper = imageWrapperRef.current!;
     const rect = wrapper.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const offW = wrapper.offsetWidth;
-    const offH = wrapper.offsetHeight;
-    const rawX = (e.clientX - cx) / offW + 0.5;
-    const rawY = (e.clientY - cy) / offH + 0.5;
-    const invMove = invertGeometricTransform(
-      { xFrac: rawX, yFrac: rawY },
-      adjustments,
-    );
-    const curX = invMove.xFrac;
-    const curY = invMove.yFrac;
+    const curX = (e.clientX - rect.left) / rect.width;
+    const curY = (e.clientY - rect.top) / rect.height;
     const { startX, startY } = drawState.current;
     const x = Math.min(startX, curX);
     const y = Math.min(startY, curY);
@@ -224,7 +226,9 @@ export function ImageCanvas({
             onClose={onClosePanel}
           />
         )}
-        {/* Inner wrapper sized to fit width; boxes positioned relative to this */}
+        {/* Wrapper = AABB do retângulo da imagem rotacionada (axis-aligned com a tela).
+            Não recebe rotation transform: só translate+aspect-ratio. As boxes
+            são posicionadas em fração desse AABB. */}
         <div
           ref={imageWrapperRef}
           data-image-wrapper
@@ -241,13 +245,8 @@ export function ImageCanvas({
           style={{
             width: `${100 * zoom}%`,
             minWidth: '100%',
-            transform: [
-              `translate(${panOffset.x}px, ${panOffset.y}px)`,
-              imageTransform ?? '',
-            ]
-              .filter(Boolean)
-              .join(' '),
-            transformOrigin: 'center center',
+            aspectRatio: intrinsic ? `${1} / ${aabbRatio}` : undefined,
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
           }}
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
@@ -256,9 +255,17 @@ export function ImageCanvas({
           <img
             src={image.dataUrl}
             alt="Manuscript"
-            className="block w-full h-auto select-none pointer-events-none"
+            className="block select-none pointer-events-none absolute"
             draggable={false}
-            style={imageFilter ? { filter: imageFilter } : undefined}
+            style={{
+              left: '50%',
+              top: '50%',
+              width: `${imgWidthPct}%`,
+              height: `${imgHeightPct}%`,
+              transform: `translate(-50%, -50%) ${imageTransform ?? ''}`.trim(),
+              transformOrigin: 'center center',
+              filter: imageFilter || undefined,
+            }}
           />
 
           {/* Non-active boxes — clickable to switch active syllable. Always rendered
@@ -315,7 +322,6 @@ export function ImageCanvas({
             <SyllableBoxOverlay
               box={syllableBoxes[activeSyllableIdx] as SyllableBox}
               containerRef={imageWrapperRef}
-              adjustments={adjustments}
               onBoxChange={(newBox) => {
                 dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box: newBox } });
               }}

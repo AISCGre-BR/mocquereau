@@ -91,59 +91,66 @@ export async function computeSyllableCuts(
   const flipV = hasAdj ? adjustments!.flipV : false;
   const needsGeometric = rot !== 0 || flipH || flipV;
   const filterStr = hasAdj ? buildImageFilter(adjustments) : undefined;
-  // AABB factors for arbitrary rotation: rotated rect (sw × sh) by θ has bounding
-  // box (sw·|cos θ| + sh·|sin θ|, sw·|sin θ| + sh·|cos θ|). Reduces to identity
-  // for cardinals (0°/180° → sw×sh; 90°/270° → sh×sw).
+
+  // Pré-renderiza a imagem inteira aplicada (filter + flip + rotation) num
+  // canvas do tamanho do AABB do retângulo rotacionado. As boxes vivem em
+  // fração desse AABB (axis-aligned com a tela), então o crop se resume a um
+  // drawImage do canvas pré-renderizado.
   const θ = (rot * Math.PI) / 180;
   const absCos = Math.abs(Math.cos(θ));
   const absSin = Math.abs(Math.sin(θ));
+  const aabbW = needsGeometric
+    ? Math.max(1, Math.ceil(image.width * absCos + image.height * absSin))
+    : image.width;
+  const aabbH = needsGeometric
+    ? Math.max(1, Math.ceil(image.width * absSin + image.height * absCos))
+    : image.height;
+
+  let sourceCanvas: HTMLCanvasElement | HTMLImageElement = imgEl;
+  let sourceW = image.width;
+  let sourceH = image.height;
+
+  if (needsGeometric || filterStr) {
+    const pre = document.createElement('canvas');
+    pre.width = aabbW;
+    pre.height = aabbH;
+    const pctx = pre.getContext('2d');
+    if (pctx) {
+      if (filterStr) pctx.filter = filterStr;
+      pctx.translate(aabbW / 2, aabbH / 2);
+      if (rot !== 0) pctx.rotate(θ);
+      pctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+      pctx.drawImage(imgEl, -image.width / 2, -image.height / 2);
+      sourceCanvas = pre;
+      sourceW = aabbW;
+      sourceH = aabbH;
+    }
+  }
 
   for (const globalIdx of cropIndices) {
     const box = syllableBoxes[globalIdx] as SyllableBox;  // non-null guaranteed above
 
-    // Convert canonical fractions to pixels
-    const sx = Math.round(box.x * image.width);
-    const sy = Math.round(box.y * image.height);
-    const sw = Math.max(1, Math.round(box.w * image.width));
-    const sh = Math.max(1, Math.round(box.h * image.height));
-
-    // Output dimensions: AABB of the rotated source rect (works for any θ,
-    // including cardinals where it reduces to sw×sh or sh×sw).
-    const outW = needsGeometric && rot !== 0
-      ? Math.max(1, Math.ceil(sw * absCos + sh * absSin))
-      : sw;
-    const outH = needsGeometric && rot !== 0
-      ? Math.max(1, Math.ceil(sw * absSin + sh * absCos))
-      : sh;
+    // Box em fração do AABB (espaço axis-aligned com a tela)
+    const sx = Math.round(box.x * sourceW);
+    const sy = Math.round(box.y * sourceH);
+    const sw = Math.max(1, Math.round(box.w * sourceW));
+    const sh = Math.max(1, Math.round(box.h * sourceH));
 
     const canvas = document.createElement('canvas');
-    canvas.width = outW;
-    canvas.height = outH;
+    canvas.width = sw;
+    canvas.height = sh;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       cuts[globalIdx] = null;
       continue;
     }
 
-    // Apply color filter (brightness/contrast/saturate/grayscale/invert)
-    if (filterStr) ctx.filter = filterStr;
-
-    if (needsGeometric) {
-      // Translate to output center, apply rotation + flips, then draw centered
-      // using the canonical crop dimensions (sw × sh). Output dims (outW × outH)
-      // already account for rotation swap.
-      ctx.translate(outW / 2, outH / 2);
-      if (rot !== 0) ctx.rotate((rot * Math.PI) / 180);
-      ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-      ctx.drawImage(imgEl, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
-    } else {
-      ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, sw, sh);
-    }
+    ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
     cuts[globalIdx] = {
       dataUrl: canvas.toDataURL(image.mimeType ?? 'image/png', 0.92),
-      width: outW,
-      height: outH,
+      width: sw,
+      height: sh,
       mimeType: image.mimeType ?? 'image/png',
     };
   }
