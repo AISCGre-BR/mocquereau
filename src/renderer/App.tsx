@@ -111,31 +111,31 @@ function StatusBar() {
           </>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        <LanguageSelector compact />
+      <div className="flex items-center gap-3 flex-shrink-0">
+        {state.project && (
+          <>
+            {saving ? (
+              <span className="text-blue-600">{t("app.statusBar.saving")}</span>
+            ) : justSaved ? (
+              <span className="text-green-600">{t("app.statusBar.savedCheck")}</span>
+            ) : state.isDirty ? (
+              <span className="text-amber-600">{t("app.statusBar.pendingChanges")}</span>
+            ) : (
+              <span className="text-gray-400">{t("app.statusBar.saved")}</span>
+            )}
+            <button
+              type="button"
+              onClick={() => doSave(false)}
+              disabled={saving || !state.isDirty}
+              className="px-2 py-0.5 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-40"
+              title={t("app.statusBar.saveTitle")}
+            >
+              {t("app.statusBar.save")}
+            </button>
+          </>
+        )}
+        <LanguageSelector />
       </div>
-      {state.project && (
-        <div className="flex items-center gap-3">
-          {saving ? (
-            <span className="text-blue-600">{t("app.statusBar.saving")}</span>
-          ) : justSaved ? (
-            <span className="text-green-600">{t("app.statusBar.savedCheck")}</span>
-          ) : state.isDirty ? (
-            <span className="text-amber-600">{t("app.statusBar.pendingChanges")}</span>
-          ) : (
-            <span className="text-gray-400">{t("app.statusBar.saved")}</span>
-          )}
-          <button
-            type="button"
-            onClick={() => doSave(false)}
-            disabled={saving || !state.isDirty}
-            className="px-2 py-0.5 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-40"
-            title={t("app.statusBar.saveTitle")}
-          >
-            {t("app.statusBar.save")}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -5,10 +5,9 @@ import { LANG_META, SUPPORTED_LANGS, type SupportedLang } from '../i18n';
 
 interface Props {
   className?: string;
-  compact?: boolean;
 }
 
-export function LanguageSelector({ className = '', compact = false }: Props) {
+export function LanguageSelector({ className = '' }: Props) {
   const { i18n, t } = useTranslation();
   const current = (SUPPORTED_LANGS as readonly string[]).includes(i18n.language)
     ? (i18n.language as SupportedLang)
@@ -23,7 +22,7 @@ export function LanguageSelector({ className = '', compact = false }: Props) {
     >
       {SUPPORTED_LANGS.map((lang) => (
         <option key={lang} value={lang}>
-          {LANG_META[lang].flag} {compact ? lang : LANG_META[lang].label}
+          {LANG_META[lang].flag} {LANG_META[lang].label}
         </option>
       ))}
     </select>
