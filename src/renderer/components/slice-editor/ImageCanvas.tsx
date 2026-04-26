@@ -120,9 +120,20 @@ export function ImageCanvas({
 
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    const rect = imageWrapperRef.current!.getBoundingClientRect();
-    const rawX = (e.clientX - rect.left) / rect.width;
-    const rawY = (e.clientY - rect.top) / rect.height;
+    // IMPORTANT (Phase 11 / IMG-07): rect.width/height are AFFECTED by CSS
+    // `transform: rotate(...)` (they return the AABB of the rotated element).
+    // We use offsetWidth/offsetHeight (NOT affected by CSS transforms) as the
+    // fraction denominator, and compute the click position relative to the
+    // CENTER of the wrapper. invertGeometricTransform then performs the
+    // inverse rotation around (0.5, 0.5) in canonical image space.
+    const wrapper = imageWrapperRef.current!;
+    const rect = wrapper.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const offW = wrapper.offsetWidth;
+    const offH = wrapper.offsetHeight;
+    const rawX = (e.clientX - cx) / offW + 0.5;
+    const rawY = (e.clientY - cy) / offH + 0.5;
     // Invert the visual geometric transform (rotation+flip) so that we always
     // store SyllableBox coords in the canonical image space — D-04 item 2.
     const invDown = invertGeometricTransform(
@@ -149,9 +160,15 @@ export function ImageCanvas({
 
   function handleImagePointerMove(e: React.PointerEvent<HTMLDivElement>) {
     if (!drawState.current) return;
-    const rect = imageWrapperRef.current!.getBoundingClientRect();
-    const rawX = (e.clientX - rect.left) / rect.width;
-    const rawY = (e.clientY - rect.top) / rect.height;
+    // See handleImagePointerDown for rationale on offsetWidth/Height + center math.
+    const wrapper = imageWrapperRef.current!;
+    const rect = wrapper.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const offW = wrapper.offsetWidth;
+    const offH = wrapper.offsetHeight;
+    const rawX = (e.clientX - cx) / offW + 0.5;
+    const rawY = (e.clientY - cy) / offH + 0.5;
     const invMove = invertGeometricTransform(
       { xFrac: rawX, yFrac: rawY },
       adjustments,
@@ -298,6 +315,7 @@ export function ImageCanvas({
             <SyllableBoxOverlay
               box={syllableBoxes[activeSyllableIdx] as SyllableBox}
               containerRef={imageWrapperRef}
+              adjustments={adjustments}
               onBoxChange={(newBox) => {
                 dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box: newBox } });
               }}
