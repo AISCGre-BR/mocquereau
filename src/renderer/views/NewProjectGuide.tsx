@@ -3,19 +3,12 @@ import { useTranslation } from "react-i18next";
 import type { SyllabifiedWord } from "../lib/models";
 import { syllabifyText, type HyphenationMode } from "../lib/syllabify";
 import { ambiguousWords } from "../lib/syllable-alternatives";
+import type { NewProjectDraft } from "../lib/new-project";
 import { Button } from "../ui/Button";
 import { Input, Textarea } from "../ui/Field";
 import { Step, type StepState } from "../components/new-project/Step";
 import { ModeOptions, modeName } from "../components/new-project/ModeOptions";
 import { SyllableText } from "../components/texto/SyllableText";
-
-export interface NewProjectDraft {
-  title: string;
-  author: string;
-  raw: string;
-  mode: HyphenationMode;
-  words: SyllabifiedWord[];
-}
 
 export interface NewProjectGuideProps {
   onCancel(): void;

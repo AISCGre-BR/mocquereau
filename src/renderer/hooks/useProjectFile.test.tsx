@@ -5,7 +5,8 @@ import { act, cleanup, renderHook, screen, waitFor } from "@testing-library/reac
 import type { ReactNode } from "react";
 import { ProjectContext, createNewProject, useProject, useProjectReducer } from "./useProject";
 import { AUTOSAVE_DELAY_MS, useProjectFile } from "./useProjectFile";
-import type { NewProjectDraft } from "../views/NewProjectGuide";
+import { createPendingEdits } from "./pendingEdits";
+import type { NewProjectDraft } from "../lib/new-project";
 import { makeThumbnail } from "../lib/thumbnail";
 import { Toaster } from "../ui/Toast";
 import type { ManuscriptLine, MocquereauAPI, MocquereauProject } from "../lib/models";
@@ -509,7 +510,7 @@ describe("useProjectFile", () => {
     expect(result.current.file.projectEpoch).toBe(1);
   });
 
-  it("createProject adota o rascunho sem caminho, limpo, e fecha o guia", async () => {
+  it("createProject adota o rascunho com texto sem caminho, editado, e fecha o guia", async () => {
     mockApi();
     const onOpened = vi.fn();
     const { result } = renderHook(() => ({ file: useProjectFile({ onOpened }), ctx: useProject() }), {
@@ -524,9 +525,68 @@ describe("useProjectFile", () => {
     expect(s.project?.meta).toMatchObject({ title: "Gloria VIII", author: "Gaby" });
     expect(s.project?.text).toEqual({ raw: "Deo", words, hyphenationMode: "classical" });
     expect(s.currentFilePath).toBeNull();
-    expect(s.isDirty).toBe(false);
+    // O trabalho do guia ainda não está em arquivo: fechar ou abrir outro precisa perguntar.
+    expect(s.isDirty).toBe(true);
     expect(result.current.file.creating).toBe(false);
     expect(onOpened).toHaveBeenCalledOnce();
+  });
+
+  it("createProject sem texto começa limpo", async () => {
+    mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.createProject({ ...BLANK, title: "Puer" }));
+    expect(result.current.ctx.state.isDirty).toBe(false);
+  });
+
+  it("createProject ignora um segundo clique enquanto o primeiro cria", async () => {
+    const waiting: Array<(lib: unknown) => void> = [];
+    const getClassification = vi.fn(() => new Promise((r) => waiting.push(r)));
+    mockApi({ getClassification });
+    const { result } = setup();
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.file.createProject({ ...BLANK, raw: "Deo" });
+      void result.current.file.createProject({ ...BLANK, raw: "Deo" });
+    });
+    await act(async () => {
+      for (const release of waiting) release(cloneClassification(SUGGESTED_CLASSIFICATION));
+      await first;
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(getClassification).toHaveBeenCalledTimes(1);
+    expect(result.current.file.projectEpoch).toBe(1);
+  });
+
+  it("com o guia aberto o autosave não grava o projeto descartado e os flushes de desmontagem são ignorados", async () => {
+    vi.useFakeTimers();
+    const saveProject = vi.fn().mockResolvedValue({ filePath: "/p.mocquereau" });
+    mockApi({
+      saveProject,
+      openProjectByPath: vi.fn().mockResolvedValue({ project: createNewProject("Puer", ""), filePath: "/p.mocquereau" }),
+    });
+    const pending = createPendingEdits();
+    function WithPending({ children }: { children: ReactNode }) {
+      const [state, dispatch, history] = useProjectReducer();
+      return (
+        <Toaster dismissLabel="Dispensar">
+          <ProjectContext.Provider value={{ state, dispatch, history, pending }}>{children}</ProjectContext.Provider>
+        </Toaster>
+      );
+    }
+    const { result } = renderHook(() => ({ file: useProjectFile(), ctx: useProject() }), { wrapper: WithPending });
+    await act(async () => {
+      await result.current.file.openRecent("/p.mocquereau");
+    });
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "A" } }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const epoch = pending.epoch();
+    act(() => result.current.file.startNewProject());
+    expect(result.current.file.creating).toBe(true);
+    expect(pending.epoch()).not.toBe(epoch);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS * 2);
+    });
+    expect(saveProject).not.toHaveBeenCalled();
   });
 
   it("cancelNewProject fecha o guia e mantém o projeto aberto intacto", async () => {
