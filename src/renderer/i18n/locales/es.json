@@ -287,5 +287,9 @@
   "realign.scoring": "Analizando la tinta de la imagen…",
   "realign.failed": "No se pudo leer la imagen de esta línea.",
   "realign.apply": "Aplicar",
-  "realign.cancel": "Cancelar"
+  "realign.cancel": "Cancelar",
+  "syllableText.merge": "Unir sílabas",
+  "syllableText.sung": "cantado",
+  "syllableText.typographic": "tipográfico",
+  "syllableText.alternatives": "Divisiones posibles"
 }

@@ -287,5 +287,9 @@
   "realign.scoring": "Analisi dell'inchiostro dell'immagine…",
   "realign.failed": "Impossibile leggere l'immagine di questa riga.",
   "realign.apply": "Applica",
-  "realign.cancel": "Annulla"
+  "realign.cancel": "Annulla",
+  "syllableText.merge": "Unisci sillabe",
+  "syllableText.sung": "cantato",
+  "syllableText.typographic": "tipografico",
+  "syllableText.alternatives": "Divisioni possibili"
 }

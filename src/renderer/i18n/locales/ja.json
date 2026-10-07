@@ -287,5 +287,9 @@
   "realign.scoring": "画像のインクを解析中…",
   "realign.failed": "この行の画像を読み込めませんでした。",
   "realign.apply": "適用",
-  "realign.cancel": "キャンセル"
+  "realign.cancel": "キャンセル",
+  "syllableText.merge": "音節を結合",
+  "syllableText.sung": "歌唱",
+  "syllableText.typographic": "組版",
+  "syllableText.alternatives": "分割の候補"
 }

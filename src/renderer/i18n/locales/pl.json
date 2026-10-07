@@ -287,5 +287,9 @@
   "realign.scoring": "Analiza atramentu obrazu…",
   "realign.failed": "Nie udało się odczytać obrazu tej linii.",
   "realign.apply": "Zastosuj",
-  "realign.cancel": "Anuluj"
+  "realign.cancel": "Anuluj",
+  "syllableText.merge": "Połącz sylaby",
+  "syllableText.sung": "śpiewane",
+  "syllableText.typographic": "typograficzne",
+  "syllableText.alternatives": "Możliwe podziały"
 }
