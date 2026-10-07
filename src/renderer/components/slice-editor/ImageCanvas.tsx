@@ -337,16 +337,6 @@ export function ImageCanvas({
     <div className="relative flex flex-col h-full bg-parchment-deep">
       {/* Image + boxes area */}
       <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto">
-        {/* Adjustments panel — sibling of the transformed wrapper so it stays
-            readable even when the image is rotated/flipped. */}
-        {panelOpen && onUpdateAdjustments && onClosePanel && (
-          <ImageAdjustmentsPanel
-            adjustments={adjustments}
-            onUpdate={onUpdateAdjustments}
-            onClose={onClosePanel}
-            onRealign={onRealign}
-          />
-        )}
         {/* Wrapper = AABB do retângulo da imagem rotacionada (axis-aligned com a tela).
             Não recebe rotation transform: só translate+aspect-ratio. As boxes
             são posicionadas em fração desse AABB. */}
@@ -403,7 +393,7 @@ export function ImageCanvas({
                 key={`all-${idx}`}
                 className={
                   showAllBoxes
-                    ? `${cropBoxClass('confirmed', idx)} cursor-pointer`
+                    ? `${cropBoxClass('confirmed', idx)} group cursor-pointer`
                     : 'absolute cursor-pointer border-2 border-transparent'
                 }
                 style={{
@@ -421,9 +411,20 @@ export function ImageCanvas({
                   dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx });
                 }}
                 title={t('imageCanvas.clickToEdit', { syllable: syllableTextAt(idx) })}
+                tabIndex={showAllBoxes ? 0 : undefined}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx });
+                  }
+                }}
               >
                 {showAllBoxes && (
-                  <span className="pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded-br-sm bg-surface/90 px-1.5 py-0.5 font-serif text-caption italic text-ink">
+                  <span
+                    data-box-label
+                    className="sc-box__tag pointer-events-none z-10 opacity-0 group-hover:opacity-100 group-focus:opacity-100"
+                  >
                     {syllableTextAt(idx)}
                   </span>
                 )}
@@ -464,6 +465,17 @@ export function ImageCanvas({
           )}
         </div>
       </div>
+
+      {/* Adjustments panel — sibling of the scroller (anchored to the visible viewport),
+          so it neither scrolls with the image nor gets clipped. */}
+      {panelOpen && onUpdateAdjustments && onClosePanel && (
+        <ImageAdjustmentsPanel
+          adjustments={adjustments}
+          onUpdate={onUpdateAdjustments}
+          onClose={onClosePanel}
+          onRealign={onRealign}
+        />
+      )}
 
       {/* Girar: grupo sc-zoom à esquerda do zoom (giros de 90° + endireitar). */}
       {canRotate && (
