@@ -19,11 +19,11 @@ import { useTranslation } from "react-i18next";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const NOTATION_BADGE: Record<ManuscriptSource["metadata"]["notation"], string> = {
-  adiastematic: "bg-amber-100 text-amber-800",
-  diastematic: "bg-blue-100 text-blue-800",
-  square: "bg-green-100 text-green-800",
-  modern: "bg-purple-100 text-purple-800",
-  other: "bg-gray-100 text-gray-700",
+  adiastematic: "bg-lapis-wash text-ink",
+  diastematic: "bg-verdigris-wash text-ink",
+  square: "bg-orpiment-wash text-ink",
+  modern: "bg-murex-wash text-ink",
+  other: "bg-parchment-deep text-ink-soft",
 };
 
 const NOTATION_LABELS: Record<ManuscriptSource["metadata"]["notation"], string> = {
@@ -261,10 +261,10 @@ export function SourceList() {
       <div className="flex-1 w-full px-4 py-4 space-y-3">
         {/* Header + toolbar */}
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-gray-900">
+          <h1 className="text-lg font-bold text-ink">
             {t("sourceList.title")}
             {sources.length > 0 && (
-              <span className="ml-2 text-sm font-normal text-gray-400">
+              <span className="ml-2 text-sm font-normal text-ink-muted">
                 ({sources.length})
               </span>
             )}
@@ -272,14 +272,14 @@ export function SourceList() {
           <div className="flex gap-2">
             <button
               onClick={handleImportGueranger}
-              className="px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+              className="px-3 py-1.5 text-xs text-ink-soft border border-rule rounded hover:bg-ink-wash"
             >
               {t("sourceList.importGueranger")}
             </button>
             <button
               onClick={handleAddSource}
               disabled={!state.project}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-rubric text-on-rubric rounded hover:bg-rubric-soft disabled:opacity-40"
             >
               <Plus size={12} />
               {t("sourceList.add")}
@@ -289,16 +289,16 @@ export function SourceList() {
 
         {/* Spreadsheet-style table */}
         {sources.length === 0 ? (
-          <div className="bg-white rounded border border-gray-200 p-8 text-center">
-            <p className="text-gray-400 text-sm">
+          <div className="bg-surface rounded border border-rule-soft p-8 text-center">
+            <p className="text-ink-muted text-sm">
               {t("sourceList.empty")}
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded border border-gray-200 overflow-x-auto">
+          <div className="bg-surface rounded border border-rule-soft overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-gray-500 font-medium">
+                <tr className="border-b border-rule-soft bg-parchment text-ink-muted font-medium">
                   <th className="px-1 py-1.5 w-10 text-center">#</th>
                   <th className="px-2 py-1.5 text-left">Sigla</th>
                   <th className="px-2 py-1.5 text-left">Cidade</th>
@@ -325,14 +325,14 @@ export function SourceList() {
                       data-source-id={source.id}
                       onClick={() => setSelectedId(source.id)}
                       className={[
-                        "border-b border-gray-100 transition-colors",
+                        "border-b border-rule-soft transition-colors",
                         isSelected
-                          ? "bg-blue-50 ring-1 ring-inset ring-blue-200"
-                          : "hover:bg-gray-50",
+                          ? "bg-rubric-wash ring-1 ring-inset ring-focus"
+                          : "hover:bg-ink-wash",
                       ].join(" ")}
                     >
                       {/* Row number */}
-                      <td className="px-1 py-1 text-center text-gray-400 font-mono">
+                      <td className="px-1 py-1 text-center text-ink-muted font-mono">
                         {idx + 1}
                       </td>
 
@@ -345,7 +345,7 @@ export function SourceList() {
                           onBlur={(e) => handleFieldBlur(source, "siglum", e.target.value)}
                           onFocus={() => setSelectedId(source.id)}
                           placeholder={t("sourceList.siglumPlaceholder")}
-                          className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none py-0.5 text-xs font-mono"
+                          className="w-full bg-transparent border-b border-transparent hover:border-rule focus:border-rubric outline-none py-0.5 text-xs font-mono"
                         />
                       </td>
 
@@ -357,7 +357,7 @@ export function SourceList() {
                           onBlur={(e) => handleFieldBlur(source, "city", e.target.value)}
                           onFocus={() => setSelectedId(source.id)}
                           placeholder={t("sourceList.cityPlaceholder")}
-                          className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none py-0.5 text-xs"
+                          className="w-full bg-transparent border-b border-transparent hover:border-rule focus:border-rubric outline-none py-0.5 text-xs"
                         />
                       </td>
 
@@ -369,7 +369,7 @@ export function SourceList() {
                           onBlur={(e) => handleFieldBlur(source, "century", e.target.value)}
                           onFocus={() => setSelectedId(source.id)}
                           placeholder={t("sourceList.centuryPlaceholder")}
-                          className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none py-0.5 text-xs"
+                          className="w-full bg-transparent border-b border-transparent hover:border-rule focus:border-rubric outline-none py-0.5 text-xs"
                         />
                       </td>
 
@@ -381,7 +381,7 @@ export function SourceList() {
                           onBlur={(e) => handleFieldBlur(source, "folio", e.target.value)}
                           onFocus={() => setSelectedId(source.id)}
                           placeholder={t("sourceList.folioPlaceholder")}
-                          className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none py-0.5 text-xs"
+                          className="w-full bg-transparent border-b border-transparent hover:border-rule focus:border-rubric outline-none py-0.5 text-xs"
                         />
                       </td>
 
@@ -396,7 +396,7 @@ export function SourceList() {
                             )
                           }
                           onFocus={() => setSelectedId(source.id)}
-                          className={`text-xs rounded px-1 py-0.5 border-0 ${NOTATION_BADGE[source.metadata.notation]} cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400`}
+                          className={`text-xs rounded px-1 py-0.5 border-0 ${NOTATION_BADGE[source.metadata.notation]} cursor-pointer focus:outline-none focus:ring-1 focus:ring-focus`}
                         >
                           {NOTATION_OPTIONS.map((opt) => (
                             <option key={opt} value={opt}>
@@ -407,7 +407,7 @@ export function SourceList() {
                       </td>
 
                       {/* Progress */}
-                      <td className="px-2 py-1 text-center text-gray-400 tabular-nums">
+                      <td className="px-2 py-1 text-center text-ink-muted tabular-nums">
                         {progress}/{totalSyllables}
                       </td>
 
@@ -434,14 +434,14 @@ export function SourceList() {
                             />
                             {imageCount > 1 && (
                               <span
-                                className="text-[10px] font-mono px-1 py-0.5 bg-gray-100 text-gray-600 rounded"
+                                className="text-[10px] font-mono px-1 py-0.5 bg-parchment-deep text-ink-soft rounded"
                                 title={t("sourceList.imageCountTitle", { count: imageCount })}
                               >
                                 +{imageCount - 1}
                               </span>
                             )}
                             <button
-                              className="p-0.5 rounded text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors"
+                              className="p-0.5 rounded text-rubric hover:text-rubric hover:bg-rubric-wash transition-colors"
                               title={t("sourceList.addAnotherImage")}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -453,7 +453,7 @@ export function SourceList() {
                           </div>
                         ) : (
                           <button
-                            className="flex items-center gap-1 px-2 py-0.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                            className="flex items-center gap-1 px-2 py-0.5 text-xs text-rubric bg-rubric-wash border border-rubric-soft rounded hover:bg-rubric-wash transition-colors"
                             title={t("sourceList.addImageTitle")}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -472,7 +472,7 @@ export function SourceList() {
                           <button
                             disabled={isFirst}
                             onClick={() => handleReorder(source.id, "up")}
-                            className="p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-20 transition-colors"
+                            className="p-0.5 rounded text-ink-muted hover:text-ink-soft hover:bg-ink-wash disabled:opacity-20 transition-colors"
                             title={t("sourceList.moveUp")}
                           >
                             <ArrowUp size={11} />
@@ -480,28 +480,28 @@ export function SourceList() {
                           <button
                             disabled={isLast}
                             onClick={() => handleReorder(source.id, "down")}
-                            className="p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-20 transition-colors"
+                            className="p-0.5 rounded text-ink-muted hover:text-ink-soft hover:bg-ink-wash disabled:opacity-20 transition-colors"
                             title={t("sourceList.moveDown")}
                           >
                             <ArrowDown size={11} />
                           </button>
                           <button
                             onClick={() => setEditingSource(source)}
-                            className="p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                            className="p-0.5 rounded text-ink-muted hover:text-ink-soft hover:bg-ink-wash transition-colors"
                             title={t("sourceList.editAll")}
                           >
                             <Edit2 size={11} />
                           </button>
                           <button
                             onClick={() => handleDuplicateSource(source.id)}
-                            className="p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                            className="p-0.5 rounded text-ink-muted hover:text-ink-soft hover:bg-ink-wash transition-colors"
                             title={t("sourceList.duplicate")}
                           >
                             <Copy size={11} />
                           </button>
                           <button
                             onClick={() => handleDeleteSource(source.id)}
-                            className="p-0.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            className="p-0.5 rounded text-ink-muted hover:text-danger hover:bg-rubric-wash transition-colors"
                             title={t("sourceList.remove")}
                           >
                             <Trash2 size={11} />
@@ -516,7 +516,7 @@ export function SourceList() {
           </div>
         )}
 
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-ink-muted">
           {t("sourceList.clipboardHint")}
         </p>
       </div>
@@ -531,18 +531,18 @@ export function SourceList() {
 
       {/* Resize confirmation dialog */}
       {resizeCandidate && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900">
+        <div className="fixed inset-0 bg-ink/20 flex items-center justify-center z-50">
+          <div className="bg-surface rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <h3 className="text-sm font-semibold text-ink">
               {t("sourceList.largeImageTitle", { width: resizeCandidate.image.width })}
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-ink-soft">
               {t("sourceList.resizeQuestion")}
             </p>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setResizeCandidate(null)}
-                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                className="px-3 py-1.5 text-sm text-ink-soft border border-rule rounded hover:bg-ink-wash"
               >
                 {t("sourceList.cancel")}
               </button>
@@ -552,7 +552,7 @@ export function SourceList() {
                   setResizeCandidate(null);
                   applyImageToSource(image, sourceId);
                 }}
-                className="px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                className="px-3 py-1.5 text-sm text-ink-soft border border-rule rounded hover:bg-ink-wash"
               >
                 {t("sourceList.keepOriginal")}
               </button>
@@ -563,7 +563,7 @@ export function SourceList() {
                   const resized = await resizeImageIfNeeded(image);
                   applyImageToSource(resized, sourceId);
                 }}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="px-3 py-1.5 text-sm bg-rubric text-on-rubric rounded hover:bg-rubric-soft"
               >
                 {t("sourceList.resize")}
               </button>

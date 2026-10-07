@@ -11,11 +11,11 @@ const ROOT = fileURLToPath(new URL(".", import.meta.url));
  * a lista termina vazia. Um arquivo listado que já esteja limpo faz o teste falhar.
  */
 const PENDING: string[] = [
-  "components/SliceEditor.tsx",
-  "components/SourceList.tsx",
-  "components/SourceModal.tsx",
-  "components/SyllableChip.tsx",
   "components/TablePreview.tsx",
+  "components/table-preview/ContextMenu.tsx",
+  "components/table-preview/TableCell.tsx",
+  "components/SliceEditor.tsx",
+  "components/SyllableChip.tsx",
   "components/slice-editor/ImageAdjustmentsPanel.tsx",
   "components/slice-editor/ImageCanvas.tsx",
   "components/slice-editor/ImageMetadataModal.tsx",
@@ -25,8 +25,6 @@ const PENDING: string[] = [
   "components/slice-editor/SourceSidebar.tsx",
   "components/slice-editor/SyllableBoxOverlay.tsx",
   "components/slice-editor/SyllableRangeBar.tsx",
-  "components/table-preview/ContextMenu.tsx",
-  "components/table-preview/TableCell.tsx",
 ];
 
 function listTsx(dir: string): string[] {
