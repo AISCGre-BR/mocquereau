@@ -169,5 +169,31 @@ describe("App", () => {
     expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("— Editado")).toBeTruthy();
   });
-});
 
+  it("pedido de salvar do main (Fechar > Salvar) grava o título ainda no debounce, mesmo com diálogo aberto", async () => {
+    let requestSave: () => void = () => undefined;
+    const unsubscribe = vi.fn();
+    const onSaveRequested = vi.fn((cb: () => void) => {
+      requestSave = cb;
+      return unsubscribe;
+    });
+    const saveProject = vi.fn().mockResolvedValue({ filePath: "/p/puer.mocquereau" });
+    Object.assign(window.mocquereau, { onSaveRequested, saveProject });
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: "/p/i.mocquereau" });
+    const { unmount } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    expect(onSaveRequested).toHaveBeenCalledOnce();
+    fireEvent.change(screen.getByDisplayValue("Introito"), { target: { value: "Introito X" } });
+    ctrl("e");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await act(async () => {
+      requestSave();
+    });
+    expect(saveProject).toHaveBeenCalledOnce();
+    expect(saveProject.mock.calls[0][0].meta.title).toBe("Introito X");
+    expect(saveProject.mock.calls[0][1]).toBe("/p/i.mocquereau");
+    unmount();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+});

@@ -16,6 +16,15 @@ contextBridge.exposeInMainWorld("mocquereau", {
   setDirty: (isDirty: boolean) =>
     ipcRenderer.invoke("project:set-dirty", isDirty),
 
+  // "Salvar" no diálogo de fechar: o main pede, o renderer salva.
+  onSaveRequested: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("app:request-save", listener);
+    return () => {
+      ipcRenderer.removeListener("app:request-save", listener);
+    };
+  },
+
   openProjectByPath: (filePath: string) =>
     ipcRenderer.invoke("project:open-by-path", filePath),
 

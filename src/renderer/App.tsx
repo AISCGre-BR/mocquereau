@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { FileDown } from "lucide-react";
@@ -57,6 +57,16 @@ function Workbench() {
     setHistoryEpoch((n) => n + 1);
   }
   const file = useProjectFile({ onOpened: () => setView("texto") });
+
+  // "Salvar" no diálogo de fechar a janela: o main pede, o renderer salva (gravando
+  // antes as edições pendentes). O project:save iniciado aqui é o que o main aguarda.
+  const saveRef = useRef(file.save);
+  saveRef.current = file.save;
+  useEffect(() => {
+    return window.mocquereau.onSaveRequested?.(() => {
+      void saveRef.current();
+    });
+  }, []);
 
   const project = state.project;
   const canExport = project !== null && project.sources.some((s) => s.lines.length > 0);

@@ -57,12 +57,11 @@ const saveThenClose = new SaveThenClose(
   () => closeFlow.onCloseAborted(),
 );
 
-// Wave A2: the renderer does not listen to main-process commands yet, so we
-// reuse the Ctrl+S shortcut App.tsx already handles. Its project:save call
-// reports back through onSaveStarted/onSaveFinished.
+// Ask the renderer to save (it flushes pending edits first). Its project:save
+// call reports back through onSaveStarted/onSaveFinished; a synthetic Ctrl+S
+// would be swallowed by open dialogs or focused fields.
 function requestRendererSave(win: BrowserWindow): void {
-  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: ['control'] });
-  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: ['control'] });
+  win.webContents.send('app:request-save');
 }
 
 function refreshTitleBarOverlays(): void {

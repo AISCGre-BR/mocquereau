@@ -232,6 +232,11 @@ export interface MocquereauAPI {
   /** Always shows the Save As dialog; the chosen name gets the .mocquereau extension. */
   saveProjectAs: (project: MocquereauProject, currentPath?: string) => Promise<{ filePath: string } | null>;
   setDirty: (isDirty: boolean) => Promise<void>;
+  /**
+   * The main process asks the renderer to save (close prompt > Save). Returns the
+   * unsubscribe function.
+   */
+  onSaveRequested: (callback: () => void) => () => void;
   /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
   openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   // App state
