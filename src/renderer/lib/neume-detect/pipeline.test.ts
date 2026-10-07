@@ -67,6 +67,7 @@ describe('suggestBoxes — adiastematico', () => {
     const anchors = [{ index: 1, box: pxToFrac(fx.truth[3], W, H) }];
     const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, anchors });
     const got = boxesPx(res, W, H);
+    expect(res.suggestions).toHaveLength(4);
     for (const s of res.suggestions) {
       const b = got[s.index];
       const a = fx.truth[3];
@@ -173,10 +174,12 @@ describe('suggestBoxes — escala e transparencia', () => {
     const r = { ...fx.raster, data: new Uint8ClampedArray(fx.raster.data) };
     // triangulo superior direito transparente e preto (como sai de um canvas rotacionado)
     for (let y = 0; y < H; y++)
-      for (let x = W - 1; x >= W - 60 + y / 5; x--) r.data.set([0, 0, 0, 0], (y * W + x) * 4);
-    const res = suggestBoxes({ image: r, notation: 'adiastematic', syllables: fx.syllables.slice(0, 4) });
+      for (let x = W - 1; x >= W - 300 + y / 5; x--) r.data.set([0, 0, 0, 0], (y * W + x) * 4);
+    const res = suggestBoxes({ image: r, notation: 'adiastematic', syllables: fx.syllables });
+    // a 5a coluna (neumas e texto em x >= 943) fica toda dentro da regiao transparente
+    expect(res.suggestions.map((s) => s.index)).toEqual([0, 1, 2, 3]);
     const got = boxesPx(res, W, H);
-    for (const s of res.suggestions) expect(got[s.index].x + got[s.index].w).toBeLessThan(W - 60);
+    for (const s of res.suggestions) expect(got[s.index].x + got[s.index].w).toBeLessThanOrEqual(W - 300);
   });
 });
 
