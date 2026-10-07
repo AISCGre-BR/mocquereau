@@ -17,6 +17,13 @@ export type HyphenationMode =
 
 export type Notation = "adiastematic" | "diastematic" | "square" | "modern" | "other";
 
+export interface ClassValue { id: string; name: string }
+export interface ClassLevel { id: string; name: string; values: ClassValue[] }
+/** Three user-named grouping levels (spec R4). Level order drives grouping. */
+export type Classification = [ClassLevel, ClassLevel, ClassLevel];
+/** One ClassValue id (or null) per level. */
+export type SourceClasses = [string | null, string | null, string | null];
+
 export interface SyllableBox {
   x: number;
   y: number;
