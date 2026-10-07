@@ -138,7 +138,12 @@ function Workbench() {
       }
     >
       {project === null ? (
-        <Welcome onNew={file.newProject} onOpen={() => void file.open()} onOpenRecent={(p) => void file.openRecent(p)} />
+        <Welcome
+          onNew={file.newProject}
+          onOpen={() => void file.open()}
+          onOpenRecent={(p) => void file.openRecent(p)}
+          onOpenExample={() => void file.openExample()}
+        />
       ) : (
         <div key={`${file.projectEpoch}:${historyEpoch}`} className="flex min-h-0 flex-1 flex-col">
           {view === "texto" && <TextoView />}
