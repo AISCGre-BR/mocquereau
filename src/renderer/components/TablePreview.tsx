@@ -119,8 +119,8 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   if (!project || project.sources.length === 0) {
     return (
       <div className="flex flex-col h-full p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('tablePreview.title')}</h1>
-        <p className="text-gray-400 text-sm">{t('tablePreview.empty')}</p>
+        <h1 className="text-2xl font-bold text-ink mb-2">{t('tablePreview.title')}</h1>
+        <p className="text-ink-muted text-sm">{t('tablePreview.empty')}</p>
       </div>
     );
   }
@@ -201,15 +201,15 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
-        <h1 className="text-lg font-semibold text-gray-900">{t('tablePreview.title')}</h1>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-rule-soft bg-surface flex-shrink-0">
+        <h1 className="text-lg font-semibold text-ink">{t('tablePreview.title')}</h1>
         <div className="flex items-center gap-4">
           {/* LPUI-01: zoom controls (D-03) */}
           <div className="flex items-center gap-1" role="toolbar" aria-label={t('tablePreview.zoomControls')}>
             <button
               onClick={zoomOut}
               disabled={zoom === ZOOM_PRESETS[0]}
-              className="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed rounded border border-gray-300"
+              className="px-2 py-1 text-sm bg-parchment-deep hover:bg-ink-wash disabled:opacity-40 disabled:cursor-not-allowed rounded border border-rule"
               title={t('tablePreview.zoomOutTitle')}
               aria-label={t('tablePreview.zoomOut')}
             >−</button>
@@ -217,8 +217,8 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
               onClick={zoomReset}
               className={`px-2 py-1 text-sm rounded border min-w-[56px] ${
                 zoom === 100
-                  ? 'bg-blue-100 text-blue-700 border-blue-300 font-medium'
-                  : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
+                  ? 'bg-rubric-wash text-rubric border-rubric font-medium'
+                  : 'bg-parchment-deep hover:bg-ink-wash border-rule'
               }`}
               title={t('tablePreview.zoomResetTitle')}
               aria-label={t('tablePreview.zoomCurrent', { zoom })}
@@ -226,7 +226,7 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
             <button
               onClick={zoomIn}
               disabled={zoom === ZOOM_PRESETS[ZOOM_PRESETS.length - 1]}
-              className="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed rounded border border-gray-300"
+              className="px-2 py-1 text-sm bg-parchment-deep hover:bg-ink-wash disabled:opacity-40 disabled:cursor-not-allowed rounded border border-rule"
               title={t('tablePreview.zoomInTitle')}
               aria-label={t('tablePreview.zoomIn')}
             >+</button>
@@ -241,10 +241,10 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
           {/* ═══════════════════════════════════════════════════════
               HEADER ROW 1: Accents (D-02)
           ═══════════════════════════════════════════════════════ */}
-          <div className="flex sticky top-0 z-20 bg-gray-50 border-b border-gray-300">
+          <div className="flex sticky top-0 z-20 bg-parchment border-b border-rule">
             {/* Metadata corner cell */}
             <div
-              className="flex-shrink-0 sticky left-0 z-30 bg-gray-50 border-r-2 border-gray-400"
+              className="flex-shrink-0 sticky left-0 z-30 bg-parchment border-r-2 border-rule-strong"
               style={{ width: METADATA_COL_WIDTH, height: ACCENT_ROW_HEIGHT }}
             />
             {/* Accent markers per syllable */}
@@ -257,12 +257,12 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                   style={{
                     width: COL_WIDTH,
                     height: ACCENT_ROW_HEIGHT,
-                    borderRight: wb ? '2px solid #9ca3af' : '1px solid #e5e7eb',
+                    borderRight: wb ? '2px solid var(--rule-strong)' : '1px solid var(--rule-soft)',
                   }}
                 >
                   {accented.has(idx) && (
                     <span
-                      className="text-blue-500 leading-none"
+                      className="text-rubric leading-none"
                       style={{ fontSize: sylFontSize }}
                       title={t('tablePreview.mainAccent')}
                     >&#9679;</span>
@@ -275,13 +275,13 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
           {/* ═══════════════════════════════════════════════════════
               HEADER ROW 2: Syllable text (D-02)
           ═══════════════════════════════════════════════════════ */}
-          <div className="flex sticky z-20 bg-white border-b-2 border-gray-400" style={{ top: ACCENT_ROW_HEIGHT }}>
+          <div className="flex sticky z-20 bg-surface border-b-2 border-rule-strong" style={{ top: ACCENT_ROW_HEIGHT }}>
             {/* Metadata col label */}
             <div
-              className="flex-shrink-0 sticky left-0 z-30 bg-white border-r-2 border-gray-400 flex items-center px-2"
+              className="flex-shrink-0 sticky left-0 z-30 bg-surface border-r-2 border-rule-strong flex items-center px-2"
               style={{ width: METADATA_COL_WIDTH, height: SYLLABLE_ROW_HEIGHT }}
             >
-              <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">{t('tablePreview.source')}</span>
+              <span className="text-xs text-ink-muted font-medium uppercase tracking-wide">{t('tablePreview.source')}</span>
             </div>
             {/* Syllable text cells */}
             {syllables.map((syl, idx) => {
@@ -293,11 +293,11 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                   style={{
                     width: COL_WIDTH,
                     height: SYLLABLE_ROW_HEIGHT,
-                    borderRight: wb ? '2px solid #9ca3af' : '1px solid #e5e7eb',
+                    borderRight: wb ? '2px solid var(--rule-strong)' : '1px solid var(--rule-soft)',
                   }}
                 >
                   <span
-                    className="font-mono text-gray-700 truncate px-0.5 select-none"
+                    className="font-mono text-ink-soft truncate px-0.5 select-none"
                     style={{ fontSize: sylFontSize }}
                     title={syl}
                   >
@@ -325,36 +325,36 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
             }
 
             return (
-            <div key={source.id} className="flex border-b border-gray-200 hover:bg-gray-50/30">
+            <div key={source.id} className="flex border-b border-rule-soft hover:bg-ink-wash">
 
               {/* ── Sticky metadata cell (D-01, D-08) ── */}
               <div
-                className="flex-shrink-0 sticky left-0 z-10 bg-white border-r-2 border-gray-400 flex flex-col justify-center px-2 py-1 gap-0.5"
+                className="flex-shrink-0 sticky left-0 z-10 bg-surface border-r-2 border-rule-strong flex flex-col justify-center px-2 py-1 gap-0.5"
                 style={{ width: METADATA_COL_WIDTH, height: ROW_HEIGHT }}
               >
                 <span
-                  className="font-semibold text-gray-900 truncate"
+                  className="font-semibold text-ink truncate"
                   style={{ fontSize: metaFontSize }}
                   title={source.metadata.siglum}
                 >
                   {source.metadata.siglum}
                 </span>
                 <span
-                  className="text-gray-500 truncate"
+                  className="text-ink-muted truncate"
                   style={{ fontSize: sylFontSize }}
                   title={source.metadata.city}
                 >
                   {source.metadata.city}
                 </span>
                 <span
-                  className="text-gray-400 truncate"
+                  className="text-ink-muted truncate"
                   style={{ fontSize: sylFontSize }}
                 >
                   {source.metadata.century}
                 </span>
                 {source.metadata.folio && (
                   <span
-                    className="text-gray-400 truncate"
+                    className="text-ink-muted truncate"
                     style={{ fontSize: sylFontSize }}
                     title={t('tablePreview.folioTitle', { folio: source.metadata.folio })}
                   >

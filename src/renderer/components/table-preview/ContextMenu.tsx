@@ -54,12 +54,12 @@ export function ContextMenu({
   };
 
   const itemClass =
-    'w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed';
+    'w-full text-left px-4 py-2 text-sm text-ink-soft hover:bg-ink-wash disabled:opacity-40 disabled:cursor-not-allowed';
 
   return (
     <div
       ref={menuRef}
-      className="bg-white border border-gray-200 rounded shadow-lg py-1 min-w-48 outline-none"
+      className="bg-surface border border-rule-soft rounded shadow-lg py-1 min-w-48 outline-none"
       style={style}
       role="menu"
     >

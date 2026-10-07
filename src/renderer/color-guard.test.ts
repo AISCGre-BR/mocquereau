@@ -11,9 +11,6 @@ const ROOT = fileURLToPath(new URL(".", import.meta.url));
  * a lista termina vazia. Um arquivo listado que já esteja limpo faz o teste falhar.
  */
 const PENDING: string[] = [
-  "components/TablePreview.tsx",
-  "components/table-preview/ContextMenu.tsx",
-  "components/table-preview/TableCell.tsx",
   "components/SliceEditor.tsx",
   "components/SyllableChip.tsx",
   "components/slice-editor/ImageAdjustmentsPanel.tsx",
