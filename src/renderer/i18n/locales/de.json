@@ -290,5 +290,18 @@
   "imageCanvas.straightenReadout": "Feinwinkel",
   "imageCanvas.straightenReset": "Feinwinkel zurücksetzen",
   "realign.applied": "Rahmen von {{count}} Bild(ern) an die Bilddrehung angepasst.",
-  "realign.undo": "Rückgängig"
+  "realign.undo": "Rückgängig",
+  "realign.open": "Rahmen neu ausrichten…",
+  "realign.title": "Rahmen neu ausrichten",
+  "realign.hint": "Wählen Sie das Bezugssystem, in dem die Rahmen gezeichnet wurden. Die Wertung ist die Tinte in den Rahmen; die höchste ist meist richtig.",
+  "realign.candidates": "Mögliche Bezugssysteme",
+  "realign.flipH": "gespiegelt H",
+  "realign.flipV": "gespiegelt V",
+  "realign.current": "aktuell",
+  "realign.best": "beste",
+  "realign.score": "Tinte {{percent}} %",
+  "realign.scoring": "Tinte des Bildes wird ausgewertet…",
+  "realign.failed": "Das Bild dieser Zeile konnte nicht gelesen werden.",
+  "realign.apply": "Anwenden",
+  "realign.cancel": "Abbrechen"
 }

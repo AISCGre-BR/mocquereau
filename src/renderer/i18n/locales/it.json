@@ -290,5 +290,18 @@
   "imageCanvas.straightenReadout": "Angolo fine",
   "imageCanvas.straightenReset": "Azzera angolo fine",
   "realign.applied": "Riquadri di {{count}} immagine/i riallineati alla rotazione dell'immagine.",
-  "realign.undo": "Annulla"
+  "realign.undo": "Annulla",
+  "realign.open": "Riallinea riquadri…",
+  "realign.title": "Riallinea riquadri",
+  "realign.hint": "Scegli il riferimento in cui sono stati disegnati i riquadri. Il punteggio è l'inchiostro dentro i riquadri; il più alto di solito è quello giusto.",
+  "realign.candidates": "Riferimenti candidati",
+  "realign.flipH": "specchio O",
+  "realign.flipV": "specchio V",
+  "realign.current": "attuale",
+  "realign.best": "migliore",
+  "realign.score": "inchiostro {{percent}}%",
+  "realign.scoring": "Analisi dell'inchiostro dell'immagine…",
+  "realign.failed": "Impossibile leggere l'immagine di questa riga.",
+  "realign.apply": "Applica",
+  "realign.cancel": "Annulla"
 }

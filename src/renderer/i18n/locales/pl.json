@@ -290,5 +290,18 @@
   "imageCanvas.straightenReadout": "Kąt precyzyjny",
   "imageCanvas.straightenReset": "Zeruj kąt precyzyjny",
   "realign.applied": "Ramki {{count}} obrazu/obrazów dopasowane do obrotu obrazu.",
-  "realign.undo": "Cofnij"
+  "realign.undo": "Cofnij",
+  "realign.open": "Wyrównaj ramki…",
+  "realign.title": "Wyrównaj ramki",
+  "realign.hint": "Wybierz układ, w którym narysowano ramki. Wynik to atrament wewnątrz ramek; najwyższy jest zwykle właściwy.",
+  "realign.candidates": "Możliwe układy",
+  "realign.flipH": "odbicie poz.",
+  "realign.flipV": "odbicie pion.",
+  "realign.current": "bieżący",
+  "realign.best": "najlepszy",
+  "realign.score": "atrament {{percent}}%",
+  "realign.scoring": "Analiza atramentu obrazu…",
+  "realign.failed": "Nie udało się odczytać obrazu tej linii.",
+  "realign.apply": "Zastosuj",
+  "realign.cancel": "Anuluj"
 }

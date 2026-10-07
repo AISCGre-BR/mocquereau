@@ -290,5 +290,18 @@
   "imageCanvas.straightenReadout": "Ángulo fino",
   "imageCanvas.straightenReset": "Restablecer ángulo fino",
   "realign.applied": "Cajas de {{count}} imagen(es) realineadas con la rotación de la imagen.",
-  "realign.undo": "Deshacer"
+  "realign.undo": "Deshacer",
+  "realign.open": "Realinear cajas…",
+  "realign.title": "Realinear cajas",
+  "realign.hint": "Elija el marco en que se dibujaron las cajas. La puntuación es la tinta dentro de las cajas; la más alta suele ser la correcta.",
+  "realign.candidates": "Marcos candidatos",
+  "realign.flipH": "espejo H",
+  "realign.flipV": "espejo V",
+  "realign.current": "actual",
+  "realign.best": "mejor",
+  "realign.score": "tinta {{percent}} %",
+  "realign.scoring": "Analizando la tinta de la imagen…",
+  "realign.failed": "No se pudo leer la imagen de esta línea.",
+  "realign.apply": "Aplicar",
+  "realign.cancel": "Cancelar"
 }
