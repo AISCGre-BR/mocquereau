@@ -275,5 +275,10 @@
   "welcome.new": "Nuovo progetto",
   "welcome.noRecent": "Nessun progetto recente.",
   "welcome.open": "Apri…",
-  "welcome.recent": "Recenti"
+  "welcome.recent": "Recenti",
+  "imageCanvas.zoomControls": "Controlli di zoom del foglio",
+  "imageCanvas.zoomIn": "Aumenta zoom (Ctrl+=)",
+  "imageCanvas.zoomOut": "Riduci zoom (Ctrl+-)",
+  "imageCanvas.zoomFit": "Adatta alla larghezza (Ctrl+0)",
+  "imageCanvas.zoomFitCurrent": "Adatta alla larghezza (zoom attuale: {{zoom}})"
 }

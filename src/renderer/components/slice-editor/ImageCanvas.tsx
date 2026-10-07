@@ -1,6 +1,6 @@
 // src/renderer/components/slice-editor/ImageCanvas.tsx
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { StoredImage, SyllabifiedWord, SyllableBox } from '../../lib/models';
 import type { ImageAdjustments } from '../../lib/models';
 import { EditorAction } from './editorReducer';
@@ -11,6 +11,19 @@ import {
   buildImageTransform,
   normalizeRotation,
 } from '../../lib/image-adjustments';
+import {
+  ZOOM_FIT,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  anchoredScroll,
+  clampZoom,
+  formatZoom,
+  isZoomShortcut,
+  stepZoom,
+  wheelZoom,
+  type ZoomAnchor,
+} from '../../lib/canvas-zoom';
+import { isTextInput } from '../../shell/useMenuShortcuts';
 import { useTranslation } from 'react-i18next';
 
 interface ImageCanvasProps {
@@ -52,6 +65,7 @@ export function ImageCanvas({
 }: ImageCanvasProps) {
   const { t } = useTranslation();
   const imageWrapperRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
 
   // Phase 12 (UX revisão): a imagem rotaciona, mas as boxes ficam axis-aligned
   // com a tela (manuscrito torto pode ser endireitado sem inclinar as caixas).
@@ -107,13 +121,84 @@ export function ImageCanvas({
     return String(globalIdx);
   }
 
-  // ── Zoom via scroll ────────────────────────────────────────────────────────
-  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const delta = -e.deltaY * 0.001;
-    const newZoom = Math.max(0.5, Math.min(4, zoom * (1 + delta)));
-    dispatch({ type: 'SET_ZOOM', payload: newZoom });
+  // ── Zoom ───────────────────────────────────────────────────────────────────
+  // Roda (com ou sem Ctrl/Cmd) aproxima/afasta em torno do cursor; Shift+roda fica
+  // com a rolagem horizontal nativa. O listener é nativo e NÃO passivo: o onWheel
+  // do React é passivo, então o preventDefault dele era ignorado (a vista rolava
+  // junto e Ctrl+roda chegava ao zoom da página, travado no main).
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const pendingAnchor = useRef<ZoomAnchor | null>(null);
+
+  /** Ponto do fólio sob (clientX, clientY), ou o centro visível do contêiner. */
+  function anchorAt(clientX?: number, clientY?: number): ZoomAnchor | null {
+    const wrapper = imageWrapperRef.current;
+    const scroller = scrollerRef.current;
+    if (!wrapper || !scroller) return null;
+    const sr = scroller.getBoundingClientRect();
+    const x = clientX ?? sr.left + sr.width / 2;
+    const y = clientY ?? sr.top + sr.height / 2;
+    const wr = wrapper.getBoundingClientRect();
+    if (wr.width === 0 || wr.height === 0) return null;
+    return { clientX: x, clientY: y, fx: (x - wr.left) / wr.width, fy: (y - wr.top) / wr.height };
   }
+
+  function applyZoom(next: number, anchor: ZoomAnchor | null) {
+    const z = clampZoom(next);
+    if (Math.abs(z - zoomRef.current) < 1e-9) return;
+    zoomRef.current = z;
+    pendingAnchor.current = anchor;
+    dispatch({ type: 'SET_ZOOM', payload: z });
+  }
+  const applyZoomRef = useRef(applyZoom);
+  applyZoomRef.current = applyZoom;
+  const anchorAtRef = useRef(anchorAt);
+  anchorAtRef.current = anchorAt;
+
+  // Depois do novo tamanho, rola para manter o ponto ancorado sob o cursor.
+  useLayoutEffect(() => {
+    const anchor = pendingAnchor.current;
+    pendingAnchor.current = null;
+    const wrapper = imageWrapperRef.current;
+    const scroller = scrollerRef.current;
+    if (!anchor || !wrapper || !scroller) return;
+    const next = anchoredScroll(scroller, anchor, wrapper.getBoundingClientRect());
+    scroller.scrollLeft = next.scrollLeft;
+    scroller.scrollTop = next.scrollTop;
+  }, [zoom]);
+
+  const hasImage = image != null;
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    function onWheel(e: WheelEvent) {
+      if (e.shiftKey) return;
+      e.preventDefault();
+      applyZoomRef.current(
+        wheelZoom(zoomRef.current, e.deltaY, e.deltaMode),
+        anchorAtRef.current(e.clientX, e.clientY),
+      );
+    }
+    scroller.addEventListener('wheel', onWheel, { passive: false });
+    return () => scroller.removeEventListener('wheel', onWheel);
+  }, [hasImage]);
+
+  // Ctrl+= / Ctrl+- / Ctrl+0: só existem com o editor (vista Recortes) montado.
+  useEffect(() => {
+    if (!hasImage) return;
+    function onKeyDown(e: KeyboardEvent) {
+      const action = isZoomShortcut(e);
+      if (!action) return;
+      if (isTextInput(e.target) || (e.target as HTMLElement | null)?.tagName === 'SELECT') return;
+      if (document.querySelector('[role="menu"]')) return;
+      e.preventDefault();
+      const z = zoomRef.current;
+      const next = action === 'fit' ? ZOOM_FIT : stepZoom(z, action === 'in' ? 1 : -1);
+      applyZoomRef.current(next, anchorAtRef.current());
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hasImage]);
 
   // Find the "template box" for same-size mode: first box (by lowest syllable idx) that exists
   function getTemplateBox(): SyllableBox | null {
@@ -204,9 +289,9 @@ export function ImageCanvas({
   }
 
   return (
-    <div className="flex flex-col h-full bg-parchment-deep" onWheel={handleWheel}>
+    <div className="relative flex flex-col h-full bg-parchment-deep">
       {/* Image + boxes area */}
-      <div className="relative flex-1 min-h-0 overflow-auto">
+      <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto">
         {/* Adjustments panel — sibling of the transformed wrapper so it stays
             readable even when the image is rotated/flipped. */}
         {panelOpen && onUpdateAdjustments && onClosePanel && (
@@ -223,7 +308,7 @@ export function ImageCanvas({
           ref={imageWrapperRef}
           data-image-wrapper
           className={[
-            'relative inline-block',
+            'relative mx-auto',
             activeSyllableIdx !== null &&
             !(
               activeSyllableIdx in syllableBoxes &&
@@ -233,8 +318,9 @@ export function ImageCanvas({
               : 'cursor-default',
           ].join(' ')}
           style={{
+            // zoom 1 = largura do contêiner de rolagem (ajustar); sem minWidth,
+            // afastar abaixo de 100% também funciona.
             width: `${100 * zoom}%`,
-            minWidth: '100%',
             aspectRatio: intrinsic ? `${1} / ${aabbRatio}` : undefined,
             transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
           }}
@@ -331,6 +417,39 @@ export function ImageCanvas({
             />
           )}
         </div>
+      </div>
+
+      {/* Controle flutuante de zoom (Parchment sc-zoom): fora do contêiner que rola. */}
+      <div className="sc-zoom" role="toolbar" aria-label={t('imageCanvas.zoomControls')}>
+        <button
+          type="button"
+          onClick={() => applyZoom(stepZoom(zoom, -1), anchorAt())}
+          disabled={zoom <= ZOOM_MIN}
+          title={t('imageCanvas.zoomOut')}
+          aria-label={t('imageCanvas.zoomOut')}
+        >
+          −
+        </button>
+        <span>
+          <button
+            type="button"
+            className="sc-num w-full cursor-pointer border-0 bg-transparent p-0 text-inherit"
+            onClick={() => applyZoom(ZOOM_FIT, anchorAt())}
+            title={t('imageCanvas.zoomFit')}
+            aria-label={t('imageCanvas.zoomFitCurrent', { zoom: formatZoom(zoom) })}
+          >
+            {formatZoom(zoom)}
+          </button>
+        </span>
+        <button
+          type="button"
+          onClick={() => applyZoom(stepZoom(zoom, 1), anchorAt())}
+          disabled={zoom >= ZOOM_MAX}
+          title={t('imageCanvas.zoomIn')}
+          aria-label={t('imageCanvas.zoomIn')}
+        >
+          +
+        </button>
       </div>
     </div>
   );

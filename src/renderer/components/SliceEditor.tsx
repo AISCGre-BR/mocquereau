@@ -600,7 +600,7 @@ export function SliceEditor() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-1 min-h-0 focus:outline-none">
+    <div className="flex flex-1 min-h-0 min-w-0 focus:outline-none">
       {/* Left sidebar — sources */}
       <SourceSidebar
         sources={project.sources}

@@ -275,5 +275,10 @@
   "welcome.new": "Nuevo proyecto",
   "welcome.noRecent": "No hay proyectos recientes.",
   "welcome.open": "Abrir…",
-  "welcome.recent": "Recientes"
+  "welcome.recent": "Recientes",
+  "imageCanvas.zoomControls": "Controles de zoom del folio",
+  "imageCanvas.zoomIn": "Aumentar zoom (Ctrl+=)",
+  "imageCanvas.zoomOut": "Reducir zoom (Ctrl+-)",
+  "imageCanvas.zoomFit": "Ajustar al ancho (Ctrl+0)",
+  "imageCanvas.zoomFitCurrent": "Ajustar al ancho (zoom actual: {{zoom}})"
 }

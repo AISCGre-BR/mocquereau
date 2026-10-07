@@ -275,5 +275,10 @@
   "welcome.new": "Nowy projekt",
   "welcome.noRecent": "Brak ostatnich projektów.",
   "welcome.open": "Otwórz…",
-  "welcome.recent": "Ostatnie"
+  "welcome.recent": "Ostatnie",
+  "imageCanvas.zoomControls": "Sterowanie powiększeniem karty",
+  "imageCanvas.zoomIn": "Powiększ (Ctrl+=)",
+  "imageCanvas.zoomOut": "Pomniejsz (Ctrl+-)",
+  "imageCanvas.zoomFit": "Dopasuj do szerokości (Ctrl+0)",
+  "imageCanvas.zoomFitCurrent": "Dopasuj do szerokości (bieżące powiększenie: {{zoom}})"
 }
