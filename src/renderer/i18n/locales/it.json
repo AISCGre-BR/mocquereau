@@ -25,6 +25,12 @@
   "exportDialog.syllables": "Sillabe",
   "exportDialog.title": "Esportazione",
   "exportDialog.tryAgain": "Riprova",
+  "file.confirmDiscard": "There are unsaved changes. Discard them and continue?",
+  "file.importTextFilled": "The text is already filled in; the Gueranger import did not replace it.",
+  "file.openError": "Could not open {{filePath}}. The file may have been moved or deleted.",
+  "file.saved": "Project saved.",
+  "file.saveError": "Could not save: {{message}}",
+  "file.untitled": "Untitled",
   "imageAdjustmentsPanel.angleInDegrees": "Angolo in gradi",
   "imageAdjustmentsPanel.brightness": "Luminosità",
   "imageAdjustmentsPanel.close": "Chiudi",
@@ -262,6 +268,7 @@
   "tablePreview.zoomOut": "Riduci zoom",
   "tablePreview.zoomOutTitle": "Riduci zoom (Ctrl+-)",
   "tablePreview.zoomResetTitle": "Ripristina zoom (Ctrl+0)",
+  "toast.dismiss": "Dismiss",
   "tutorial.exportDocx.body1": "Genera un file .docx in orizzontale, con immagini incorporate, pronto per revisione o pubblicazione in Word.",
   "tutorial.exportDocx.body2": "Tutto pronto! Puoi rivedere questo tutorial in qualsiasi momento dal menu Aiuto > Tutorial (prossime versioni).",
   "tutorial.exportDocx.title": "5. Esporta DOCX",
@@ -284,5 +291,11 @@
   "tutorial.welcome.body2": "Il flusso prevede 5 passaggi. Li percorriamo rapidamente.",
   "tutorial.welcome.title": "Benvenuto in Mocquereau!",
   "tutorial.welcome.warningBody": "Il software è fornito \"così com'è\", senza garanzie. Gli autori non sono responsabili per perdita di dati, blocchi o altri difetti. Fai regolarmente il backup dei tuoi progetti.",
-  "tutorial.welcome.warningTitle": "⚠ Versione ALPHA — uso a tuo rischio e pericolo."
+  "tutorial.welcome.warningTitle": "⚠ Versione ALPHA — uso a tuo rischio e pericolo.",
+  "welcome.clearRecent": "Clear recent",
+  "welcome.clearRecentConfirm": "Clear the list of recent projects?",
+  "welcome.new": "New project",
+  "welcome.noRecent": "No recent projects.",
+  "welcome.open": "Open…",
+  "welcome.recent": "Recent"
 }

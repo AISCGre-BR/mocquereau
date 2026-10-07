@@ -25,6 +25,12 @@
   "exportDialog.syllables": "Syllables",
   "exportDialog.title": "Export",
   "exportDialog.tryAgain": "Try again",
+  "file.confirmDiscard": "There are unsaved changes. Discard them and continue?",
+  "file.importTextFilled": "The text is already filled in; the Gueranger import did not replace it.",
+  "file.openError": "Could not open {{filePath}}. The file may have been moved or deleted.",
+  "file.saved": "Project saved.",
+  "file.saveError": "Could not save: {{message}}",
+  "file.untitled": "Untitled",
   "imageAdjustmentsPanel.angleInDegrees": "Angle in degrees",
   "imageAdjustmentsPanel.brightness": "Brightness",
   "imageAdjustmentsPanel.close": "Close",
@@ -262,6 +268,7 @@
   "tablePreview.zoomOut": "Zoom out",
   "tablePreview.zoomOutTitle": "Zoom out (Ctrl+-)",
   "tablePreview.zoomResetTitle": "Reset zoom (Ctrl+0)",
+  "toast.dismiss": "Dismiss",
   "tutorial.exportDocx.body1": "Generates a landscape .docx file with embedded images, ready for review or publication in Word.",
   "tutorial.exportDocx.body2": "All set! You can revisit this tutorial at any time from the Help > Tutorial menu (future versions).",
   "tutorial.exportDocx.title": "5. Export DOCX",
@@ -284,5 +291,11 @@
   "tutorial.welcome.body2": "The workflow has 5 steps. We'll walk through them quickly.",
   "tutorial.welcome.title": "Welcome to Mocquereau!",
   "tutorial.welcome.warningBody": "The software is provided \"as is\", without warranties. The authors are not responsible for data loss, crashes, or other defects. Back up your projects regularly.",
-  "tutorial.welcome.warningTitle": "⚠ ALPHA version — use at your own risk."
+  "tutorial.welcome.warningTitle": "⚠ ALPHA version — use at your own risk.",
+  "welcome.clearRecent": "Clear recent",
+  "welcome.clearRecentConfirm": "Clear the list of recent projects?",
+  "welcome.new": "New project",
+  "welcome.noRecent": "No recent projects.",
+  "welcome.open": "Open…",
+  "welcome.recent": "Recent"
 }

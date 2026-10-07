@@ -25,6 +25,12 @@
   "exportDialog.syllables": "Sílabas",
   "exportDialog.title": "Exportação",
   "exportDialog.tryAgain": "Tentar novamente",
+  "file.confirmDiscard": "Há alterações não salvas. Descartar e continuar?",
+  "file.importTextFilled": "O texto já está preenchido; a importação do Gueranger não o substituiu.",
+  "file.openError": "Não foi possível abrir {{filePath}}. O arquivo pode ter sido movido ou excluído.",
+  "file.saved": "Projeto salvo.",
+  "file.saveError": "Não foi possível salvar: {{message}}",
+  "file.untitled": "Sem título",
   "imageAdjustmentsPanel.angleInDegrees": "Ângulo em graus",
   "imageAdjustmentsPanel.brightness": "Brilho",
   "imageAdjustmentsPanel.close": "Fechar",
@@ -262,6 +268,7 @@
   "tablePreview.zoomOut": "Diminuir zoom",
   "tablePreview.zoomOutTitle": "Diminuir zoom (Ctrl+-)",
   "tablePreview.zoomResetTitle": "Restaurar zoom (Ctrl+0)",
+  "toast.dismiss": "Dispensar",
   "tutorial.exportDocx.body1": "Gera um arquivo .docx em paisagem, com imagens embutidas, pronto para revisão ou publicação no Word.",
   "tutorial.exportDocx.body2": "Tudo pronto! Você pode rever este tutorial a qualquer momento no menu Ajuda > Tutorial (próximas versões).",
   "tutorial.exportDocx.title": "5. Exportar DOCX",
@@ -284,5 +291,11 @@
   "tutorial.welcome.body2": "O fluxo tem 5 etapas. Vamos caminhar por elas rapidamente.",
   "tutorial.welcome.title": "Bem-vindo ao Mocquereau!",
   "tutorial.welcome.warningBody": "O software é fornecido \"no estado em que se encontra\", sem garantias. Os autores não se responsabilizam por perda de dados, travamentos ou outros defeitos. Faça backup dos seus projetos regularmente.",
-  "tutorial.welcome.warningTitle": "⚠ Versão ALPHA — uso por sua conta e risco."
+  "tutorial.welcome.warningTitle": "⚠ Versão ALPHA — uso por sua conta e risco.",
+  "welcome.clearRecent": "Limpar recentes",
+  "welcome.clearRecentConfirm": "Limpar a lista de projetos recentes?",
+  "welcome.new": "Novo projeto",
+  "welcome.noRecent": "Nenhum projeto recente.",
+  "welcome.open": "Abrir…",
+  "welcome.recent": "Recentes"
 }

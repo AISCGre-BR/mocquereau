@@ -25,6 +25,12 @@
   "exportDialog.syllables": "Sylaby",
   "exportDialog.title": "Eksport",
   "exportDialog.tryAgain": "Spróbuj ponownie",
+  "file.confirmDiscard": "There are unsaved changes. Discard them and continue?",
+  "file.importTextFilled": "The text is already filled in; the Gueranger import did not replace it.",
+  "file.openError": "Could not open {{filePath}}. The file may have been moved or deleted.",
+  "file.saved": "Project saved.",
+  "file.saveError": "Could not save: {{message}}",
+  "file.untitled": "Untitled",
   "imageAdjustmentsPanel.angleInDegrees": "Kąt w stopniach",
   "imageAdjustmentsPanel.brightness": "Jasność",
   "imageAdjustmentsPanel.close": "Zamknij",
@@ -262,6 +268,7 @@
   "tablePreview.zoomOut": "Pomniejsz",
   "tablePreview.zoomOutTitle": "Pomniejsz (Ctrl+-)",
   "tablePreview.zoomResetTitle": "Przywróć powiększenie (Ctrl+0)",
+  "toast.dismiss": "Dismiss",
   "tutorial.exportDocx.body1": "Generuje plik .docx w orientacji poziomej, z osadzonymi obrazami, gotowy do recenzji lub publikacji w Wordzie.",
   "tutorial.exportDocx.body2": "Wszystko gotowe! Możesz wrócić do tego samouczka w dowolnym momencie z menu Pomoc > Samouczek (w kolejnych wersjach).",
   "tutorial.exportDocx.title": "5. Eksport DOCX",
@@ -284,5 +291,11 @@
   "tutorial.welcome.body2": "Praca przebiega w 5 krokach. Przejdziemy przez nie szybko.",
   "tutorial.welcome.title": "Witamy w Mocquereau!",
   "tutorial.welcome.warningBody": "Oprogramowanie jest dostarczane „w stanie takim, w jakim jest”, bez gwarancji. Autorzy nie ponoszą odpowiedzialności za utratę danych, awarie ani inne wady. Regularnie twórz kopie zapasowe projektów.",
-  "tutorial.welcome.warningTitle": "⚠ Wersja ALPHA - używasz na własne ryzyko."
+  "tutorial.welcome.warningTitle": "⚠ Wersja ALPHA - używasz na własne ryzyko.",
+  "welcome.clearRecent": "Clear recent",
+  "welcome.clearRecentConfirm": "Clear the list of recent projects?",
+  "welcome.new": "New project",
+  "welcome.noRecent": "No recent projects.",
+  "welcome.open": "Open…",
+  "welcome.recent": "Recent"
 }

@@ -25,6 +25,12 @@
   "exportDialog.syllables": "音節",
   "exportDialog.title": "書き出し",
   "exportDialog.tryAgain": "再試行",
+  "file.confirmDiscard": "There are unsaved changes. Discard them and continue?",
+  "file.importTextFilled": "The text is already filled in; the Gueranger import did not replace it.",
+  "file.openError": "Could not open {{filePath}}. The file may have been moved or deleted.",
+  "file.saved": "Project saved.",
+  "file.saveError": "Could not save: {{message}}",
+  "file.untitled": "Untitled",
   "imageAdjustmentsPanel.angleInDegrees": "角度（度）",
   "imageAdjustmentsPanel.brightness": "明るさ",
   "imageAdjustmentsPanel.close": "閉じる",
@@ -262,6 +268,7 @@
   "tablePreview.zoomOut": "縮小",
   "tablePreview.zoomOutTitle": "縮小 (Ctrl+-)",
   "tablePreview.zoomResetTitle": "ズームを戻す (Ctrl+0)",
+  "toast.dismiss": "Dismiss",
   "tutorial.exportDocx.body1": "画像を埋め込んだ横向きの .docx を生成し、Word での校正や出版にそのまま使えます。",
   "tutorial.exportDocx.body2": "準備完了です! このチュートリアルは、後でいつでも ヘルプ > チュートリアル（今後の版） から見直せます。",
   "tutorial.exportDocx.title": "5. DOCX 書き出し",
@@ -284,5 +291,11 @@
   "tutorial.welcome.body2": "流れは 5 段階です。順に見ていきましょう。",
   "tutorial.welcome.title": "Mocquereau へようこそ!",
   "tutorial.welcome.warningBody": "本ソフトウェアは「現状のまま」提供され、いかなる保証もありません。著者は、データ損失、クラッシュ、その他の不具合について責任を負いません。プロジェクトは定期的にバックアップしてください。",
-  "tutorial.welcome.warningTitle": "⚠ ALPHA 版 — ご利用は自己責任で。"
+  "tutorial.welcome.warningTitle": "⚠ ALPHA 版 — ご利用は自己責任で。",
+  "welcome.clearRecent": "Clear recent",
+  "welcome.clearRecentConfirm": "Clear the list of recent projects?",
+  "welcome.new": "New project",
+  "welcome.noRecent": "No recent projects.",
+  "welcome.open": "Open…",
+  "welcome.recent": "Recent"
 }

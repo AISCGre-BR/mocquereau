@@ -25,6 +25,12 @@
   "exportDialog.syllables": "Silben",
   "exportDialog.title": "Export",
   "exportDialog.tryAgain": "Erneut versuchen",
+  "file.confirmDiscard": "There are unsaved changes. Discard them and continue?",
+  "file.importTextFilled": "The text is already filled in; the Gueranger import did not replace it.",
+  "file.openError": "Could not open {{filePath}}. The file may have been moved or deleted.",
+  "file.saved": "Project saved.",
+  "file.saveError": "Could not save: {{message}}",
+  "file.untitled": "Untitled",
   "imageAdjustmentsPanel.angleInDegrees": "Winkel in Grad",
   "imageAdjustmentsPanel.brightness": "Helligkeit",
   "imageAdjustmentsPanel.close": "Schließen",
@@ -262,6 +268,7 @@
   "tablePreview.zoomOut": "Zoom verkleinern",
   "tablePreview.zoomOutTitle": "Zoom verkleinern (Strg+-)",
   "tablePreview.zoomResetTitle": "Zoom zurücksetzen (Strg+0)",
+  "toast.dismiss": "Dismiss",
   "tutorial.exportDocx.body1": "Erzeugt eine .docx-Datei im Querformat mit eingebetteten Bildern, bereit für die Durchsicht oder Veröffentlichung in Word.",
   "tutorial.exportDocx.body2": "Alles bereit! Sie können dieses Tutorial jederzeit über das Menü Hilfe > Tutorial (künftige Versionen) erneut aufrufen.",
   "tutorial.exportDocx.title": "5. DOCX exportieren",
@@ -284,5 +291,11 @@
   "tutorial.welcome.body2": "Der Ablauf hat 5 Schritte. Gehen wir sie kurz durch.",
   "tutorial.welcome.title": "Willkommen bei Mocquereau!",
   "tutorial.welcome.warningBody": "Die Software wird \"wie besehen\" ohne Gewährleistung bereitgestellt. Die Autoren übernehmen keine Haftung für Datenverlust, Abstürze oder andere Fehler. Sichern Sie Ihre Projekte regelmäßig.",
-  "tutorial.welcome.warningTitle": "⚠ ALPHA-Version — Verwendung auf eigene Gefahr."
+  "tutorial.welcome.warningTitle": "⚠ ALPHA-Version — Verwendung auf eigene Gefahr.",
+  "welcome.clearRecent": "Clear recent",
+  "welcome.clearRecentConfirm": "Clear the list of recent projects?",
+  "welcome.new": "New project",
+  "welcome.noRecent": "No recent projects.",
+  "welcome.open": "Open…",
+  "welcome.recent": "Recent"
 }
