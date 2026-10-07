@@ -12,15 +12,17 @@ const ROOT = fileURLToPath(new URL(".", import.meta.url));
  */
 const PENDING: string[] = [];
 
-function listTsx(dir: string): string[] {
+/** .ts e .tsx do renderer, sem os testes (que trazem exemplos de cores cruas). */
+function listSources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) return listTsx(full);
-    return name.endsWith(".tsx") ? [full] : [];
+    if (statSync(full).isDirectory()) return listSources(full);
+    if (/\.test\.tsx?$/.test(name) || name.endsWith(".d.ts")) return [];
+    return /\.tsx?$/.test(name) ? [full] : [];
   });
 }
 
-const files = listTsx(ROOT).map((f) => relative(ROOT, f).split(sep).join("/"));
+const files = listSources(ROOT).map((f) => relative(ROOT, f).split(sep).join("/"));
 const read = (file: string) => readFileSync(join(ROOT, file), "utf-8");
 
 describe("violations", () => {
@@ -41,12 +43,36 @@ describe("violations", () => {
     expect(violations("const x = 1; // antes era text-gray-400")).toEqual([]);
   });
 
+  it("detecta cores com nome em style, fill/stroke e canvas, e oklch()/color-mix()", () => {
+    expect(violations('<path fill="white" />')).toHaveLength(1);
+    expect(violations("<circle stroke='black' />")).toHaveLength(1);
+    expect(violations('style={{ color: "red" }}')).toHaveLength(1);
+    expect(violations("style={{ backgroundColor: 'Gray' }}")).toHaveLength(1);
+    expect(violations('ctx.fillStyle = "black";')).toHaveLength(1);
+    expect(violations("const c = 'oklch(0.7 0.1 30)';")).toHaveLength(1);
+    expect(violations("background: `color-mix(in oklab, var(--x), transparent)`")).toHaveLength(1);
+  });
+
+  it("aceita transparent/currentColor/none e textos que só contêm o nome", () => {
+    expect(violations('<path fill="currentColor" stroke="none" />')).toEqual([]);
+    expect(violations("style={{ background: 'transparent' }}")).toEqual([]);
+    expect(violations("<p>white label</p>")).toEqual([]);
+    expect(violations("const label = t('shell.theme.dark');")).toEqual([]);
+  });
+
+  it("'//' dentro de string (URL) não esconde o resto da linha; comentário de verdade sim", () => {
+    expect(violations('const u = "https://example.org"; const c = "#ff0000";')).toEqual(["1: #ff0000"]);
+    expect(violations("open('http://x'); <div className=\"bg-white\" />")).toHaveLength(1);
+    expect(violations("const x = 1; /* era #fff */ const y = 2;")).toEqual([]);
+    expect(violations("const x = 1; // era bg-white")).toEqual([]);
+  });
+
   it("informa a linha", () => {
     expect(violations('a\n<div className="text-red-600" />')).toEqual(["2: text-red-600"]);
   });
 });
 
-describe("guarda de cores em src/renderer/**/*.tsx", () => {
+describe("guarda de cores em src/renderer/**/*.{ts,tsx}", () => {
   it("PENDING só lista arquivos que existem", () => {
     for (const p of PENDING) expect(files).toContain(p);
   });
