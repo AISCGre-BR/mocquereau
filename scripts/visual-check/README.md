@@ -12,7 +12,7 @@ npx playwright install chromium   # só na primeira vez
 env -u ELECTRON_RUN_AS_NODE npm run visual-check
 ```
 
-O script constrói o app (`electron-vite build`) e grava os PNGs em
+O script constrói o app (`electron-vite build`; a captura isolada, `node scripts/visual-check/shoot.mjs`, exige o build feito antes: `npx electron-vite build` ou `npm run build`) e grava os PNGs em
 `scripts/visual-check/out/<tema>-<largura>x<altura>-<tela>.png` (ignorado pelo git).
 Telas: `welcome`, `texto`, `fontes`, `recortes`, `tabela` (objeto `SCREENS` em `shoot.mjs`).
 Erros de página (`pageerror`) e `console.error` são impressos e o processo sai com código 1.

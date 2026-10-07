@@ -1,6 +1,6 @@
 // Captura as telas do renderer com Playwright, sem Electron.
 // Pré-requisito: o renderer precisa estar construído em out/renderer
-// (`npm run build:renderer` ou `npx electron-vite build`; `npm run visual-check` já constrói).
+// (`npx electron-vite build` ou `npm run build`; `npm run visual-check` já constrói).
 // Saída: scripts/visual-check/out/<tema>-<largura>x<altura>-<tela>.png
 // VISUAL_PROJECT=/caminho/projeto.json troca a fixture ({ project, images[] } com bytes em base64).
 import { chromium } from "playwright";
@@ -29,6 +29,30 @@ mkdirSync(OUT, { recursive: true });
 const data = process.env.VISUAL_PROJECT
   ? JSON.parse(readFileSync(process.env.VISUAL_PROJECT, "utf8"))
   : buildFixture();
+
+/**
+ * O Chromium pinta de forma incompleta um SVG ampliado e recortado em <img> (a tabela mostra
+ * células em branco que o app não tem), e manuscritos reais são rasters. Por isso as páginas
+ * SVG da fixture viram PNG aqui, antes das capturas.
+ */
+async function rasterizeSvgs(browser, data) {
+  const page = await browser.newPage();
+  for (const im of data.images.filter((i) => i.mimeType === "image/svg+xml")) {
+    const ref = data.project.sources.flatMap((s) => s.lines).find((l) => l.image.imageId === im.imageId)?.image;
+    await page.setViewportSize({ width: ref?.width ?? 1600, height: ref?.height ?? 900 });
+    await page.setContent(`<body style="margin:0"><img src="data:image/svg+xml;base64,${im.b64}"></body>`);
+    const png = (await page.screenshot()).toString("base64");
+    im.b64 = png;
+    im.mimeType = "image/png";
+    for (const line of data.project.sources.flatMap((s) => s.lines)) {
+      if (line.image.imageId === im.imageId) {
+        line.image.mimeType = "image/png";
+        line.image.dataUrl = `data:image/png;base64,${png}`;
+      }
+    }
+  }
+  await page.close();
+}
 
 const server = http.createServer((req, res) => {
   let file = path.join(ROOT, decodeURIComponent(req.url.split("?")[0]));
@@ -101,6 +125,7 @@ const SCREENS = {
 
 let failed = false;
 const browser = await chromium.launch();
+await rasterizeSvgs(browser, data);
 for (const theme of THEMES) {
   for (const [w, h] of VIEWPORTS) {
     for (const [name, run] of Object.entries(SCREENS)) {

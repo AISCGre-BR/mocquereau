@@ -1,16 +1,18 @@
 // Fixture sintética para o visual-check: projeto v3 mínimo com duas fontes e páginas
 // geradas aqui (SVG). Nenhuma imagem real de manuscrito entra no repositório.
 import { createHash } from "node:crypto";
-import { build } from "esbuild";
+import { readFileSync } from "node:fs";
+import { transformWithEsbuild } from "vite";
 
-// A lista sugerida vive em TypeScript (src/shared/classification.ts): compilada em memória
+// A lista sugerida vive em TypeScript (src/shared/classification.ts): transpilada em memória
 // para o fixture usar a mesma fonte da verdade, sem depender de suporte a .ts do Node.
-const compiled = await build({
-  entryPoints: [new URL("../../src/shared/classification.ts", import.meta.url).pathname],
-  bundle: true, format: "esm", write: false, logLevel: "silent",
+// (O arquivo só importa tipos, então basta transpilar, sem empacotar.)
+const classificationPath = new URL("../../src/shared/classification.ts", import.meta.url).pathname;
+const compiled = await transformWithEsbuild(readFileSync(classificationPath, "utf8"), classificationPath, {
+  format: "esm", loader: "ts",
 });
 const { SUGGESTED_CLASSIFICATION } = await import(
-  `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`
+  `data:text/javascript;base64,${Buffer.from(compiled.code).toString("base64")}`
 );
 
 const W = 1600;
