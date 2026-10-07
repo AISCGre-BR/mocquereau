@@ -248,13 +248,13 @@ export function ProjectSetup() {
     <div className="flex flex-col">
       <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 space-y-6">
         {/* Metadata card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <div className="sc-panel p-6">
+          <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-4">
             {t('projectSetup.projectInfo')}
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-soft mb-1">
                 {t('projectSetup.projectTitle')}
               </label>
               <input
@@ -262,11 +262,11 @@ export function ProjectSetup() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={t('projectSetup.projectTitlePlaceholder')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-soft mb-1">
                 {t('projectSetup.author')}
               </label>
               <input
@@ -274,20 +274,20 @@ export function ProjectSetup() {
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
                 placeholder={t('projectSetup.authorPlaceholder')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               />
             </div>
           </div>
         </div>
 
         {/* Text input card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="sc-panel p-6">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide">
               {t('projectSetup.liturgicalText')}
             </h2>
             {hasManualEdits && (
-              <span className="text-xs text-amber-600">
+              <span className="text-xs text-warning">
                 {t('projectSetup.manualEditsWarning')}
               </span>
             )}
@@ -300,12 +300,12 @@ export function ProjectSetup() {
               setRawText(e.target.value);
             }}
             placeholder={t('projectSetup.liturgicalTextPlaceholder')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none font-mono"
+            className="w-full px-3 py-2 border border-rule rounded-lg bg-surface font-serif text-liturgical focus:ring-2 focus:ring-focus focus:border-transparent outline-none resize-none"
           />
 
           {/* Mode selector */}
           <div className="flex items-center gap-2 mt-3">
-            <span className="text-sm text-gray-500 mr-1">{t('projectSetup.modeLabel')}</span>
+            <span className="text-sm text-ink-muted mr-1">{t('projectSetup.modeLabel')}</span>
             {MODES.map((mode) => (
               <button
                 key={mode}
@@ -314,8 +314,8 @@ export function ProjectSetup() {
                 className={[
                   'px-3 py-1 rounded text-sm font-medium transition-colors',
                   hyphenationMode === mode
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
+                    ? 'bg-rubric text-on-rubric'
+                    : 'bg-surface text-ink-soft border border-rule hover:bg-ink-wash',
                 ].join(' ')}
               >
                 {t(MODE_LABELS[mode])}
@@ -325,18 +325,18 @@ export function ProjectSetup() {
         </div>
 
         {/* Syllabification result card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="sc-panel p-6">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide">
               {t('projectSetup.syllabification')}
             </h2>
             {hasManualEdits && (
-              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+              <span className="text-xs text-warning bg-orpiment-wash px-2 py-0.5 rounded">
                 {t('projectSetup.editedManually')}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 mb-2">
+          <p className="text-xs text-ink-muted mb-2">
             {t('projectSetup.syllabificationHint')}
           </p>
           <textarea
@@ -344,12 +344,12 @@ export function ProjectSetup() {
             value={syllabifiedText}
             onChange={(e) => handleSyllabifiedChange(e.target.value)}
             placeholder={t('projectSetup.syllabificationPlaceholder')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none font-mono"
+            className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none resize-none font-mono"
           />
         </div>
 
         {/* Section panel card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="sc-panel p-6">
           <SectionPanel
             words={
               hasManualEdits

@@ -99,13 +99,13 @@ export function SectionPanel({
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+        <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide">
           {t('sectionPanel.title')}
         </h2>
         {!showForm && (
           <button
             onClick={openAddForm}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            className="text-sm text-rubric hover:text-rubric font-medium"
           >
             {t('sectionPanel.add')}
           </button>
@@ -114,7 +114,7 @@ export function SectionPanel({
 
       {/* Section list */}
       {sections.length === 0 && !showForm && (
-        <p className="text-sm text-gray-400 italic">{t('sectionPanel.empty')}</p>
+        <p className="text-sm text-ink-muted italic">{t('sectionPanel.empty')}</p>
       )}
 
       {sections.length > 0 && (
@@ -122,26 +122,26 @@ export function SectionPanel({
           {sections.map((section) => (
             <li
               key={section.id}
-              className="flex items-center justify-between py-2 px-3 rounded-lg border border-gray-200 bg-gray-50"
+              className="flex items-center justify-between py-2 px-3 rounded-lg border border-rule-soft bg-parchment"
             >
               <div>
-                <span className="font-medium text-sm text-gray-800">
+                <span className="font-medium text-sm text-ink">
                   {section.name}
                 </span>
-                <span className="ml-2 text-xs text-gray-500">
+                <span className="ml-2 text-xs text-ink-muted">
                   {t('sectionPanel.wordsRange', { start: section.wordRange[0] + 1, end: section.wordRange[1] + 1 })}
                 </span>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => openEditForm(section)}
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-xs text-rubric hover:underline"
                 >
                   {t('sectionPanel.edit')}
                 </button>
                 <button
                   onClick={() => onRemove(section.id)}
-                  className="text-xs text-red-500 hover:underline"
+                  className="text-xs text-danger hover:underline"
                 >
                   {t('sectionPanel.remove')}
                 </button>
@@ -153,15 +153,15 @@ export function SectionPanel({
 
       {/* Inline form */}
       {showForm && (
-        <div className="border border-blue-200 rounded-lg p-4 bg-blue-50/30 space-y-3">
+        <div className="border border-rubric-soft rounded-lg p-4 bg-rubric-wash space-y-3">
           {words.length === 0 ? (
-            <p className="text-sm text-gray-500 italic">
+            <p className="text-sm text-ink-muted italic">
               {t('sectionPanel.addTextFirst')}
             </p>
           ) : (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-ink-soft mb-1">
                   {t('sectionPanel.name')}
                 </label>
                 <input
@@ -170,19 +170,19 @@ export function SectionPanel({
                   onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder={t('sectionPanel.namePlaceholder')}
                   autoFocus
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-soft mb-1">
                     {t('sectionPanel.startWord')}
                   </label>
                   <select
                     value={form.startIdx}
                     onChange={(e) => handleStartChange(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus outline-none"
                   >
                     {words.map((w, i) => (
                       <option key={i} value={i}>
@@ -193,7 +193,7 @@ export function SectionPanel({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-soft mb-1">
                     {t('sectionPanel.endWord')}
                   </label>
                   <select
@@ -201,7 +201,7 @@ export function SectionPanel({
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, endIdx: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus outline-none"
                   >
                     {words.slice(form.startIdx).map((w, offset) => {
                       const i = form.startIdx + offset;
@@ -220,14 +220,14 @@ export function SectionPanel({
           <div className="flex gap-2 justify-end">
             <button
               onClick={cancelForm}
-              className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-3 py-1.5 text-sm text-ink-soft border border-rule rounded-lg hover:bg-ink-wash"
             >
               {t('sectionPanel.cancel')}
             </button>
             {words.length > 0 && (
               <button
                 onClick={handleSubmit}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="px-3 py-1.5 text-sm bg-rubric text-on-rubric rounded-lg hover:bg-rubric-soft"
               >
                 {editingId !== null ? t('sectionPanel.save') : t('sectionPanel.addAction')}
               </button>
