@@ -23,6 +23,16 @@ import {
   wheelZoom,
   type ZoomAnchor,
 } from '../../lib/canvas-zoom';
+import {
+  FINE_MAX,
+  FINE_MIN,
+  FINE_STEP,
+  isRotateShortcut,
+  rotateQuarter,
+  splitRotation,
+  withFine,
+} from '../../lib/canvas-rotation';
+import { RotateCcw, RotateCw, RotateCwSquare } from 'lucide-react';
 import { isTextInput } from '../../shell/useMenuShortcuts';
 import { useTranslation } from 'react-i18next';
 
@@ -86,6 +96,7 @@ export function ImageCanvas({
   }, [image?.dataUrl]);
 
   const rot = adjustments?.rotation ?? 0;
+  const fine = splitRotation(rot).fine;
   const θ = (normalizeRotation(rot) * Math.PI) / 180;
   const absCos = Math.abs(Math.cos(θ));
   const absSin = Math.abs(Math.sin(θ));
@@ -199,6 +210,38 @@ export function ImageCanvas({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [hasImage]);
+
+  // ── Girar ──────────────────────────────────────────────────────────────────
+  const [fineOpen, setFineOpen] = useState(false);
+  const rotationRef = useRef(rot);
+  rotationRef.current = rot;
+  const updateAdjRef = useRef(onUpdateAdjustments);
+  updateAdjRef.current = onUpdateAdjustments;
+  const canRotate = !!onUpdateAdjustments;
+
+  // Ctrl+[ / Ctrl+]: gira 90°. Mesmas guardas dos atalhos de zoom.
+  useEffect(() => {
+    if (!hasImage) return;
+    function onKeyDown(e: KeyboardEvent) {
+      const action = isRotateShortcut(e);
+      if (!action || !updateAdjRef.current) return;
+      if (isTextInput(e.target) || (e.target as HTMLElement | null)?.tagName === 'SELECT') return;
+      if (document.querySelector('[role="menu"]')) return;
+      e.preventDefault();
+      updateAdjRef.current({ rotation: rotateQuarter(rotationRef.current, action === 'cw' ? 1 : -1) });
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hasImage]);
+
+  useEffect(() => {
+    if (!fineOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setFineOpen(false);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [fineOpen]);
 
   // Find the "template box" for same-size mode: first box (by lowest syllable idx) that exists
   function getTemplateBox(): SyllableBox | null {
@@ -418,6 +461,78 @@ export function ImageCanvas({
           )}
         </div>
       </div>
+
+      {/* Girar: grupo sc-zoom à esquerda do zoom (giros de 90° + endireitar). */}
+      {canRotate && (
+        <div
+          className="sc-zoom"
+          style={{ right: 112 }}
+          role="toolbar"
+          aria-label={t('imageCanvas.rotateControls')}
+        >
+          <button
+            type="button"
+            onClick={() => onUpdateAdjustments?.({ rotation: rotateQuarter(rot, -1) })}
+            title={t('imageCanvas.rotateLeft')}
+            aria-label={t('imageCanvas.rotateLeft')}
+          >
+            <RotateCcw size={16} className="mx-auto" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdateAdjustments?.({ rotation: rotateQuarter(rot, 1) })}
+            title={t('imageCanvas.rotateRight')}
+            aria-label={t('imageCanvas.rotateRight')}
+          >
+            <RotateCw size={16} className="mx-auto" aria-hidden />
+          </button>
+          <span aria-hidden style={{ minWidth: 0, width: 1, height: 16, margin: '0 3px', background: 'var(--rule)' }} />
+          <button
+            type="button"
+            onClick={() => setFineOpen((o) => !o)}
+            aria-pressed={fineOpen}
+            aria-expanded={fineOpen}
+            title={t('imageCanvas.straighten')}
+            aria-label={t('imageCanvas.straighten')}
+          >
+            <RotateCwSquare size={16} className="mx-auto" aria-hidden />
+          </button>
+          {fineOpen && (
+            <div
+              role="dialog"
+              aria-label={t('imageCanvas.straightenTitle')}
+              className="absolute bottom-full right-0 mb-2 flex items-center gap-2 whitespace-nowrap rounded-md border border-rule bg-surface-high p-2 shadow-lg"
+            >
+              <input
+                type="range"
+                min={FINE_MIN}
+                max={FINE_MAX}
+                step={FINE_STEP}
+                value={Math.max(FINE_MIN, Math.min(FINE_MAX, fine))}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (!Number.isNaN(v)) onUpdateAdjustments?.({ rotation: withFine(rot, v) });
+                }}
+                aria-label={t('imageCanvas.straightenAngle')}
+                className="w-40 accent-rubric"
+              />
+              <output className="w-12 text-right tabular-nums" aria-label={t('imageCanvas.straightenReadout')}>
+                {`${fine > 0 ? '+' : ''}${fine.toFixed(1)}°`}
+              </output>
+              <button
+                type="button"
+                className="!w-auto px-1"
+                onClick={() => onUpdateAdjustments?.({ rotation: withFine(rot, 0) })}
+                disabled={fine === 0}
+                title={t('imageCanvas.straightenReset')}
+                aria-label={t('imageCanvas.straightenReset')}
+              >
+                ×
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Controle flutuante de zoom (Parchment sc-zoom): fora do contêiner que rola. */}
       <div className="sc-zoom" role="toolbar" aria-label={t('imageCanvas.zoomControls')}>

@@ -280,5 +280,13 @@
   "imageCanvas.zoomIn": "Zoom in (Ctrl+=)",
   "imageCanvas.zoomOut": "Zoom out (Ctrl+-)",
   "imageCanvas.zoomFit": "Fit to width (Ctrl+0)",
-  "imageCanvas.zoomFitCurrent": "Fit to width (current zoom: {{zoom}})"
+  "imageCanvas.zoomFitCurrent": "Fit to width (current zoom: {{zoom}})",
+  "imageCanvas.rotateControls": "Rotate folio controls",
+  "imageCanvas.rotateLeft": "Rotate 90° left (Ctrl+[)",
+  "imageCanvas.rotateRight": "Rotate 90° right (Ctrl+])",
+  "imageCanvas.straighten": "Straighten (fine rotation)",
+  "imageCanvas.straightenTitle": "Straighten",
+  "imageCanvas.straightenAngle": "Fine angle (-10° to +10°)",
+  "imageCanvas.straightenReadout": "Fine angle",
+  "imageCanvas.straightenReset": "Reset fine angle"
 }

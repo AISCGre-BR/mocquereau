@@ -68,6 +68,75 @@ describe("ImageCanvas: zoom pela roda", () => {
   });
 });
 
+describe("ImageCanvas: controles de giro", () => {
+  function setupRot(rotation = 0) {
+    const onUpdate = vi.fn<(p: { rotation?: number }) => void>();
+    const utils = render(
+      <ImageCanvas
+        image={IMAGE}
+        syllableBoxes={{}}
+        activeSyllableIdx={null}
+        syllableRange={{ start: 0, end: 3 }}
+        gaps={[]}
+        hoveredSyllableIdx={null}
+        zoom={1}
+        panOffset={{ x: 0, y: 0 }}
+        dispatch={vi.fn()}
+        adjustments={{ brightness: 100, contrast: 100, saturation: 100, grayscale: 0, invert: false, rotation, flipH: false, flipV: false }}
+        onUpdateAdjustments={onUpdate}
+      />,
+    );
+    return { ...utils, onUpdate };
+  }
+  const key = (init: KeyboardEventInit, target: EventTarget = window) =>
+    act(() => {
+      target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+    });
+
+  it("botões giram 90° para os dois lados", () => {
+    const { getByRole, onUpdate } = setupRot(0);
+    fireEvent.click(getByRole("button", { name: /Girar 90° à direita/ }));
+    fireEvent.click(getByRole("button", { name: /Girar 90° à esquerda/ }));
+    expect(onUpdate.mock.calls.map(([p]) => p.rotation)).toEqual([90, 270]);
+  });
+
+  it("Ctrl+] / Ctrl+[ giram; ignora campo de texto e menu aberto", () => {
+    const { onUpdate } = setupRot(90);
+    key({ key: "]", ctrlKey: true });
+    key({ key: "[", ctrlKey: true });
+    expect(onUpdate.mock.calls.map(([p]) => p.rotation)).toEqual([180, 0]);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    key({ key: "]", ctrlKey: true }, input);
+    expect(onUpdate).toHaveBeenCalledTimes(2);
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    document.body.appendChild(menu);
+    key({ key: "]", ctrlKey: true });
+    expect(onUpdate).toHaveBeenCalledTimes(2);
+    menu.remove();
+    input.remove();
+  });
+
+  it("Endireitar abre o popover; slider mantém o quarto de volta; zerar e Esc", () => {
+    const { getByRole, queryByRole, onUpdate } = setupRot(92);
+    expect(queryByRole("dialog")).toBeNull();
+    fireEvent.click(getByRole("button", { name: "Endireitar (giro fino)" }));
+    expect(getByRole("dialog")).toBeTruthy();
+    fireEvent.change(getByRole("slider"), { target: { value: "-3.5" } });
+    expect(onUpdate).toHaveBeenLastCalledWith({ rotation: 86.5 });
+    fireEvent.click(getByRole("button", { name: "Zerar ângulo fino" }));
+    expect(onUpdate).toHaveBeenLastCalledWith({ rotation: 90 });
+    key({ key: "Escape" });
+    expect(queryByRole("dialog")).toBeNull();
+  });
+
+  it("sem onUpdateAdjustments não mostra os controles de giro", () => {
+    const { container } = setup(1);
+    expect(container.querySelectorAll(".sc-zoom")).toHaveLength(1);
+  });
+});
+
 describe("ImageCanvas: controle flutuante de zoom (sc-zoom)", () => {
   it("mostra a porcentagem e os botões −/+; clicar na porcentagem ajusta (100%)", () => {
     const { container, zooms, getByRole } = setup(1.5);

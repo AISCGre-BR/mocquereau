@@ -280,5 +280,13 @@
   "imageCanvas.zoomIn": "Powiększ (Ctrl+=)",
   "imageCanvas.zoomOut": "Pomniejsz (Ctrl+-)",
   "imageCanvas.zoomFit": "Dopasuj do szerokości (Ctrl+0)",
-  "imageCanvas.zoomFitCurrent": "Dopasuj do szerokości (bieżące powiększenie: {{zoom}})"
+  "imageCanvas.zoomFitCurrent": "Dopasuj do szerokości (bieżące powiększenie: {{zoom}})",
+  "imageCanvas.rotateControls": "Sterowanie obrotem karty",
+  "imageCanvas.rotateLeft": "Obróć o 90° w lewo (Ctrl+[)",
+  "imageCanvas.rotateRight": "Obróć o 90° w prawo (Ctrl+])",
+  "imageCanvas.straighten": "Wyprostuj (obrót precyzyjny)",
+  "imageCanvas.straightenTitle": "Wyprostuj",
+  "imageCanvas.straightenAngle": "Kąt precyzyjny (od −10° do +10°)",
+  "imageCanvas.straightenReadout": "Kąt precyzyjny",
+  "imageCanvas.straightenReset": "Zeruj kąt precyzyjny"
 }

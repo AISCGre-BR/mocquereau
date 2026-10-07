@@ -280,5 +280,13 @@
   "imageCanvas.zoomIn": "Vergrößern (Strg+=)",
   "imageCanvas.zoomOut": "Verkleinern (Strg+-)",
   "imageCanvas.zoomFit": "An Breite anpassen (Strg+0)",
-  "imageCanvas.zoomFitCurrent": "An Breite anpassen (aktueller Zoom: {{zoom}})"
+  "imageCanvas.zoomFitCurrent": "An Breite anpassen (aktueller Zoom: {{zoom}})",
+  "imageCanvas.rotateControls": "Drehsteuerung des Folios",
+  "imageCanvas.rotateLeft": "90° nach links drehen (Strg+[)",
+  "imageCanvas.rotateRight": "90° nach rechts drehen (Strg+])",
+  "imageCanvas.straighten": "Geraderichten (Feindrehung)",
+  "imageCanvas.straightenTitle": "Geraderichten",
+  "imageCanvas.straightenAngle": "Feinwinkel (−10° bis +10°)",
+  "imageCanvas.straightenReadout": "Feinwinkel",
+  "imageCanvas.straightenReset": "Feinwinkel zurücksetzen"
 }

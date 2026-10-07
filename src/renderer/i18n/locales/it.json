@@ -280,5 +280,13 @@
   "imageCanvas.zoomIn": "Aumenta zoom (Ctrl+=)",
   "imageCanvas.zoomOut": "Riduci zoom (Ctrl+-)",
   "imageCanvas.zoomFit": "Adatta alla larghezza (Ctrl+0)",
-  "imageCanvas.zoomFitCurrent": "Adatta alla larghezza (zoom attuale: {{zoom}})"
+  "imageCanvas.zoomFitCurrent": "Adatta alla larghezza (zoom attuale: {{zoom}})",
+  "imageCanvas.rotateControls": "Controlli di rotazione del foglio",
+  "imageCanvas.rotateLeft": "Ruota di 90° a sinistra (Ctrl+[)",
+  "imageCanvas.rotateRight": "Ruota di 90° a destra (Ctrl+])",
+  "imageCanvas.straighten": "Raddrizza (rotazione fine)",
+  "imageCanvas.straightenTitle": "Raddrizza",
+  "imageCanvas.straightenAngle": "Angolo fine (da −10° a +10°)",
+  "imageCanvas.straightenReadout": "Angolo fine",
+  "imageCanvas.straightenReset": "Azzera angolo fine"
 }
