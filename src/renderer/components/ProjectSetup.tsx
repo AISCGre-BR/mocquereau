@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { syllabifyText, type HyphenationMode } from '../lib/syllabify';
 import { useProject, createNewProject } from '../hooks/useProject';
 import { SectionPanel } from './SectionPanel';
@@ -96,7 +96,13 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   const [hyphenationMode, setHyphenationMode] = useState<HyphenationMode>(
     () => state.project?.text.hyphenationMode ?? 'sung'
   );
-  const [hasManualEdits, setHasManualEdits] = useState(false);
+  // Sílabas que não coincidem com a silabificação automática (editadas à mão aqui ou
+  // na Tabela) abrem em modo manual, para a montagem da vista não sobrescrevê-las.
+  const [hasManualEdits, setHasManualEdits] = useState<boolean>(() => {
+    const text = state.project?.text;
+    if (!text) return false;
+    return JSON.stringify(text.words) !== JSON.stringify(syllabifyText(text.raw, text.hyphenationMode));
+  });
   const [title, setTitle] = useState<string>(
     () => state.project?.meta.title ?? ''
   );
@@ -105,12 +111,23 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   );
 
   // Hyphenated text for the editable textarea
-  const [syllabifiedText, setSyllabifiedText] = useState<string>('');
+  const [syllabifiedText, setSyllabifiedText] = useState<string>(
+    () => wordsToHyphenated(state.project?.text.words ?? [])
+  );
+
+  // Só grava no projeto depois de uma edição nesta vista: montar (trocar de vista,
+  // abrir projeto) não pode marcar o projeto como editado.
+  const userEdited = useRef(false);
 
   // ── Debounce ───────────────────────────────────────────────────────────────
+  const lastRawText = useRef(rawText);
   useEffect(() => {
     // When the raw text changes, reset manual edits so auto-syllabification takes over
-    setHasManualEdits(false);
+    // (só quando o texto mudou de fato: montar a vista não descarta edições manuais).
+    if (lastRawText.current !== rawText) {
+      lastRawText.current = rawText;
+      setHasManualEdits(false);
+    }
     const timer = setTimeout(() => setDebouncedText(rawText), 300);
     return () => clearTimeout(timer);
   }, [rawText]);
@@ -131,7 +148,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
 
   // Dispatch to project state when syllabified text changes
   useEffect(() => {
-    if (!state.project) return;
+    if (!state.project || !userEdited.current) return;
     const words = hasManualEdits
       ? hyphenatedToWords(syllabifiedText)
       : autoSyllabified;
@@ -162,14 +179,33 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, author]);
 
+  // Ao sair da vista o debounce de 300 ms acima é cancelado; grava título/autor
+  // pendentes antes de desmontar.
+  const pendingMeta = useRef({ title, author });
+  pendingMeta.current = { title, author };
+  const savedMeta = useRef(state.project?.meta);
+  savedMeta.current = state.project?.meta;
+  useEffect(() => {
+    return () => {
+      const pending = pendingMeta.current;
+      const saved = savedMeta.current;
+      if (!saved || pending.title.trim() === '') return;
+      if (saved.title === pending.title && saved.author === pending.author) return;
+      dispatch({ type: 'SET_META', payload: { title: pending.title, author: pending.author } });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Syllabified text editing ──────────────────────────────────────────────
   function handleSyllabifiedChange(value: string) {
+    userEdited.current = true;
     setSyllabifiedText(value);
     setHasManualEdits(true);
   }
 
   // ── Mode change ────────────────────────────────────────────────────────────
   function handleModeChange(newMode: HyphenationMode) {
+    userEdited.current = true;
     if (hasManualEdits && newMode !== 'manual') {
       const ok = window.confirm(
         t('projectSetup.confirmDiscardManualEdits')
@@ -279,6 +315,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
 
   // ── Import Gueranger ───────────────────────────────────────────────────────
   async function handleImportGueranger() {
+    userEdited.current = true;
     const result: GuerangerExport | null =
       await window.mocquereau.importGueranger();
     if (!result) return;
@@ -420,7 +457,10 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
           <textarea
             rows={4}
             value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
+            onChange={(e) => {
+              userEdited.current = true;
+              setRawText(e.target.value);
+            }}
             placeholder={t('projectSetup.liturgicalTextPlaceholder')}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none font-mono"
           />
