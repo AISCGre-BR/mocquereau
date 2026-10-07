@@ -4,6 +4,7 @@
 // Ver NOTICE.
 // Imagens de um canal, mascaras, escolha de canal, recorte e reamostragem.
 // contrastScore e pickChannel sao porte de othmar/candidates.py.
+// Diverge de numpy/skimage: percentis e mediana saem do histograma de 256 niveis (valores inteiros), nao de np.percentile interpolado.
 import type { ChannelName, GrayImage, Mask, PxBox, RasterRGBA } from './types';
 
 /** Canal escolhido; pixels com alfa 0 viram 255 (fundo), para nunca parecerem tinta. */

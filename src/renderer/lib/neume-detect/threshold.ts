@@ -3,6 +3,7 @@
 // exclusiva de Gabriel Honorato Teixeira Bernardo, relicenciado pelo autor sob GPL-3.0-or-later.
 // Ver NOTICE.
 // Otsu global e Sauvola por imagens integrais. Porte de binarize() de othmar/candidates.py.
+// Diverge de skimage: Sauvola recorta a janela nas bordas (skimage usa padding por reflexao) e usa R = 128 (skimage: 127,5).
 import { histogram } from './image';
 import type { GrayImage, Mask } from './types';
 

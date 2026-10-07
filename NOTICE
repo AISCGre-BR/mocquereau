@@ -65,7 +65,7 @@ Code ported from related projects
    - Files: src/renderer/lib/neume-detect/ (image.ts, threshold.ts, mask.ts,
      components.ts, merge.ts, scale.ts, pipeline.ts)
    - Original license: AGPL-3.0-or-later
-   - Copyright (c) Gabriel Honorato Teixeira Bernardo (sole author)
+   - Copyright (c) 2026 Gabriel Honorato Teixeira Bernardo (sole author)
    - Relicensed by its sole author under GPL-3.0-or-later for Mocquereau.
      Ported algorithms: channel choice by contrast score, Sauvola
      binarization, dark-blob rejection, 8-connected components with
