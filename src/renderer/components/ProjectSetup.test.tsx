@@ -78,4 +78,34 @@ describe("ProjectSetup como vista", () => {
     rerender(<Harness project={project} show={false} />);
     expect(latest.project?.meta.title).toBe("Introito do Natal");
   });
+
+  it("texto litúrgico digitado e vista trocada antes de 300 ms é gravado com as sílabas", () => {
+    const project = projectWith("Puer natus est");
+    const { rerender } = render(<Harness project={project} show />);
+    fireEvent.change(screen.getByPlaceholderText(ptBR["projectSetup.liturgicalTextPlaceholder"]), {
+      target: { value: "Puer natus est nobis" },
+    });
+    rerender(<Harness project={project} show={false} />);
+    expect(latest.isDirty).toBe(true);
+    expect(latest.project?.text.raw).toBe("Puer natus est nobis");
+    expect(latest.project?.text.words).toEqual(syllabifyText("Puer natus est nobis", "sung"));
+  });
+
+  it("sílabas editadas à mão e vista trocada antes da gravação são preservadas", () => {
+    const project = projectWith("Puer natus est");
+    const { rerender } = render(<Harness project={project} show />);
+    fireEvent.change(screen.getByPlaceholderText(ptBR["projectSetup.syllabificationPlaceholder"]), {
+      target: { value: "Pu-er na-tus est" },
+    });
+    rerender(<Harness project={project} show={false} />);
+    expect(latest.project?.text.words.map((w) => w.syllables)).toEqual([["Pu", "er"], ["na", "tus"], ["est"]]);
+  });
+
+  it("sem edição, sair da vista não grava nada", () => {
+    const project = projectWith("Puer natus est");
+    const { rerender } = render(<Harness project={project} show />);
+    rerender(<Harness project={project} show={false} />);
+    expect(latest.isDirty).toBe(false);
+  });
 });
+

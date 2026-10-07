@@ -172,19 +172,40 @@ export function ProjectSetup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, author]);
 
-  // Ao sair da vista o debounce de 300 ms acima é cancelado; grava título/autor
-  // pendentes antes de desmontar.
-  const pendingMeta = useRef({ title, author });
-  pendingMeta.current = { title, author };
-  const savedMeta = useRef(state.project?.meta);
-  savedMeta.current = state.project?.meta;
+  // Ao sair da vista os debounces de 300 ms acima são cancelados; grava o que
+  // ficou pendente (título/autor, texto litúrgico e sílabas) antes de desmontar.
+  const latest = useRef({ title, author, rawText, syllabifiedText, hasManualEdits, hyphenationMode });
+  latest.current = { title, author, rawText, syllabifiedText, hasManualEdits, hyphenationMode };
+  const savedProject = useRef(state.project);
+  savedProject.current = state.project;
   useEffect(() => {
     return () => {
-      const pending = pendingMeta.current;
-      const saved = savedMeta.current;
-      if (!saved || pending.title.trim() === '') return;
-      if (saved.title === pending.title && saved.author === pending.author) return;
-      dispatch({ type: 'SET_META', payload: { title: pending.title, author: pending.author } });
+      const saved = savedProject.current;
+      if (!saved) return;
+      const pending = latest.current;
+      if (
+        pending.title.trim() !== '' &&
+        (saved.meta.title !== pending.title || saved.meta.author !== pending.author)
+      ) {
+        dispatch({ type: 'SET_META', payload: { title: pending.title, author: pending.author } });
+      }
+      if (!userEdited.current) return;
+      // Texto novo descarta as sílabas manuais (mesma regra do efeito de debounce).
+      const textChanged = pending.rawText !== saved.text.raw;
+      const words =
+        pending.hasManualEdits && !textChanged
+          ? hyphenatedToWords(pending.syllabifiedText)
+          : syllabifyText(pending.rawText, pending.hyphenationMode);
+      if (
+        textChanged ||
+        pending.hyphenationMode !== saved.text.hyphenationMode ||
+        JSON.stringify(words) !== JSON.stringify(saved.text.words)
+      ) {
+        dispatch({
+          type: 'SET_TEXT',
+          payload: { raw: pending.rawText, words, hyphenationMode: pending.hyphenationMode },
+        });
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
