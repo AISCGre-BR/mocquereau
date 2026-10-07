@@ -288,5 +288,7 @@
   "imageCanvas.straightenTitle": "Straighten",
   "imageCanvas.straightenAngle": "Fine angle (-10° to +10°)",
   "imageCanvas.straightenReadout": "Fine angle",
-  "imageCanvas.straightenReset": "Reset fine angle"
+  "imageCanvas.straightenReset": "Reset fine angle",
+  "realign.applied": "Boxes of {{count}} image(s) realigned to the image rotation.",
+  "realign.undo": "Undo"
 }

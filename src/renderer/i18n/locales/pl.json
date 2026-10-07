@@ -288,5 +288,7 @@
   "imageCanvas.straightenTitle": "Wyprostuj",
   "imageCanvas.straightenAngle": "Kąt precyzyjny (od −10° do +10°)",
   "imageCanvas.straightenReadout": "Kąt precyzyjny",
-  "imageCanvas.straightenReset": "Zeruj kąt precyzyjny"
+  "imageCanvas.straightenReset": "Zeruj kąt precyzyjny",
+  "realign.applied": "Ramki {{count}} obrazu/obrazów dopasowane do obrotu obrazu.",
+  "realign.undo": "Cofnij"
 }

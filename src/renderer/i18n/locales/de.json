@@ -288,5 +288,7 @@
   "imageCanvas.straightenTitle": "Geraderichten",
   "imageCanvas.straightenAngle": "Feinwinkel (−10° bis +10°)",
   "imageCanvas.straightenReadout": "Feinwinkel",
-  "imageCanvas.straightenReset": "Feinwinkel zurücksetzen"
+  "imageCanvas.straightenReset": "Feinwinkel zurücksetzen",
+  "realign.applied": "Rahmen von {{count}} Bild(ern) an die Bilddrehung angepasst.",
+  "realign.undo": "Rückgängig"
 }

@@ -288,5 +288,7 @@
   "imageCanvas.straightenTitle": "Enderezar",
   "imageCanvas.straightenAngle": "Ángulo fino (−10° a +10°)",
   "imageCanvas.straightenReadout": "Ángulo fino",
-  "imageCanvas.straightenReset": "Restablecer ángulo fino"
+  "imageCanvas.straightenReset": "Restablecer ángulo fino",
+  "realign.applied": "Cajas de {{count}} imagen(es) realineadas con la rotación de la imagen.",
+  "realign.undo": "Deshacer"
 }

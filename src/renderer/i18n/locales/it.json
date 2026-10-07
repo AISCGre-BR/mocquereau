@@ -288,5 +288,7 @@
   "imageCanvas.straightenTitle": "Raddrizza",
   "imageCanvas.straightenAngle": "Angolo fine (da −10° a +10°)",
   "imageCanvas.straightenReadout": "Angolo fine",
-  "imageCanvas.straightenReset": "Azzera angolo fine"
+  "imageCanvas.straightenReset": "Azzera angolo fine",
+  "realign.applied": "Riquadri di {{count}} immagine/i riallineati alla rotazione dell'immagine.",
+  "realign.undo": "Annulla"
 }

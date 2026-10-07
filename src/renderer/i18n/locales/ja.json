@@ -288,5 +288,7 @@
   "imageCanvas.straightenTitle": "傾き補正",
   "imageCanvas.straightenAngle": "微調整角度 (−10°〜+10°)",
   "imageCanvas.straightenReadout": "微調整角度",
-  "imageCanvas.straightenReset": "微調整角度をリセット"
+  "imageCanvas.straightenReset": "微調整角度をリセット",
+  "realign.applied": "{{count}} 枚の画像のボックスを画像の回転に合わせて再配置しました。",
+  "realign.undo": "元に戻す"
 }
