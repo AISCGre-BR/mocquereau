@@ -51,4 +51,42 @@ describe("SyllableText", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /prop·ter/ }));
     expect(onChange).toHaveBeenCalledWith([{ original: "propter", syllables: ["prop", "ter"] }], 0);
   });
+
+  it("opens the alternatives from the keyboard", async () => {
+    const w = [{ original: "propter", syllables: ["pro", "pter"] }];
+    const onChange = vi.fn();
+    render(
+      <SyllableText
+        raw="propter"
+        words={w}
+        onWordsChange={onChange}
+        ambiguities={new Map([[0, { sung: ["pro", "pter"], typographic: ["prop", "ter"] }]])}
+      />,
+    );
+    const word = screen.getByTestId("word-0");
+    word.focus();
+    fireEvent.keyDown(word, { key: "Enter" });
+    const current = await screen.findByRole("menuitem", { name: /pro·pter/ });
+    expect(document.activeElement).toBe(current);
+    fireEvent.keyDown(current, { key: "ArrowDown" });
+    fireEvent.keyDown(document.activeElement as Element, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith([{ original: "propter", syllables: ["prop", "ter"] }], 0);
+  });
+
+  it("closes with Escape and returns focus to the word", async () => {
+    const w = [{ original: "propter", syllables: ["pro", "pter"] }];
+    render(
+      <SyllableText
+        raw="propter"
+        words={w}
+        onWordsChange={vi.fn()}
+        ambiguities={new Map([[0, { sung: ["pro", "pter"], typographic: ["prop", "ter"] }]])}
+      />,
+    );
+    const word = screen.getByTestId("word-0");
+    fireEvent.keyDown(word, { key: "ArrowDown" });
+    fireEvent.keyDown(await screen.findByRole("menuitem", { name: /pro·pter/ }), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(word);
+  });
 });
