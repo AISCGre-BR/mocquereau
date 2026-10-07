@@ -64,7 +64,7 @@ await new Promise((resolve) => server.once("listening", resolve));
 const port = server.address().port;
 
 /** Substitui window.mocquereau (preload) por um stub com o projeto e as imagens da fixture. */
-const stub = ({ theme, data }) => {
+const stub = ({ theme, data, emptyRecent }) => {
   const toBuffer = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
   const images = new Map(data.images.map((i) => [i.imageId, i]));
   const opened = () => ({ project: data.project, filePath: "/fixture/Puer natus est.mocquereau" });
@@ -75,7 +75,26 @@ const stub = ({ theme, data }) => {
     setDirty: async () => {},
     onSaveRequested: () => () => {},
     openProjectByPath: async () => opened(),
-    getRecentFiles: async () => ["/fixture/Puer natus est.mocquereau", "/fixture/Gloria VIII.mocquereau"],
+    getRecent: async () => {
+      if (emptyRecent) return [];
+      const im = data.images[0];
+      const thumb = im ? `data:${im.mimeType};base64,${im.b64}` : undefined;
+      const meta = (title, updatedAt, withThumb) => ({
+        title, author: "André Gaby", updatedAt, thumb: withThumb ? thumb : undefined,
+        sources: data.project.sources.map((s, i) => ({ siglum: s.metadata?.siglum || `Fonte ${i + 1}`, progress: [0.96, 0.14, 0.5][i % 3] })),
+      });
+      return [
+        { path: "/fixture/Puer natus est.mocquereau", meta: meta("Puer natus est", "2026-04-27T12:00:00.000Z", true) },
+        { path: "/fixture/Dominus dixit ad me.mocquereau", meta: meta("Dominus dixit ad me", "2026-04-15T12:00:00.000Z", true) },
+        { path: "/fixture/Sanctus VIII.mocquereau", meta: meta("Sanctus VIII", "2026-04-20T12:00:00.000Z", false) },
+        { path: "/fixture/Resurrexi.mocquereau" },
+        ...["Gloria VIII", "Kyrie XI", "Credo III", "Agnus Dei", "Alleluia"].map((n, i) => ({
+          path: `/fixture/${n}.mocquereau`,
+          meta: meta(n, `2026-03-${10 + i}T12:00:00.000Z`, i % 2 === 0),
+        })),
+      ];
+    },
+    updateRecentMeta: async () => {},
     addRecentFile: async () => {},
     clearRecentFiles: async () => {},
     getTutorialSeen: async () => true,
@@ -112,6 +131,7 @@ async function openFixtureProject(page) {
 /** Telas: cada uma leva a página ao estado a capturar. Ctrl+1..4 trocam as vistas. */
 const SCREENS = {
   welcome: async () => {},
+  "welcome-empty": async () => {},
   texto: async (page) => { await openFixtureProject(page); },
   fontes: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+2"); await settle(page); },
   recortes: async (page) => {
@@ -136,7 +156,7 @@ for (const theme of THEMES) {
       const label = `${theme}-${w}x${h}-${name}`;
       page.on("pageerror", (e) => { failed = true; console.error(`[${label}] pageerror: ${e.message}`); });
       page.on("console", (m) => { if (m.type() === "error") { failed = true; console.error(`[${label}] console.error: ${m.text()}`); } });
-      await page.addInitScript(stub, { theme, data });
+      await page.addInitScript(stub, { theme, data, emptyRecent: name === "welcome-empty" });
       await page.goto(`http://localhost:${port}/index.html`);
       await settle(page, 800);
       await run(page);

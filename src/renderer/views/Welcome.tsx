@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Eraser, FolderOpen, Globe, Plus } from "lucide-react";
+import { ChevronDown, FolderOpen, Globe, Plus } from "lucide-react";
+import type { RecentEntry } from "../../shared/recent";
 import { Button } from "../ui/Button";
-import { IconButton } from "../ui/IconButton";
-import { Panel } from "../ui/Panel";
 import { MenuItem, MenuSurface, type MenuCloseReason } from "../ui/Menu";
 import { LANG_META, SUPPORTED_LANGS, languageMenuLabel, toSupportedLang } from "../i18n";
+import { RecentCard } from "./welcome/RecentCard";
+import { RecentHero } from "./welcome/RecentHero";
+import { StartChoices } from "./welcome/StartChoices";
+
+export { displayName } from "./welcome/format";
 
 export interface WelcomeProps {
   onNew: () => void;
   onOpen: () => void;
   onOpenRecent: (filePath: string) => void;
+  onOpenExample: () => void;
 }
 
-/** Nome do projeto a partir do caminho: sem pasta e sem .mocquereau(.json). */
-export function displayName(filePath: string): string {
-  const base = filePath.split(/[/\\]/).pop() ?? filePath;
-  return base.replace(/\.mocquereau(\.json)?$/i, "");
-}
+/** Uma única fileira de cartões: cabe sem rolagem em 1280x720; os mais antigos ficam em Arquivo > Abrir. */
+const MAX_CARDS = 3;
 
 /**
  * Seletor de idioma da tela inicial: troca o idioma antes de abrir qualquer projeto.
@@ -40,6 +42,7 @@ export function LanguagePicker() {
       <Button
         ref={buttonRef}
         size="sm"
+        className="text-ink-muted"
         icon={<Globe aria-hidden="true" />}
         aria-label={`${label}: ${LANG_META[current].label}`}
         aria-haspopup="menu"
@@ -54,7 +57,7 @@ export function LanguagePicker() {
         <MenuSurface
           aria-label={label}
           anchor={buttonRef.current}
-          className="absolute right-0 top-full z-[120] mt-1"
+          className="absolute bottom-full right-0 z-[120] mb-1"
           onClose={close}
         >
           {SUPPORTED_LANGS.map((lng) => (
@@ -71,84 +74,60 @@ export function LanguagePicker() {
   );
 }
 
-/** Tela sem projeto aberto. Recuperação de sessão entra na onda B. */
-export function Welcome({ onNew, onOpen, onOpenRecent }: WelcomeProps) {
+/**
+ * Tela sem projeto aberto. Com recentes: o mais recente em destaque e os demais em cartões;
+ * sem recentes: três caminhos para começar. Nada aparece até a lista chegar, para não
+ * piscar a versão vazia.
+ */
+export function Welcome({ onNew, onOpen, onOpenRecent, onOpenExample }: WelcomeProps) {
   const { t } = useTranslation();
-  const [recent, setRecent] = useState<string[]>([]);
-  const [version, setVersion] = useState("");
+  const [recent, setRecent] = useState<RecentEntry[] | null>(null);
 
   useEffect(() => {
     let alive = true;
     window.mocquereau
-      .getRecentFiles()
-      .then((files) => alive && setRecent(files))
-      .catch(() => undefined);
-    window.mocquereau
-      .getAppVersion()
-      .then((v) => alive && setVersion(v))
-      .catch(() => undefined);
+      .getRecent()
+      .then((entries) => alive && setRecent(entries))
+      .catch(() => alive && setRecent([]));
     return () => {
       alive = false;
     };
   }, []);
 
-  async function clearRecent() {
-    if (!window.confirm(t("welcome.clearRecentConfirm"))) return;
-    await window.mocquereau.clearRecentFiles();
-    setRecent([]);
-  }
+  if (recent === null) return <div className="min-h-0 flex-1" />;
+
+  const [latest, ...older] = recent;
 
   return (
-    <div className="relative grid min-h-0 flex-1 grid-cols-1 items-start gap-14 overflow-auto px-14 py-16 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-      <div className="absolute right-4 top-3">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        {latest ? (
+          <div className="mx-auto flex w-full max-w-[1080px] min-h-0 flex-1 flex-col gap-8 px-8 pt-14 pb-16">
+            <div className="flex items-center gap-2.5">
+              <h1 className="m-0 flex-1 font-serif text-wordmark font-semibold">Mocquereau</h1>
+              <Button variant="elevated" icon={<FolderOpen aria-hidden="true" />} onClick={onOpen}>
+                {t("welcome.open")}
+              </Button>
+              <Button variant="elevated" icon={<Plus aria-hidden="true" />} onClick={onNew}>
+                {t("welcome.new")}
+              </Button>
+            </div>
+            <RecentHero entry={latest} onContinue={() => onOpenRecent(latest.path)} />
+            {older.length > 0 && (
+              <div className="grid grid-cols-3 gap-6">
+                {older.slice(0, MAX_CARDS).map((entry) => (
+                  <RecentCard key={entry.path} entry={entry} onOpen={() => onOpenRecent(entry.path)} />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <StartChoices onNew={onNew} onOpen={onOpen} onOpenExample={onOpenExample} />
+        )}
+      </div>
+      <div className="absolute right-5 bottom-4">
         <LanguagePicker />
       </div>
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-3.5">
-          <span className="sc-menubar__brand m-0 h-11 w-11 rounded-[11px] text-[26px]" aria-hidden="true">
-            M
-          </span>
-          <div className="flex flex-col">
-            <h1 className="m-0 font-serif text-wordmark font-semibold">Mocquereau</h1>
-            {version && <span className="sc-num text-caption text-ink-muted">{version}</span>}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="filled" icon={<Plus aria-hidden="true" />} onClick={onNew}>
-            {t("welcome.new")}
-          </Button>
-          <Button variant="elevated" icon={<FolderOpen aria-hidden="true" />} onClick={onOpen}>
-            {t("welcome.open")}
-          </Button>
-        </div>
-      </div>
-      <Panel
-        title={t("welcome.recent")}
-        action={
-          recent.length > 0 ? (
-            <IconButton label={t("welcome.clearRecent")} icon={<Eraser aria-hidden="true" />} onClick={() => void clearRecent()} />
-          ) : undefined
-        }
-      >
-        {recent.length === 0 ? (
-          <p className="sc-empty m-0">{t("welcome.noRecent")}</p>
-        ) : (
-          <ul className="sc-list">
-            {recent.map((filePath) => (
-              <li key={filePath}>
-                <button
-                  type="button"
-                  className="sc-list__row w-full border-0 bg-transparent text-left text-ink"
-                  title={filePath}
-                  onClick={() => onOpenRecent(filePath)}
-                >
-                  <span className="sc-list__name truncate">{displayName(filePath)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
     </div>
   );
 }

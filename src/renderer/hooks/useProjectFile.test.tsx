@@ -5,11 +5,14 @@ import { act, cleanup, renderHook, screen, waitFor } from "@testing-library/reac
 import type { ReactNode } from "react";
 import { ProjectContext, createNewProject, useProject, useProjectReducer } from "./useProject";
 import { AUTOSAVE_DELAY_MS, useProjectFile } from "./useProjectFile";
+import { makeThumbnail } from "../lib/thumbnail";
 import { Toaster } from "../ui/Toast";
 import type { ManuscriptLine, MocquereauAPI, MocquereauProject } from "../lib/models";
 import type { RasterLike } from "../lib/box-frame-detect";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "../../shared/classification";
 import { blobs, boxesIn, page } from "../lib/box-frame-detect.fixtures";
+
+vi.mock("../lib/thumbnail", () => ({ makeThumbnail: vi.fn().mockResolvedValue(undefined) }));
 
 afterEach(() => {
   cleanup();
@@ -35,10 +38,20 @@ function mockApi(overrides: Partial<Record<keyof MocquereauAPI, unknown>> = {}) 
     openProject: vi.fn().mockResolvedValue(null),
     openProjectByPath: vi.fn().mockResolvedValue(null),
     importGueranger: vi.fn().mockResolvedValue(null),
+    updateRecentMeta: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   window.mocquereau = api as unknown as MocquereauAPI;
   return api;
+}
+
+function withFirstPage(p: MocquereauProject): MocquereauProject {
+  const line = {
+    id: "l1", image: { dataUrl: "data:image/png;base64,UNIQUE1", width: 10, height: 10, mimeType: "image/png" },
+    syllableRange: { start: 0, end: 1 }, dividers: [], gaps: [], syllableBoxes: {}, confirmed: false,
+  } as unknown as ManuscriptLine;
+  const source = { id: "s", order: 1, metadata: { siglum: "P", library: "", city: "", century: "", classes: [null, null, null] }, lines: [line], syllableCuts: {} };
+  return { ...p, sources: [source as never] };
 }
 
 function setup() {
@@ -107,6 +120,88 @@ describe("useProjectFile", () => {
     const { result } = setup();
     await act(async () => result.current.file.newProject());
     expect(result.current.ctx.state.project?.classification).toEqual(SUGGESTED_CLASSIFICATION);
+  });
+
+  it("sends recent meta after opening a project with a path", async () => {
+    const api = mockApi({
+      openProject: vi.fn().mockResolvedValue({ project: createNewProject("Puer", ""), filePath: "/x.mocquereau" }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await waitFor(() =>
+      expect(api.updateRecentMeta).toHaveBeenCalledWith(
+        "/x.mocquereau",
+        expect.objectContaining({ title: "Puer", sources: expect.any(Array) }),
+      ),
+    );
+  });
+
+  it("sends recent meta after a successful save", async () => {
+    const api = mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    await act(async () => {
+      await result.current.file.save();
+    });
+    await waitFor(() =>
+      expect(api.updateRecentMeta).toHaveBeenCalledWith(
+        "/pesquisa/puer.mocquereau",
+        expect.objectContaining({ sources: expect.any(Array) }),
+      ),
+    );
+  });
+
+  it("reuses the thumbnail when two saves share the same first page", async () => {
+    const mk = vi.mocked(makeThumbnail);
+    mk.mockClear();
+    mk.mockResolvedValue("data:image/jpeg;base64,CACHE");
+    const api = mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    act(() => {
+      result.current.ctx.dispatch({ type: "SET_PROJECT", payload: withFirstPage(result.current.ctx.state.project!) } as never);
+    });
+    await act(async () => {
+      await result.current.file.save();
+    });
+    await act(async () => {
+      await result.current.file.save();
+    });
+    await waitFor(() => expect(api.updateRecentMeta).toHaveBeenCalledTimes(2));
+    expect(mk).toHaveBeenCalledTimes(1);
+    mk.mockResolvedValue(undefined);
+  });
+
+  it("a project whose source has no lines array still saves without an error toast", async () => {
+    const api = mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    act(() => {
+      const p = result.current.ctx.state.project!;
+      result.current.ctx.dispatch({ type: "SET_PROJECT", payload: { ...p, sources: [{ id: "s" } as never] } } as never);
+    });
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.file.save();
+    });
+    expect(ok).toBe(true);
+    expect(api.saveProject).toHaveBeenCalled();
+    expect(screen.queryByText(/Não foi possível salvar/)).toBeNull();
+  });
+
+  it("does not send meta for a project without a path", async () => {
+    const api = mockApi({
+      openProject: vi.fn().mockResolvedValue({ project: createNewProject("Antigo", ""), filePath: null }),
+    });
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.updateRecentMeta).not.toHaveBeenCalled();
   });
 
   it("save sem arquivo pede o caminho, grava, limpa o Editado e confirma com toast", async () => {
@@ -228,6 +323,47 @@ describe("useProjectFile", () => {
     });
     expect(api.saveProject).toHaveBeenCalledWith(expect.anything(), undefined);
     expect(result.current.ctx.state.currentFilePath).toBe("/pesquisa/puer.mocquereau");
+  });
+
+  it("openExample adota o exemplo sem caminho, limpo, sem recentes e sem realinhar", async () => {
+    const opened = createNewProject("Dominus dixit ad me", "");
+    opened.classification = cloneClassification(SUGGESTED_CLASSIFICATION);
+    opened.classification[2].values.push({ id: "v-exemplo", name: "Exemplo" });
+    const loadRaster = vi.fn(async () => null);
+    const setClassification = vi.fn().mockResolvedValue(undefined);
+    const api = mockApi({
+      openExample: vi.fn().mockResolvedValue({ project: opened, filePath: null }),
+      getClassification: vi.fn().mockResolvedValue(cloneClassification(SUGGESTED_CLASSIFICATION)),
+      setClassification,
+    });
+    const { result } = renderHook(() => ({ file: useProjectFile({ loadRaster }), ctx: useProject() }), {
+      wrapper: Providers,
+    });
+    await act(async () => {
+      await result.current.file.openExample();
+    });
+    await waitFor(() => expect(setClassification).toHaveBeenCalledTimes(1));
+    // Mesma mesclagem silenciosa da abertura de arquivo: o valor do exemplo entra na biblioteca.
+    const merged = setClassification.mock.calls[0][0];
+    expect(merged[2].values.some((v: { id: string }) => v.id === "v-exemplo")).toBe(true);
+    expect(result.current.ctx.state.project?.meta.title).toBe("Dominus dixit ad me");
+    expect(result.current.ctx.state.currentFilePath).toBeNull();
+    expect(result.current.ctx.state.isDirty).toBe(false);
+    expect(result.current.ctx.history?.canUndo).toBe(false);
+    expect(loadRaster).not.toHaveBeenCalled();
+    expect(api.updateRecentMeta).not.toHaveBeenCalled();
+    expect(api.addRecentFile).not.toHaveBeenCalled();
+  });
+
+  it("openExample que falha mostra erro e mantém o projeto", async () => {
+    mockApi({ openExample: vi.fn().mockResolvedValue(null) });
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    await act(async () => {
+      await result.current.file.openExample();
+    });
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(result.current.ctx.state.project?.meta.title).toBe("Sem título");
   });
 
   it("edição feita durante o salvamento continua pendente (snapshot do ponto salvo)", async () => {

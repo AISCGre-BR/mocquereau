@@ -11,6 +11,8 @@ import type { Classification } from "../../shared/classification";
 import { useToast } from "../ui/Toast";
 import { syllabifyText } from "../lib/syllabify";
 import type { MocquereauProject } from "../lib/models";
+import { buildRecentMeta, firstPageLine } from "../lib/recent-meta";
+import { makeThumbnail } from "../lib/thumbnail";
 import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
 
 export const AUTOSAVE_DELAY_MS = 3000;
@@ -28,6 +30,8 @@ export interface ProjectFileActions {
   newProject: () => Promise<void>;
   open: () => Promise<void>;
   openRecent: (filePath: string) => Promise<void>;
+  /** Projeto de exemplo embutido: abre sem caminho, então o primeiro Salvar vira Salvar como. */
+  openExample: () => Promise<void>;
   save: () => Promise<boolean>;
   saveAs: () => Promise<boolean>;
   close: () => void;
@@ -40,6 +44,30 @@ export interface ProjectFileOptions {
   onOpened?: () => void;
   /** Decodes a line image for the legacy box realignment (tests inject a fake). */
   loadRaster?: RasterLoader;
+}
+
+/** Calcula miniatura e progresso em segundo plano e os entrega ao main (sem dispatch). */
+let thumbCache: { key: string; thumb: string } | null = null;
+
+/** Miniatura da primeira página; reaproveita a última se a imagem e os ajustes não mudaram. */
+async function thumbnailFor(project: MocquereauProject): Promise<string | undefined> {
+  const line = firstPageLine(project);
+  const dataUrl = line?.image?.dataUrl;
+  if (!line || !dataUrl) return undefined;
+  const adj = line.imageAdjustments;
+  const key = `${adj?.rotation ?? 0}|${adj?.flipH ? 1 : 0}|${adj?.flipV ? 1 : 0}|${dataUrl}`;
+  if (thumbCache?.key === key) return thumbCache.thumb;
+  const thumb = await makeThumbnail(dataUrl, undefined, adj);
+  if (thumb) thumbCache = { key, thumb };
+  return thumb;
+}
+
+function publishRecentMeta(project: MocquereauProject, filePath: string): void {
+  // Começa dentro da cadeia: qualquer erro (projeto malformado) não pode derrubar o salvamento.
+  void Promise.resolve()
+    .then(() => thumbnailFor(project))
+    .then((thumb) => window.mocquereau.updateRecentMeta(filePath, buildRecentMeta(project, thumb)))
+    .catch(() => {});
 }
 
 export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileActions {
@@ -129,10 +157,9 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
 
   /** Opened from main: a legacy .mocquereau.json comes back without a writable path. */
   const adoptOpened = useCallback(
-    async (project: MocquereauProject, filePath: string | null) => {
+    async (project: MocquereauProject, filePath: string | null, legacy = filePath === null) => {
       const seq = ++openSeq.current;
-      const ready =
-        filePath === null ? await realignLegacy(project, () => seq !== openSeq.current) : project;
+      const ready = legacy ? await realignLegacy(project, () => seq !== openSeq.current) : project;
       if (seq !== openSeq.current) return; // a newer open superseded this one
       // Valores do projeto entram na biblioteca em segundo plano: sem dispatch, o projeto não suja.
       // Leitura própria, sem fallback sugerido: se falhar, não grava (não sobrescreve a biblioteca real).
@@ -141,6 +168,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
         .then((lib) => window.mocquereau.setClassification(mergeClassification(lib, ready.classification)))
         .catch(() => {});
       adopt(ready, filePath);
+      if (filePath !== null) publishRecentMeta(ready, filePath);
     },
     [adopt, realignLegacy],
   );
@@ -172,6 +200,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
             dispatch({ type: "SET_FILE_PATH", payload: result.filePath });
           }
         }
+        publishRecentMeta(updated, result.filePath);
         if (!silent) toast.show({ kind: "ok", message: t("file.saved") });
         return true;
       } catch (err) {
@@ -215,6 +244,17 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
     [adoptOpened, confirmDiscard, t, toast],
   );
 
+  const openExample = useCallback(async () => {
+    if (!confirmDiscard()) return;
+    const result = await window.mocquereau.openExample().catch(() => null);
+    if (!result) {
+      toast.show({ kind: "error", message: t("file.exampleError") });
+      return;
+    }
+    // Sem caminho, mas não é arquivo legado: sem realinhamento de caixas (o exemplo não tem caixas).
+    await adoptOpened(result.project, result.filePath, false);
+  }, [adoptOpened, confirmDiscard, t, toast]);
+
   const close = useCallback(() => {
     if (!confirmDiscard()) return;
     docGen.current += 1;
@@ -255,5 +295,5 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
     void window.mocquereau.setDirty(state.isDirty && state.project !== null);
   }, [state.isDirty, state.project, pending]);
 
-  return { newProject, open, openRecent, save, saveAs, close, importGueranger, projectEpoch };
+  return { newProject, open, openRecent, openExample, save, saveAs, close, importGueranger, projectEpoch };
 }

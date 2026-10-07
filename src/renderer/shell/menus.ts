@@ -32,6 +32,8 @@ export interface MenuActions {
   setLanguage: (lng: SupportedLang) => void;
   openWebsite: () => void;
   reportIssue: () => void;
+  openExample: () => void;
+  clearRecent: () => void;
 }
 
 const THEMES: readonly ThemePreference[] = ["system", "light", "dark"];
@@ -81,6 +83,12 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         { id: "file.exportDocx", label: t("shell.file.exportDocx"), accelerator: "Ctrl+E", disabled: !state.canExport, onSelect: actions.exportDocx },
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },
+        ...(noProject
+          ? ([
+              "separator",
+              { id: "file.clearRecent", label: t("shell.file.clearRecent"), onSelect: actions.clearRecent },
+            ] satisfies MenuEntry[])
+          : []),
       ],
     },
     {
@@ -129,6 +137,7 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
       id: "help",
       label: t("shell.menu.help"),
       items: [
+        { id: "help.openExample", label: t("shell.help.openExample"), onSelect: actions.openExample },
         { id: "help.website", label: t("shell.help.website"), onSelect: actions.openWebsite },
         { id: "help.reportIssue", label: t("shell.help.reportIssue"), onSelect: actions.reportIssue },
       ],
