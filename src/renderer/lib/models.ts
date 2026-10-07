@@ -1,5 +1,7 @@
 // src/renderer/lib/models.ts
 
+import type { BoxFrame } from "@shared/project-schema";
+
 /** Imagem armazenada localmente */
 export interface StoredImage {
   /** Data URL (base64) da imagem — blob URLs são session-scoped e não serializáveis */
@@ -10,6 +12,12 @@ export interface StoredImage {
   height: number;
   /** Tipo MIME (ex.: "image/png", "image/jpeg") */
   mimeType: string;
+  /**
+   * SHA-256 of the bytes stored in the main-process session (wave A2).
+   * Informative only: dataUrl stays the renderer's source of truth until wave B.
+   * Never trust it when dataUrl is present (spreads may keep a stale id).
+   */
+  imageId?: string;
 }
 
 export interface SyllabifiedWord {
@@ -116,6 +124,13 @@ export interface ManuscriptLine {
   /** Ajustes visuais aplicados em render (CSS filter + transform).
    *  Phase 10 / IMG-06. Opcional — ausência = todos default (sem ajuste). */
   imageAdjustments?: ImageAdjustments;
+
+  /**
+   * Frame the syllableBoxes are expressed in (spec R1). Absent means
+   * "same as imageAdjustments" (rotation/flip). The reducer keeps it in sync
+   * by remapping boxes whenever rotation or flips change (spec R2).
+   */
+  boxFrame?: BoxFrame;
 
   /** Se os recortes desta linha já foram confirmados */
   confirmed: boolean;
