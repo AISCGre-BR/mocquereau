@@ -2,7 +2,7 @@
 import "../i18n";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { SliceEditor } from "./SliceEditor";
+import { SliceEditor, isOutsideEditorKeys } from "./SliceEditor";
 import { ProjectContext, createNewProject, initialStateForTest, useProjectReducer } from "../hooks/useProject";
 import { syllabifyText } from "../lib/syllabify";
 import type { MocquereauProject, ManuscriptSource } from "../lib/models";
@@ -82,3 +82,44 @@ describe("SliceEditor: sync de caixas ao sair da vista", () => {
     expect(dispatch.mock.calls.filter(([a]) => a.type === "UPDATE_LINE_BOXES")).toHaveLength(0);
   });
 });
+
+describe("SliceEditor: teclas globais não roubam as da casca", () => {
+  it("isOutsideEditorKeys reconhece menus, toolbar, diálogo, abas, botões e selects", () => {
+    document.body.innerHTML = `
+      <div role="menubar"><span id="m">Arquivo</span></div>
+      <div role="toolbar"><span id="tb">x</span></div>
+      <div role="dialog"><span id="d">x</span></div>
+      <div role="tablist"><span id="tl">x</span></div>
+      <div role="menu"><div id="mi">x</div></div>
+      <button id="b">ok</button><select id="s"></select>
+      <div id="canvas"></div>`;
+    for (const id of ["m", "tb", "d", "tl", "mi", "b", "s"]) {
+      expect(isOutsideEditorKeys(document.getElementById(id)!)).toBe(true);
+    }
+    expect(isOutsideEditorKeys(document.getElementById("canvas")!)).toBe(false);
+    document.body.innerHTML = "";
+  });
+
+  it.each([
+    ["item de menu", () => { const m = document.createElement("div"); m.setAttribute("role", "menu"); const i = document.createElement("div"); i.setAttribute("role", "menuitem"); m.appendChild(i); return i; }],
+    ["botão focado", () => document.createElement("button")],
+  ])("Delete num %s não apaga a caixa ativa", (_label, make) => {
+    const dispatch = vi.fn<(action: ProjectAction) => void>();
+    const state = { ...initialStateForTest, project: projectWithBox() };
+    const { unmount } = render(
+      <ProjectContext.Provider value={{ state, dispatch }}>
+        <SliceEditor />
+      </ProjectContext.Provider>,
+    );
+    const el = make();
+    document.body.appendChild(el.closest("[role=menu]") ?? el);
+    act(() => {
+      fireEvent.keyDown(el, { key: "Delete" });
+      fireEvent.keyDown(el, { key: "ArrowRight" });
+    });
+    unmount();
+    expect(dispatch.mock.calls.filter(([a]) => a.type === "UPDATE_LINE_BOXES")).toHaveLength(0);
+    (el.closest("[role=menu]") ?? el).remove();
+  });
+});
+

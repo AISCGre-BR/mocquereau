@@ -36,6 +36,14 @@ function computeCoveredSyllables(source: ManuscriptSource, excludeLineId: string
 
 // ── SliceEditor ──────────────────────────────────────────────────────────────
 
+/** Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas). */
+export function isOutsideEditorKeys(target: Element): boolean {
+  if (target.tagName === 'BUTTON' || target.tagName === 'SELECT') return true;
+  return (
+    target.closest('[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist]') !== null
+  );
+}
+
 export function SliceEditor() {
   const { state: globalState, dispatch: globalDispatch } = useProject();
   const { t } = useTranslation();
@@ -491,6 +499,10 @@ export function SliceEditor() {
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return;
       }
+      // Teclas da casca e de controles nativos ficam com eles: menus, barra de
+      // ferramentas, abas de vista e diálogos navegam com setas/Tab/Enter, e um
+      // botão ou select focado responde a Enter/setas por conta própria.
+      if (target instanceof Element && isOutsideEditorKeys(target)) return;
       const { editorState: es, editorDispatch: ed, navigateSource: ns, navigateLines: nl } = keyHandlerStateRef.current;
       const range = es.syllableRange;
       if (!range) return;
