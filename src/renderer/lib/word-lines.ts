@@ -9,6 +9,7 @@ export function wordLines(raw: string, wordCount: number): number[][] {
   for (const line of raw.split(/\r?\n/)) {
     if (!line.trim()) continue;
     const count = line.trim().split(/\s+/).filter((t) => LETTER_RE.test(t)).length;
+    if (count === 0) continue; // linha só com sinais (—, *, números): nenhuma palavra
     const indices: number[] = [];
     for (let i = 0; i < count; i++) indices.push(next++);
     lines.push(indices);

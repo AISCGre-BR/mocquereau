@@ -26,19 +26,22 @@ export function modeSample(raw: string): Record<SampleMode, SampleWord[]> {
     byMode[mode] = syllabifyText(raw, mode).map((w) => w.syllables);
   }
   const sung = byMode.sung;
-  const differsAt = (i: number): boolean =>
-    SAMPLE_MODES.some((m) => m !== "sung" && !same(byMode[m][i] ?? [], sung[i] ?? []));
+  const differsIn = (m: SampleMode, i: number): boolean => !same(byMode[m][i] ?? [], sung[i] ?? []);
+  const differsAt = (i: number): boolean => SAMPLE_MODES.some((m) => m !== "sung" && differsIn(m, i));
 
+  // A escolha principal é entre os dois modos litúrgicos: primeiro a linha onde eles
+  // divergem; senão, qualquer divergência; senão, as primeiras palavras.
   const lines = wordLines(raw, sung.length);
   const picked =
+    lines.find((idx) => idx.some((i) => differsIn("liturgical-typographic", i))) ??
     lines.find((idx) => idx.some(differsAt)) ??
     Array.from({ length: Math.min(FALLBACK_WORDS, sung.length) }, (_, i) => i);
 
   const out = {} as Record<SampleMode, SampleWord[]>;
   for (const mode of SAMPLE_MODES) {
     out[mode] = picked.map((i) => ({
-      syllables: byMode[mode][i],
-      differs: mode !== "sung" && !same(byMode[mode][i], sung[i]),
+      syllables: byMode[mode][i] ?? [],
+      differs: mode !== "sung" && differsIn(mode, i),
     }));
   }
   return out;

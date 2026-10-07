@@ -5,12 +5,24 @@ const GLORIA =
   "Glória in excélsis Deo\nGrátias ágimus tibi propter magnam glóriam tuam\nDómine Deus, Rex caeléstis";
 
 describe("modeSample", () => {
-  it("picks the first line with a divergence and flags words that differ from sung", () => {
+  it("prefers the first line where sung and typographic differ and flags words that differ from sung", () => {
     const s = modeSample(GLORIA);
-    expect(s.sung.map((w) => w.syllables.join("-"))[0]).toBe("Gló-ri-a");
-    // first line already diverges (classical: Gló-ria)
-    expect(s.classical[0]).toEqual({ syllables: ["Gló", "ria"], differs: true });
+    // the first line diverges only in classical/modern (Gló-ria); the second has pro-pter / prop-ter
+    expect(s.sung.map((w) => w.syllables.join("-"))[0]).toBe("Grá-ti-as");
+    const propter = s.sung.findIndex((w) => w.syllables.join("") === "propter");
+    expect(s.sung[propter].syllables).toEqual(["pro", "pter"]);
+    expect(s["liturgical-typographic"][propter]).toEqual({ syllables: ["prop", "ter"], differs: true });
     expect(s.sung.every((w) => !w.differs)).toBe(true);
+  });
+  it("without a sung/typographic divergence picks the first line with any divergence", () => {
+    const s = modeSample("in te\nGlória in excélsis Deo");
+    expect(s.sung.map((w) => w.syllables.join("-"))[0]).toBe("Gló-ri-a");
+    expect(s.classical[0]).toEqual({ syllables: ["Gló", "ria"], differs: true });
+  });
+  it("returns empty samples for an empty text", () => {
+    const s = modeSample("");
+    expect(s.sung).toEqual([]);
+    expect(s.classical).toEqual([]);
   });
   it("falls back to the first 12 words when no mode diverges", () => {
     const raw = "in ad me es tu te in ad me es tu te in ad";
