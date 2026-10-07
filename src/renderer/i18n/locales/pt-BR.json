@@ -261,6 +261,7 @@
   "newProject.change": "Alterar",
   "newProject.continue": "Continuar",
   "newProject.cancel": "Cancelar",
+  "newProject.confirmCancel": "Descartar o projeto em criação?",
   "newProject.create": "Criar projeto",
   "newProject.hint.text": "Cole o texto como está no livro. Acentos e pontuação são mantidos.",
   "newProject.hint.division": "Um trecho do seu texto em cada opção. As diferenças estão marcadas.",

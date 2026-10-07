@@ -261,6 +261,7 @@
   "newProject.change": "Zmień",
   "newProject.continue": "Dalej",
   "newProject.cancel": "Anuluj",
+  "newProject.confirmCancel": "Odrzucić tworzony projekt?",
   "newProject.create": "Utwórz projekt",
   "newProject.hint.text": "Wklej tekst tak, jak jest w księdze. Akcenty i interpunkcja są zachowane.",
   "newProject.hint.division": "Fragment twojego tekstu w każdej opcji. Różnice są zaznaczone.",

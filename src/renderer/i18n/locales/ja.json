@@ -261,6 +261,7 @@
   "newProject.change": "変更",
   "newProject.continue": "続ける",
   "newProject.cancel": "キャンセル",
+  "newProject.confirmCancel": "作成中のプロジェクトを破棄しますか？",
   "newProject.create": "プロジェクトを作成",
   "newProject.hint.text": "本に書かれているとおりにテキストを貼り付けてください。アクセントと句読点は保持されます。",
   "newProject.hint.division": "各オプションにテキストの一部を表示します。違いは強調表示されています。",

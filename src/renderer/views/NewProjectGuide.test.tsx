@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { NewProjectGuide } from "./NewProjectGuide";
 import { syllabifyText } from "../lib/syllabify";
+import ptBR from "../i18n/locales/pt-BR.json";
 
 afterEach(cleanup);
 
@@ -120,6 +121,28 @@ describe("NewProjectGuide", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onCancel).toHaveBeenCalledTimes(2);
+  });
+
+  it("Esc typed in a field or while composing does not cancel", () => {
+    const onCancel = vi.fn();
+    render(<NewProjectGuide onCancel={onCancel} onCreate={vi.fn()} />);
+    fireEvent.keyDown(screen.getByPlaceholderText("Título da peça"), { key: "Escape" });
+    fireEvent.keyDown(window, { key: "Escape", isComposing: true });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("Esc with a draft asks before cancelling", () => {
+    const onCancel = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<NewProjectGuide onCancel={onCancel} onCreate={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText("Título da peça"), { target: { value: "Gloria VIII" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(confirm).toHaveBeenCalledWith(ptBR["newProject.confirmCancel"]);
+    expect(onCancel).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
   });
 
   it("Esc that closes the alternatives menu does not cancel", async () => {

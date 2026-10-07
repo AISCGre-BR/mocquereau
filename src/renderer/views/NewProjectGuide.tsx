@@ -9,6 +9,7 @@ import { Input, Textarea } from "../ui/Field";
 import { Step, type StepState } from "../components/new-project/Step";
 import { ModeOptions, modeName } from "../components/new-project/ModeOptions";
 import { SyllableText } from "../components/texto/SyllableText";
+import { isTextInput } from "../shell/useMenuShortcuts";
 
 export interface NewProjectGuideProps {
   onCancel(): void;
@@ -48,10 +49,20 @@ export function NewProjectGuide({ onCancel, onCreate }: NewProjectGuideProps) {
 
   const onCancelRef = useRef(onCancel);
   onCancelRef.current = onCancel;
+  /** Há algo no rascunho que o Esc jogaria fora. */
+  const hasDraft = title.trim() !== "" || author.trim() !== "" || raw.trim() !== "";
+  const hasDraftRef = useRef(hasDraft);
+  hasDraftRef.current = hasDraft;
+  const confirmText = t("newProject.confirmCancel");
+  const confirmTextRef = useRef(confirmText);
+  confirmTextRef.current = confirmText;
   useEffect(() => {
     // Esc já tratado (menu de divisões, menus da janela) chega com defaultPrevented.
+    // Num campo de texto (ou compondo um acento) o Esc é da digitação, não do guia.
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape" && !e.defaultPrevented) onCancelRef.current();
+      if (e.key !== "Escape" || e.defaultPrevented || e.isComposing || isTextInput(e.target)) return;
+      if (hasDraftRef.current && !window.confirm(confirmTextRef.current)) return;
+      onCancelRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

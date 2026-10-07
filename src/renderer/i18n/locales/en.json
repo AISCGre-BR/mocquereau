@@ -261,6 +261,7 @@
   "newProject.change": "Change",
   "newProject.continue": "Continue",
   "newProject.cancel": "Cancel",
+  "newProject.confirmCancel": "Discard the project being created?",
   "newProject.create": "Create project",
   "newProject.hint.text": "Paste the text as it appears in the book. Accents and punctuation are kept.",
   "newProject.hint.division": "A passage of your text in each option. The differences are marked.",
