@@ -84,7 +84,10 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },
         ...(noProject
-          ? ([{ id: "file.clearRecent", label: t("shell.file.clearRecent"), onSelect: actions.clearRecent }] satisfies MenuEntry[])
+          ? ([
+              "separator",
+              { id: "file.clearRecent", label: t("shell.file.clearRecent"), onSelect: actions.clearRecent },
+            ] satisfies MenuEntry[])
           : []),
       ],
     },

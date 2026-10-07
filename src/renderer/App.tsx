@@ -104,7 +104,10 @@ function Workbench() {
       openExample: () => void file.openExample(),
       clearRecent: () => {
         if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
-        void window.mocquereau.clearRecentFiles().then(() => setWelcomeKey((k) => k + 1));
+        void window.mocquereau
+          .clearRecentFiles()
+          .catch(() => {})
+          .then(() => setWelcomeKey((k) => k + 1));
       },
     },
     (key) => t(key),

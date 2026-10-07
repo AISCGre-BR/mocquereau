@@ -70,13 +70,13 @@ describe("Welcome", () => {
     expect(onOpenRecent).toHaveBeenCalledWith("/x/Dominus dixit.mocquereau");
   });
 
-  it("shows at most 6 cards besides the hero", async () => {
+  it("shows at most 3 cards (one row) besides the hero", async () => {
     const entries = Array.from({ length: 9 }, (_, i) => ENTRY(`/p/Proj ${i}.mocquereau`));
     mockApi({ getRecent: vi.fn().mockResolvedValue(entries) });
     renderWelcome();
     await screen.findByRole("button", { name: /Proj 1/ });
-    expect(screen.getByRole("button", { name: /Proj 6/ })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Proj 7/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Proj 3/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Proj 4/ })).toBeNull();
   });
 
   it("omits an unparseable date", async () => {

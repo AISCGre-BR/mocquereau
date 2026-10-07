@@ -88,6 +88,10 @@ const stub = ({ theme, data, emptyRecent }) => {
         { path: "/fixture/Dominus dixit ad me.mocquereau", meta: meta("Dominus dixit ad me", "2026-04-15T12:00:00.000Z", true) },
         { path: "/fixture/Sanctus VIII.mocquereau", meta: meta("Sanctus VIII", "2026-04-20T12:00:00.000Z", false) },
         { path: "/fixture/Resurrexi.mocquereau" },
+        ...["Gloria VIII", "Kyrie XI", "Credo III", "Agnus Dei", "Alleluia"].map((n, i) => ({
+          path: `/fixture/${n}.mocquereau`,
+          meta: meta(n, `2026-03-${10 + i}T12:00:00.000Z`, i % 2 === 0),
+        })),
       ];
     },
     updateRecentMeta: async () => {},

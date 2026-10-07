@@ -18,7 +18,8 @@ export interface WelcomeProps {
   onOpenExample: () => void;
 }
 
-const MAX_CARDS = 6;
+/** Uma única fileira de cartões: cabe sem rolagem em 1280x720; os mais antigos ficam em Arquivo > Abrir. */
+const MAX_CARDS = 3;
 
 /**
  * Seletor de idioma da tela inicial: troca o idioma antes de abrir qualquer projeto.
