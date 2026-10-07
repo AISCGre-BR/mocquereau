@@ -45,20 +45,35 @@ async function writeState(state: AppState): Promise<void> {
   await writeFileAtomic(path, JSON.stringify(state, null, 2));
 }
 
+/**
+ * Todas as mutações (ler-modificar-gravar) passam por esta cadeia, para que
+ * handlers concorrentes não percam entradas uns dos outros.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+function mutate(fn: (state: AppState) => boolean | void | Promise<boolean | void>): Promise<void> {
+  const run = queue.then(async () => {
+    const state = await readState();
+    if ((await fn(state)) === false) return;
+    await writeState(state);
+  });
+  queue = run.catch(() => {});
+  return run;
+}
+
 /** Adds a path to the top of the recent list; ignores null/empty (legacy opens). */
 export async function addRecentFile(filePath: unknown): Promise<void> {
-  const state = await readState();
-  const next = withRecentEntry(state.recent, filePath);
-  if (next === state.recent) return;
-  state.recent = next;
-  await writeState(state);
+  await mutate((state) => {
+    const next = withRecentEntry(state.recent, filePath);
+    if (next === state.recent) return false;
+    state.recent = next;
+  });
 }
 
 /** Legacy -> package migration: the new file takes the legacy file's place. */
 export async function replaceRecentFile(oldPath: string, newPath: string): Promise<void> {
-  const state = await readState();
-  state.recent = replaceRecentEntry(state.recent, oldPath, newPath);
-  await writeState(state);
+  await mutate((state) => {
+    state.recent = replaceRecentEntry(state.recent, oldPath, newPath);
+  });
 }
 
 export function registerAppStateHandlers(): void {
@@ -69,11 +84,11 @@ export function registerAppStateHandlers(): void {
   });
 
   ipcMain.handle('app:update-recent-meta', async (_event, filePath: unknown, meta: unknown) => {
-    const state = await readState();
-    const next = setRecentMeta(state.recent, filePath, meta);
-    if (next === state.recent) return;
-    state.recent = next;
-    await writeState(state);
+    await mutate((state) => {
+      const next = setRecentMeta(state.recent, filePath, meta);
+      if (next === state.recent) return false;
+      state.recent = next;
+    });
   });
 
   ipcMain.handle('app:add-recent-file', async (_event, filePath: unknown) => {
@@ -81,9 +96,9 @@ export function registerAppStateHandlers(): void {
   });
 
   ipcMain.handle('app:clear-recent-files', async () => {
-    const state = await readState();
-    state.recent = [];
-    await writeState(state);
+    await mutate((state) => {
+      state.recent = [];
+    });
   });
 
   ipcMain.handle('app:get-tutorial-seen', async (): Promise<boolean> => {
@@ -92,9 +107,9 @@ export function registerAppStateHandlers(): void {
   });
 
   ipcMain.handle('app:set-tutorial-seen', async (_event, seen: boolean) => {
-    const state = await readState();
-    state.tutorialSeen = !!seen;
-    await writeState(state);
+    await mutate((state) => {
+      state.tutorialSeen = !!seen;
+    });
   });
 
   ipcMain.handle('app:get-version', async (): Promise<string> => {
