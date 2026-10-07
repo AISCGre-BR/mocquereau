@@ -289,8 +289,6 @@
   "imageCanvas.straightenAngle": "Angolo fine (da −10° a +10°)",
   "imageCanvas.straightenReadout": "Angolo fine",
   "imageCanvas.straightenReset": "Azzera angolo fine",
-  "realign.applied": "Riquadri di {{count}} immagine/i riallineati alla rotazione dell'immagine.",
-  "realign.undo": "Annulla",
   "realign.open": "Riallinea riquadri…",
   "realign.title": "Riallinea riquadri",
   "realign.hint": "Scegli il riferimento in cui sono stati disegnati i riquadri. Il punteggio è l'inchiostro dentro i riquadri; il più alto di solito è quello giusto.",

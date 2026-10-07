@@ -289,8 +289,6 @@
   "imageCanvas.straightenAngle": "微調整角度 (−10°〜+10°)",
   "imageCanvas.straightenReadout": "微調整角度",
   "imageCanvas.straightenReset": "微調整角度をリセット",
-  "realign.applied": "{{count}} 枚の画像のボックスを画像の回転に合わせて再配置しました。",
-  "realign.undo": "元に戻す",
   "realign.open": "ボックスを再配置…",
   "realign.title": "ボックスを再配置",
   "realign.hint": "ボックスを描いたときの向きを選んでください。スコアはボックス内のインク量で、最も高いものが通常正解です。",
