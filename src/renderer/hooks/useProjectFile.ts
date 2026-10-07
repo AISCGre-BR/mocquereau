@@ -35,6 +35,12 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
   const onOpenedRef = useRef(options.onOpened);
   onOpenedRef.current = options.onOpened;
   const lastAutosaveError = useRef<string | null>(null);
+  /**
+   * Geração do documento: muda quando o projeto é trocado (adopt) ou fechado. Um
+   * salvamento que termina depois disso não pode marcar o novo projeto como salvo
+   * nem vinculá-lo ao arquivo do anterior. (pending.epoch() não serve: Desfazer o muda.)
+   */
+  const docGen = useRef(0);
 
   /**
    * Grava as edições pendentes das vistas (debounces de 300 ms) e re-renderiza na
@@ -62,6 +68,7 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
 
   const adopt = useCallback(
     (project: MocquereauProject, filePath: string | null) => {
+      docGen.current += 1;
       dispatch({ type: "SET_PROJECT", payload: project });
       dispatch({ type: "SET_FILE_PATH", payload: filePath });
       replaceDocument();
@@ -80,6 +87,7 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
       const snapshot = s.project;
       const updated = { ...snapshot, meta: { ...snapshot.meta, updatedAt: new Date().toISOString() } };
       const currentPath = s.currentFilePath ?? undefined;
+      const gen = docGen.current;
       try {
         // Arquivo legado aberto tem filePath null: "Salvar" vira "Salvar como" para .mocquereau
         // (decidido no main, que também confirma sobrescrita e registra o recente).
@@ -89,9 +97,13 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
             : await window.mocquereau.saveProject(updated, currentPath);
         if (!result) return false; // diálogo cancelado ou erro já mostrado pelo main
         lastAutosaveError.current = null;
-        dispatch({ type: "SAVE_SUCCESS", payload: { project: snapshot } });
-        if (result.filePath !== stateRef.current.currentFilePath) {
-          dispatch({ type: "SET_FILE_PATH", payload: result.filePath });
+        // Documento trocado durante a gravação: o arquivo foi gravado, mas o
+        // resultado não pertence ao projeto atual.
+        if (gen === docGen.current) {
+          dispatch({ type: "SAVE_SUCCESS", payload: { project: snapshot } });
+          if (result.filePath !== stateRef.current.currentFilePath) {
+            dispatch({ type: "SET_FILE_PATH", payload: result.filePath });
+          }
         }
         if (!silent) toast.show({ kind: "ok", message: t("file.saved") });
         return true;
@@ -137,6 +149,7 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
 
   const close = useCallback(() => {
     if (!confirmDiscard()) return;
+    docGen.current += 1;
     dispatch({ type: "RESET" });
     replaceDocument();
   }, [confirmDiscard, dispatch, replaceDocument]);

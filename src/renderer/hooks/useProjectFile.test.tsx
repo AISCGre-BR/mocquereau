@@ -191,6 +191,106 @@ describe("useProjectFile", () => {
     expect(result.current.ctx.state.isDirty).toBe(true);
   });
 
+  it("salvamento de A que termina depois do Novo projeto não vincula o novo projeto ao arquivo de A", async () => {
+    vi.useFakeTimers();
+    let resolveSave: (v: { filePath: string }) => void = () => undefined;
+    const saveProject = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((r) => (resolveSave = r)))
+      .mockResolvedValue({ filePath: "/a.mocquereau" });
+    mockApi({
+      saveProject,
+      openProjectByPath: vi.fn().mockResolvedValue({ project: createNewProject("A", ""), filePath: "/a.mocquereau" }),
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.openRecent("/a.mocquereau");
+    });
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "edição" } }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
+    });
+    expect(saveProject).toHaveBeenCalledTimes(1);
+    act(() => result.current.file.newProject());
+    await act(async () => {
+      resolveSave({ filePath: "/a.mocquereau" });
+      await Promise.resolve();
+    });
+    expect(result.current.ctx.state.project?.meta.title).toBe("Sem título");
+    expect(result.current.ctx.state.currentFilePath).toBeNull();
+    expect(result.current.ctx.state.isDirty).toBe(false);
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "novo" } }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS * 2);
+    });
+    expect(saveProject).toHaveBeenCalledTimes(1);
+    expect(result.current.ctx.state.isDirty).toBe(true);
+  });
+
+  it("salvamento de A que termina depois de abrir B (recente) não toca o caminho nem o estado de B", async () => {
+    vi.useFakeTimers();
+    let resolveSave: (v: { filePath: string }) => void = () => undefined;
+    const saveProject = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((r) => (resolveSave = r)))
+      .mockImplementation(async (_p: unknown, path?: string) => ({ filePath: path }));
+    const openProjectByPath = vi
+      .fn()
+      .mockResolvedValueOnce({ project: createNewProject("A", ""), filePath: "/a.mocquereau" })
+      .mockResolvedValueOnce({ project: createNewProject("B", ""), filePath: "/b.mocquereau" });
+    mockApi({ saveProject, openProjectByPath });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.openRecent("/a.mocquereau");
+    });
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "edição" } }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
+    });
+    expect(saveProject).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await result.current.file.openRecent("/b.mocquereau");
+    });
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "edição em B" } }));
+    await act(async () => {
+      resolveSave({ filePath: "/a.mocquereau" });
+      await Promise.resolve();
+    });
+    expect(result.current.ctx.state.project?.meta.title).toBe("B");
+    expect(result.current.ctx.state.currentFilePath).toBe("/b.mocquereau");
+    // A edição em B continua pendente: o "salvo" de A não a limpa.
+    expect(result.current.ctx.state.isDirty).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS + 10);
+    });
+    expect(saveProject).toHaveBeenCalledTimes(2);
+    expect(saveProject.mock.calls[1][0].meta.title).toBe("B");
+    expect(saveProject.mock.calls[1][1]).toBe("/b.mocquereau");
+  });
+
+  it("salvamento que termina depois de Fechar projeto não reabre caminho", async () => {
+    let resolveSave: (v: { filePath: string }) => void = () => undefined;
+    mockApi({ saveProject: vi.fn(() => new Promise((r) => (resolveSave = r))) });
+    const { result } = setup();
+    act(() => result.current.file.newProject());
+    let saving: Promise<boolean> = Promise.resolve(false);
+    act(() => {
+      saving = result.current.file.save();
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    act(() => result.current.file.close());
+    let ok = false;
+    await act(async () => {
+      resolveSave({ filePath: "/x.mocquereau" });
+      ok = await saving;
+    });
+    expect(ok).toBe(true);
+    expect(result.current.ctx.state.project).toBeNull();
+    expect(result.current.ctx.state.currentFilePath).toBeNull();
+  });
+
   it("com alterações, Novo projeto pergunta e respeita o Cancelar", () => {
     mockApi();
     const { result } = setup();
