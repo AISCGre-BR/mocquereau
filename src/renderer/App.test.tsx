@@ -103,14 +103,27 @@ describe("App", () => {
     }
   });
 
-  it("criar projeto e só trocar de vista não marca '— Editado'", async () => {
+  it("projeto criado com texto marca '— Editado' (ainda não está em arquivo); trocar de vista não cria passo", async () => {
     render(<App />);
     await createViaGuide();
     await wait(350);
+    expect(screen.getByText("— Editado")).toBeTruthy();
     ctrl("4");
     ctrl("1");
     await wait(350);
-    expect(screen.queryByText("— Editado")).toBeNull();
+    // Nada a desfazer: trocar de vista não editou o projeto.
+    ctrl("z");
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Sem título");
+    expect(screen.getByText("— Editado")).toBeTruthy();
+  });
+
+  it("abrir outro logo depois de criar pelo guia pergunta antes de descartar", async () => {
+    render(<App />);
+    await createViaGuide();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    ctrl("o");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(window.mocquereau.openProject).not.toHaveBeenCalled();
   });
 
   it("Novo projeto abre o guia sem toolbar, com o título da janela; Cancelar volta à tela inicial", async () => {
@@ -154,6 +167,7 @@ describe("App", () => {
       .mockResolvedValue({ project: createNewProject("Sanctus VIII", "Solesmes"), filePath: "/p/sanctus.mocquereau.json" });
     render(<App />);
     await createViaGuide();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     ctrl("4");
     ctrl("o");
     expect(await screen.findByDisplayValue("Sanctus VIII")).toBeTruthy();
@@ -172,7 +186,8 @@ describe("App", () => {
     expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Puer natus est");
     ctrl("z");
     expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Sem título");
-    expect(screen.queryByText("— Editado")).toBeNull();
+    // O projeto criado pelo guia continua editado: nunca foi gravado.
+    expect(screen.getByText("— Editado")).toBeTruthy();
     fireEvent.keyDown(window, { key: "y", ctrlKey: true });
     expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Puer natus est");
   });
@@ -199,7 +214,6 @@ describe("App", () => {
     await finishGuide();
     await wait(350);
     expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Sem título");
-    expect(screen.queryByText("— Editado")).toBeNull();
   });
 
   it("caixa movida no Recortes e Ctrl+N antes de 300 ms: pergunta antes de descartar", async () => {
