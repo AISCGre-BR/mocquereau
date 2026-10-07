@@ -83,7 +83,7 @@ export function upgradeRawToV3(raw: Obj, warnings: string[]): void {
     }
 
     const folio = typeof m.folio === "string" ? m.folio.trim() : "";
-    delete m.folio;
+    delete m.folio; // folio da fonte só vale para páginas sem folio próprio; os folios por página são mais precisos
     if (folio) {
       const lines: Obj[] = Array.isArray(src.lines) ? (src.lines as unknown[]).filter(isObj) : [];
       const target = lines.find((l) => typeof l.folio !== "string" || l.folio.trim() === "");

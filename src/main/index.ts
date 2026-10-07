@@ -185,7 +185,7 @@ function registerSystemHandlers(): void {
 
   ipcMain.handle("settings:get-language", async () => userPrefs.get('language'));
   ipcMain.handle("settings:get-classification", async () =>
-    userPrefs.get('classification') ?? cloneClassification(SUGGESTED_CLASSIFICATION));
+    readClassification(userPrefs.get('classification')) ?? cloneClassification(SUGGESTED_CLASSIFICATION));
   ipcMain.handle("settings:set-classification", async (_event, c: unknown) => {
     const valid = readClassification(c);
     if (valid) userPrefs.set('classification', valid);
