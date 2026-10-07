@@ -101,6 +101,43 @@ describe("saveDocument + reopen", () => {
   });
 });
 
+describe("image types the app does not know (S4)", () => {
+  it("round-trips AVIF and SVG legacy images byte for byte through a package", async () => {
+    const avif = Uint8Array.from([0, 0, 0, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66]);
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2"/>');
+    const legacy = makeLegacyProject() as any;
+    legacy.sources[0].lines[0].image = { dataUrl: toDataUrl("image/avif", avif), width: 4, height: 2, mimeType: "image/avif" };
+    legacy.sources[0].lines[1].image = { dataUrl: toDataUrl("image/svg+xml", svg), width: 4, height: 2, mimeType: "image/svg+xml" };
+    const legacyPath = join(dir, "types.mocquereau.json");
+    await writeFile(legacyPath, JSON.stringify(legacy), "utf-8");
+
+    const doc = await openDocument(legacyPath, store);
+    expect(doc.missingImages).toBe(0);
+    const target = join(dir, "types.mocquereau");
+    await saveDocument(doc.project, target, store, "x");
+    const names = (await listEntries(target)).map((e) => e.fileName);
+    expect(names).toContain(`images/${sha(avif)}.avif`);
+    expect(names).toContain(`images/${sha(svg)}.svg`);
+
+    const reopened = await openDocument(target, await SessionStore.create(join(dir, "sessions"), "s9"));
+    const [a, b] = reopened.project.sources[0].lines;
+    expect(a.image.dataUrl).toBe(toDataUrl("image/avif", avif));
+    expect(b.image.dataUrl).toBe(toDataUrl("image/svg+xml", svg));
+    expect(reopened.missingImages).toBe(0);
+    expect(reopened.warnings).toEqual([]);
+  });
+
+  it("counts images that could not be decoded so the user can be told on open", async () => {
+    const legacy = makeLegacyProject() as any;
+    legacy.sources[0].lines[1].image.dataUrl = "data:image/png;base64,";
+    const legacyPath = join(dir, "broken.mocquereau.json");
+    await writeFile(legacyPath, JSON.stringify(legacy), "utf-8");
+    const doc = await openDocument(legacyPath, store);
+    expect(doc.missingImages).toBe(1);
+    expect(doc.warnings.some((w) => w.includes("lines[1].image"))).toBe(true);
+  });
+});
+
 describe("openDocument — damaged packages", () => {
   it("opens images missing from the package as placeholders and saves them again", async () => {
     const path = join(dir, "missing.mocquereau");
@@ -110,6 +147,7 @@ describe("openDocument — damaged packages", () => {
     ]);
     const doc = await openDocument(path, store);
     expect(doc.warnings).toContain(`missing image: ${IMG_A}`);
+    expect(doc.missingImages).toBe(1);
     expect(doc.project.sources[0].lines[0].image).toMatchObject({ dataUrl: "", imageId: IMG_A });
 
     const target = join(dir, "resaved.mocquereau");

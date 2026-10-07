@@ -5,9 +5,18 @@
 // Electron main process (Node 24), the renderer (Chromium) and vitest (Node 22).
 
 export const IMAGE_ID_RE = /^[0-9a-f]{64}$/;
-export const IMAGE_ENTRY_RE = /^images\/([0-9a-f]{64})\.(png|jpg|jpeg|webp|gif|tif|bmp)$/;
+/**
+ * images/<sha256>.<ext>. Besides the formats the app sniffs, any image/* type
+ * is kept as opaque bytes under an extension derived from its MIME (S4), so
+ * the extension is any short lowercase alphanumeric one except executables.
+ */
+export const IMAGE_ENTRY_RE =
+  /^images\/([0-9a-f]{64})\.(?!(?:exe|com|bat|cmd|scr|msi|dll|ps1|vbs|js|jar|sh|app|lnk)$)([a-z0-9]{1,10})$/;
 /** Placeholder id for line images whose bytes could not be recovered. */
 export const MISSING_IMAGE_ID = "0".repeat(64);
+
+/** Extension for opaque bytes whose derived extension is unusable. */
+export const OPAQUE_EXT = "bin";
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/png": "png",
@@ -16,6 +25,13 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/gif": "gif",
   "image/tiff": "tif",
   "image/bmp": "bmp",
+  "image/avif": "avif",
+  "image/svg+xml": "svg",
+  "image/heic": "heic",
+  "image/heif": "heif",
+  "image/jxl": "jxl",
+  "image/x-icon": "ico",
+  "image/vnd.microsoft.icon": "ico",
 };
 
 const EXT_TO_MIME: Record<string, string> = {
@@ -26,10 +42,26 @@ const EXT_TO_MIME: Record<string, string> = {
   gif: "image/gif",
   tif: "image/tiff",
   bmp: "image/bmp",
+  avif: "image/avif",
+  svg: "image/svg+xml",
+  heic: "image/heic",
+  heif: "image/heif",
+  jxl: "image/jxl",
+  ico: "image/x-icon",
 };
 
+const IMAGE_MIME_RE = /^image\/([a-z0-9][a-z0-9.+-]*)$/;
+
+/** Package extension for a MIME; any image/* type gets one (S4), other types null. */
 export function extForMime(mimeType: string): string | null {
-  return MIME_TO_EXT[mimeType.toLowerCase()] ?? null;
+  const mime = mimeType.toLowerCase();
+  const known = MIME_TO_EXT[mime];
+  if (known) return known;
+  const m = IMAGE_MIME_RE.exec(mime);
+  if (!m) return null;
+  const derived = m[1].replace(/^x-/, "").split("+")[0].replace(/[^a-z0-9]/g, "").slice(0, 10);
+  const candidate = derived || OPAQUE_EXT;
+  return IMAGE_ENTRY_RE.test(`images/${MISSING_IMAGE_ID}.${candidate}`) ? candidate : OPAQUE_EXT;
 }
 
 export function mimeForExt(ext: string): string | null {
@@ -70,11 +102,14 @@ export function sniffImageMime(b: Uint8Array): string | null {
   return null;
 }
 
-/** Real MIME from magic bytes, falling back to a supported declared MIME. */
+/**
+ * Real MIME from magic bytes, falling back to the declared MIME when it is any
+ * image/* type (kept as opaque bytes, S4). Non-image declarations give null.
+ */
 export function resolveImageMime(bytes: Uint8Array, declared?: string): string | null {
   const sniffed = sniffImageMime(bytes);
   if (sniffed) return sniffed;
-  if (declared && extForMime(declared)) return declared.toLowerCase();
+  if (declared && IMAGE_MIME_RE.test(declared.toLowerCase())) return declared.toLowerCase();
   return null;
 }
 

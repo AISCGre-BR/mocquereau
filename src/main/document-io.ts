@@ -36,6 +36,17 @@ export interface OpenedDocument {
   format: "package" | "legacy";
   warnings: string[];
   ambiguousLines: LineRef[];
+  /** Image references opened as placeholders (bytes missing or undecodable); shown to the user. */
+  missingImages: number;
+}
+
+function countMissingImages(project: SessionProject): number {
+  let n = 0;
+  for (const s of project.sources) {
+    for (const l of s.lines) if (!l.image.dataUrl) n++;
+    for (const c of Object.values(s.syllableCuts)) if (c && !c.dataUrl) n++;
+  }
+  return n;
 }
 
 export function toDataUrl(mimeType: string, bytes: Uint8Array): string {
@@ -83,11 +94,13 @@ async function openLegacy(path: string, store: SessionStore): Promise<OpenedDocu
     const info = await store.putImage(img.bytes, img.mimeType);
     urls.set(id, toDataUrl(info.mimeType, img.bytes));
   }
+  const project = hydrateProject(migrated.project, (ref) => urls.get(ref.imageId) ?? "");
   return {
-    project: hydrateProject(migrated.project, (ref) => urls.get(ref.imageId) ?? ""),
+    project,
     format: "legacy",
     warnings: migrated.warnings,
     ambiguousLines: migrated.ambiguousLines,
+    missingImages: countMissingImages(project),
   };
 }
 
@@ -110,7 +123,9 @@ async function openPackage(path: string, store: SessionStore): Promise<OpenedDoc
       rename.set(entry.imageId, real);
     }
     try {
-      const info = await store.putImage(entry.bytes, entry.mimeType);
+      // The entry name only gives an extension; project.json has the real MIME (S4).
+      const declared = current.project.images[entry.imageId]?.mimeType ?? entry.mimeType;
+      const info = await store.putImage(entry.bytes, declared);
       urls.set(info.imageId, toDataUrl(info.mimeType, entry.bytes));
     } catch {
       warnings.push(`unreadable image: ${entry.imageId}`);
@@ -118,12 +133,8 @@ async function openPackage(path: string, store: SessionStore): Promise<OpenedDoc
   }
   const { file, missing } = markMissingImages(rewriteImageIds(current.project, rename), new Set(urls.keys()));
   for (const id of missing) warnings.push(`missing image: ${id}`);
-  return {
-    project: hydrateProject(file, (ref) => urls.get(ref.imageId) ?? ""),
-    format: "package",
-    warnings,
-    ambiguousLines: [],
-  };
+  const project = hydrateProject(file, (ref) => urls.get(ref.imageId) ?? "");
+  return { project, format: "package", warnings, ambiguousLines: [], missingImages: countMissingImages(project) };
 }
 
 export async function saveDocument(

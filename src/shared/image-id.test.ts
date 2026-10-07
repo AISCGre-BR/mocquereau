@@ -67,7 +67,9 @@ describe("MIME helpers", () => {
   it("prefers the sniffed MIME over the declared one", () => {
     expect(resolveImageMime(JPEG_HEAD, "image/png")).toBe("image/jpeg");
     expect(resolveImageMime(Uint8Array.from([1, 2, 3]), "image/png")).toBe("image/png");
-    expect(resolveImageMime(Uint8Array.from([1, 2, 3]), "image/x-foo")).toBeNull();
+    // S4: any declared image/* type is kept (opaque bytes); non-images are not.
+    expect(resolveImageMime(Uint8Array.from([1, 2, 3]), "image/x-foo")).toBe("image/x-foo");
+    expect(resolveImageMime(Uint8Array.from([1, 2, 3]), "text/plain")).toBeNull();
     expect(resolveImageMime(Uint8Array.from([1, 2, 3]))).toBeNull();
   });
 
@@ -79,6 +81,16 @@ describe("MIME helpers", () => {
     expect(mimeForExt("exe")).toBeNull();
   });
 
+  it("derives an extension for image types it does not know (S4)", () => {
+    expect(extForMime("image/avif")).toBe("avif");
+    expect(extForMime("image/svg+xml")).toBe("svg");
+    expect(extForMime("image/x-foo")).toBe("foo");
+    expect(mimeForExt("avif")).toBe("image/avif");
+    expect(mimeForExt("svg")).toBe("image/svg+xml");
+    // Never an executable extension, whatever the MIME claims.
+    expect(extForMime("image/x-exe")).toBe("bin");
+  });
+
   it("builds package entry paths and rejects unsupported MIME", () => {
     const id = "a".repeat(64);
     expect(imageEntryPath(id, "image/jpeg")).toBe(`images/${id}.jpg`);
@@ -88,12 +100,15 @@ describe("MIME helpers", () => {
 });
 
 describe("IMAGE_ENTRY_RE", () => {
-  it("accepts only images/<64 lowercase hex>.<known ext>", () => {
+  it("accepts only images/<64 lowercase hex>.<short alnum ext>, never executables", () => {
     const id = "0123456789abcdef".repeat(4);
     expect(IMAGE_ENTRY_RE.test(`images/${id}.png`)).toBe(true);
     expect(IMAGE_ENTRY_RE.test(`images/${id}.jpeg`)).toBe(true);
     expect(IMAGE_ENTRY_RE.test(`images/${id.toUpperCase()}.png`)).toBe(false);
     expect(IMAGE_ENTRY_RE.test(`images/${id}.exe`)).toBe(false);
+    expect(IMAGE_ENTRY_RE.test(`images/${id}.avif`)).toBe(true);
+    expect(IMAGE_ENTRY_RE.test(`images/${id}.svg`)).toBe(true);
+    expect(IMAGE_ENTRY_RE.test(`images/${id}.bin`)).toBe(true);
     expect(IMAGE_ENTRY_RE.test(`images/../${id}.png`)).toBe(false);
     expect(IMAGE_ENTRY_RE.test(`x/images/${id}.png`)).toBe(false);
   });

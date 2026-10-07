@@ -93,7 +93,7 @@ export async function migrateLegacyProject(json: unknown): Promise<LegacyMigrati
     const mimeType =
       decoded && decoded.bytes.byteLength > 0 ? resolveImageMime(decoded.bytes, decoded.mimeType) : null;
     if (!decoded || !mimeType) {
-      warnings.push(`${path}: unreadable or unsupported image kept as missing`);
+      warnings.push(`${path}: image could not be decoded, kept as missing`);
       return { imageId: MISSING_IMAGE_ID, width, height, mimeType: declared ?? "image/png", missing: true };
     }
     const imageId = await sha256Hex(decoded.bytes);

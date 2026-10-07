@@ -95,6 +95,8 @@
   "main.overwrite.detail": "このフォルダーには同じ名前のファイルが既にあります。置き換えると現在の内容は上書きされます。",
   "main.overwrite.replace": "置き換える",
   "main.overwrite.cancel": "キャンセル",
+  "main.openWarning.missingImages": "このプロジェクトの画像 {{count}} 件を読み込めなかったため、欠落として表示しています。",
+  "main.openWarning.detail": "プロジェクトのその他の部分は通常どおり開かれました。書き出す前に欠落した画像を差し替えてください。",
   "projectSetup.author": "著者",
   "projectSetup.authorPlaceholder": "例: 山田太郎",
   "projectSetup.clearList": "一覧を消去",

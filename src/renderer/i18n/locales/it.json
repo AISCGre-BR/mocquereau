@@ -95,6 +95,8 @@
   "main.overwrite.detail": "In questa cartella esiste già un file con questo nome. Sostituendolo, il contenuto attuale andrà perso.",
   "main.overwrite.replace": "Sostituisci",
   "main.overwrite.cancel": "Annulla",
+  "main.openWarning.missingImages": "{{count}} immagine/i di questo progetto non è stato possibile leggerle e risultano mancanti.",
+  "main.openWarning.detail": "Il resto del progetto è stato aperto normalmente. Sostituisci le immagini mancanti prima di esportare.",
   "projectSetup.author": "Autore",
   "projectSetup.authorPlaceholder": "Es.: Giovanni Rossi",
   "projectSetup.clearList": "Svuota elenco",

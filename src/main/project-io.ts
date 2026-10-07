@@ -46,6 +46,19 @@ async function showError(message: string): Promise<void> {
   else await dialog.showMessageBox(options);
 }
 
+async function showOpenWarning(count: number, warnings: string[]): Promise<void> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const technical = warnings.slice(0, 8).join('\n') + (warnings.length > 8 ? '\n…' : '');
+  const options = {
+    type: 'warning' as const,
+    title: 'Mocquereau',
+    message: t('main.openWarning.missingImages', { count }),
+    detail: technical ? `${t('main.openWarning.detail')}\n\n${technical}` : t('main.openWarning.detail'),
+  };
+  if (win) await dialog.showMessageBox(win, options);
+  else await dialog.showMessageBox(options);
+}
+
 /** B1: the OS never confirmed this path (we changed its extension). */
 async function confirmOverwrite(target: string): Promise<boolean> {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -81,6 +94,8 @@ async function openPath(filePath: string, hooks: ProjectIoHooks): Promise<OpenRe
   try {
     const doc = await openDocument(filePath, hooks.getStore());
     if (doc.warnings.length > 0) console.warn('[project-io] open warnings', filePath, doc.warnings);
+    // S4/N1: images that could not be read open as placeholders; tell the user, not only the console.
+    if (doc.missingImages > 0) await showOpenWarning(doc.missingImages, doc.warnings);
     if (doc.ambiguousLines.length > 0) {
       console.info('[project-io] legacy lines with ambiguous box frame, v0.0.6 reading kept (R3)', doc.ambiguousLines);
     }

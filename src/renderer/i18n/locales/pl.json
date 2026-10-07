@@ -95,6 +95,8 @@
   "main.overwrite.detail": "W tym folderze istnieje już plik o tej nazwie. Zastąpienie go nadpisze jego obecną zawartość.",
   "main.overwrite.replace": "Zastąp",
   "main.overwrite.cancel": "Anuluj",
+  "main.openWarning.missingImages": "Nie udało się odczytać {{count}} obraz(ów) tego projektu; są oznaczone jako brakujące.",
+  "main.openWarning.detail": "Pozostała część projektu została otwarta normalnie. Zastąp brakujące obrazy przed eksportem.",
   "projectSetup.author": "Autor",
   "projectSetup.authorPlaceholder": "Np. Jan Kowalski",
   "projectSetup.clearList": "Wyczyść listę",

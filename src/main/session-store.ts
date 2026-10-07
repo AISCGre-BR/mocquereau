@@ -24,7 +24,7 @@ export interface SessionImage {
   bytes: Uint8Array;
 }
 
-const FILE_RE = /^([0-9a-f]{64})\.([a-z]+)$/;
+const FILE_RE = /^([0-9a-f]{64})\.([a-z0-9]+)$/;
 
 export class SessionStore {
   private readonly index = new Map<string, SessionImageInfo>();

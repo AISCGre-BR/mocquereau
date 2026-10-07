@@ -214,7 +214,8 @@ function readEntries(zip: ReadZip, limits: PackageLimits): Promise<ReadPackageRe
           }
         } else {
           const match = IMAGE_ENTRY_RE.exec(name);
-          const mimeType = match ? mimeForExt(match[2]) : null;
+          // Unknown extensions are opaque image bytes (S4); project.json carries their MIME.
+          const mimeType = match ? (mimeForExt(match[2]) ?? "application/octet-stream") : null;
           if (match && mimeType) {
             const bytes = await readEntryBytes(zip, entry, limits.maxEntryBytes);
             imageEntries.push({

@@ -95,6 +95,8 @@
   "main.overwrite.detail": "In diesem Ordner gibt es bereits eine Datei mit diesem Namen. Beim Ersetzen wird ihr aktueller Inhalt überschrieben.",
   "main.overwrite.replace": "Ersetzen",
   "main.overwrite.cancel": "Abbrechen",
+  "main.openWarning.missingImages": "{{count}} Bild(er) dieses Projekts konnten nicht gelesen werden und werden als fehlend angezeigt.",
+  "main.openWarning.detail": "Der Rest des Projekts wurde normal geöffnet. Ersetzen Sie die fehlenden Bilder vor dem Export.",
   "projectSetup.author": "Autor",
   "projectSetup.authorPlaceholder": "z. B. Max Mustermann",
   "projectSetup.clearList": "Liste leeren",

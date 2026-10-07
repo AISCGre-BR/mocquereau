@@ -95,6 +95,8 @@
   "main.overwrite.detail": "Ya existe un archivo con este nombre en esta carpeta. Reemplazarlo sobrescribirá su contenido actual.",
   "main.overwrite.replace": "Reemplazar",
   "main.overwrite.cancel": "Cancelar",
+  "main.openWarning.missingImages": "No se pudieron leer {{count}} imagen(es) de este proyecto; aparecen como ausentes.",
+  "main.openWarning.detail": "El resto del proyecto se abrió con normalidad. Sustituya las imágenes ausentes antes de exportar.",
   "projectSetup.author": "Autor",
   "projectSetup.authorPlaceholder": "Ej.: Juan Pérez",
   "projectSetup.clearList": "Vaciar lista",
