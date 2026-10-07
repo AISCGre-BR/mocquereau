@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import { buildMenus, type MenuActions, type MenuState } from "./menus";
-import type { MenuCommand, MenuDefinition } from "./menuTypes";
+import type { MenuCommand, MenuDefinition, MenuEntry, MenuSubmenu } from "./menuTypes";
 
 const t = (key: string) => key;
 
@@ -26,11 +26,21 @@ function actions(): MenuActions {
 
 const base: MenuState = { hasProject: true, canExport: true, view: "fontes", theme: "dark", language: "en", canUndo: true, canRedo: false };
 
+function flat(items: MenuEntry[]): MenuCommand[] {
+  return items.flatMap((item) => (item === "separator" ? [] : "items" in item ? flat(item.items) : [item]));
+}
+
 function find(menus: MenuDefinition[], id: string): MenuCommand {
+  const hit = menus.flatMap((m) => flat(m.items)).find((item) => item.id === id);
+  if (!hit) throw new Error(`item ${id} ausente`);
+  return hit;
+}
+
+function submenu(menus: MenuDefinition[], id: string): MenuSubmenu {
   for (const menu of menus) {
-    for (const item of menu.items) if (item !== "separator" && item.id === id) return item;
+    for (const item of menu.items) if (item !== "separator" && "items" in item && item.id === id) return item;
   }
-  throw new Error(`item ${id} ausente`);
+  throw new Error(`submenu ${id} ausente`);
 }
 
 describe("buildMenus", () => {
@@ -99,5 +109,32 @@ describe("buildMenus", () => {
     undo.onSelect();
     expect(a.undo).toHaveBeenCalledOnce();
     expect(find(buildMenus({ ...base, hasProject: false }, a, t), "edit.undo").disabled).toBe(true);
+  });
+
+  it("idiomas ficam num submenu do Exibir, com rótulo bilíngue e endônimos sem emoji", () => {
+    const tl = (key: string) => (key === "shell.language" ? "言語" : key);
+    const menus = buildMenus({ ...base, language: "ja" }, actions(), tl);
+    const view = menus.find((m) => m.id === "view")!;
+    expect(view.items.some((i) => i !== "separator" && "id" in i && i.id.startsWith("lang."))).toBe(false);
+    const lang = submenu(menus, "view.language");
+    expect(lang.label).toBe("言語 / Language");
+    expect(lang.icon).toBeTruthy();
+    expect(lang.items.map((i) => (i as MenuCommand).label)).toEqual([
+      "Português",
+      "English",
+      "Italiano",
+      "Español",
+      "Deutsch",
+      "Polski",
+      "日本語",
+    ]);
+    expect(find(menus, "lang.ja").checked).toBe(true);
+    expect(find(menus, "lang.en").checked).toBe(false);
+    for (const item of lang.items) expect((item as MenuCommand).label).not.toMatch(/\p{Extended_Pictographic}|\p{Regional_Indicator}/u);
+  });
+
+  it("em inglês o submenu se chama só 'Language'", () => {
+    const tl = (key: string) => (key === "shell.language" ? "Language" : key);
+    expect(submenu(buildMenus(base, actions(), tl), "view.language").label).toBe("Language");
   });
 });

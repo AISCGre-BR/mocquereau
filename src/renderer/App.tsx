@@ -19,7 +19,7 @@ import { FontesView } from "./views/FontesView";
 import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
-import { SUPPORTED_LANGS, type SupportedLang } from "./i18n";
+import { toSupportedLang, type SupportedLang } from "./i18n";
 
 const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
 
@@ -70,9 +70,7 @@ function Workbench() {
 
   const project = state.project;
   const canExport = project !== null && project.sources.some((s) => s.lines.length > 0);
-  const language: SupportedLang = (SUPPORTED_LANGS as readonly string[]).includes(i18n.language)
-    ? (i18n.language as SupportedLang)
-    : "pt-BR";
+  const language: SupportedLang = toSupportedLang(i18n.language);
   const title = project ? project.meta.title.trim() || t("file.untitled") : "Mocquereau";
   const edited = project !== null && state.isDirty;
   const platform = window.mocquereau.platform;

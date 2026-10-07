@@ -114,5 +114,19 @@ describe("useMenuShortcuts", () => {
     press("s", { ctrlKey: true });
     expect(onSave).toHaveBeenCalledOnce();
   });
-});
 
+  it("acha atalhos dentro de submenus", () => {
+    const onPick = vi.fn();
+    renderHook(() =>
+      useMenuShortcuts([
+        {
+          id: "view",
+          label: "Exibir",
+          items: [{ id: "sub", label: "Sub", items: [{ id: "x", label: "X", accelerator: "Ctrl+K", onSelect: onPick }] }],
+        },
+      ]),
+    );
+    press("k", { ctrlKey: true });
+    expect(onPick).toHaveBeenCalledOnce();
+  });
+});

@@ -138,5 +138,36 @@ describe("MenuBar", () => {
     expect(global).not.toHaveBeenCalled();
     window.removeEventListener("keydown", global);
   });
-});
 
+  it("renderiza submenus: gatilho no menu, itens só ao abrir, e a escolha fecha tudo", () => {
+    const onPick = vi.fn();
+    const menus: MenuDefinition[] = [
+      {
+        id: "view",
+        label: "Exibir",
+        items: [
+          { id: "texto", label: "Texto", onSelect: vi.fn() },
+          "separator",
+          {
+            id: "view.language",
+            label: "Idioma / Language",
+            items: [
+              { id: "lang.pt-BR", label: "Português", checked: true, onSelect: vi.fn() },
+              { id: "lang.ja", label: "日本語", checked: false, onSelect: onPick },
+            ],
+          },
+        ],
+      },
+    ];
+    render(<MenuBar menus={menus} title="Mocquereau" edited={false} platform="linux" />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Exibir" }));
+    const trigger = screen.getByRole("menuitem", { name: /Idioma \/ Language/ });
+    expect(screen.queryByText("日本語")).toBeNull();
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowRight" });
+    expect(screen.getByRole("menu", { name: "Idioma / Language" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /日本語/ }));
+    expect(onPick).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+});

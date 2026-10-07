@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export interface MenuCommand {
   id: string;
   label: string;
@@ -18,7 +20,20 @@ export interface MenuCommand {
   onSelect: () => void;
 }
 
-export type MenuEntry = MenuCommand | "separator";
+/** Item que abre um submenu (ex.: Idioma). Um nível só. */
+export interface MenuSubmenu {
+  id: string;
+  label: string;
+  /** Ícone na coluna da marca de seleção (ex.: globo no Idioma). */
+  icon?: ReactNode;
+  items: Array<MenuCommand | "separator">;
+}
+
+export type MenuEntry = MenuCommand | MenuSubmenu | "separator";
+
+export function isSubmenu(entry: MenuEntry): entry is MenuSubmenu {
+  return entry !== "separator" && "items" in entry;
+}
 
 export interface MenuDefinition {
   id: string;

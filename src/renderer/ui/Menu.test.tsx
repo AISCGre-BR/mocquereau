@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MenuItem, MenuSeparator, MenuSurface } from "./Menu";
+import { MenuItem, MenuSeparator, MenuSubmenu, MenuSurface } from "./Menu";
 
 afterEach(cleanup);
 
@@ -94,5 +94,82 @@ describe("Menu", () => {
     );
     fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
     expect(onNavigateOut).toHaveBeenCalledWith("right");
+  });
+
+  describe("submenu", () => {
+    function setupSub() {
+      const onClose = vi.fn();
+      const onNavigateOut = vi.fn();
+      const pick = vi.fn();
+      render(
+        <MenuSurface aria-label="Exibir" onClose={onClose} onNavigateOut={onNavigateOut}>
+          <MenuItem label="Texto" onSelect={() => {}} />
+          <MenuSubmenu label="Idioma / Language" icon={<span data-testid="globe" />}>
+            <MenuItem label="Português" checked={false} onSelect={() => pick("pt-BR")} />
+            <MenuItem label="English" checked onSelect={() => pick("en")} />
+          </MenuSubmenu>
+        </MenuSurface>,
+      );
+      const trigger = () => screen.getByRole("menuitem", { name: /Idioma \/ Language/ });
+      const sub = () => screen.queryByRole("menu", { name: "Idioma / Language" });
+      return { onClose, onNavigateOut, pick, trigger, sub };
+    }
+
+    it("gatilho anuncia o submenu, mostra o ícone e começa fechado", () => {
+      const { trigger, sub } = setupSub();
+      expect(trigger().getAttribute("aria-haspopup")).toBe("menu");
+      expect(trigger().getAttribute("aria-expanded")).toBe("false");
+      expect(screen.getByTestId("globe")).toBeTruthy();
+      expect(sub()).toBeNull();
+    });
+
+    it("setas do menu pai não entram nos itens do submenu", () => {
+      const { trigger } = setupSub();
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(trigger());
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      expect(document.activeElement?.textContent).toContain("Texto");
+    });
+
+    it("seta para a direita abre e foca o primeiro item; esquerda fecha e volta ao gatilho", () => {
+      const { trigger, sub, onNavigateOut, onClose } = setupSub();
+      trigger().focus();
+      fireEvent.keyDown(trigger(), { key: "ArrowRight" });
+      expect(sub()).toBeTruthy();
+      expect(trigger().getAttribute("aria-expanded")).toBe("true");
+      expect(document.activeElement?.textContent).toContain("Português");
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      expect(document.activeElement?.textContent).toContain("English");
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+      expect(sub()).toBeNull();
+      expect(document.activeElement).toBe(trigger());
+      expect(onNavigateOut).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("Enter no gatilho abre; Escape fecha só o submenu", () => {
+      const { trigger, sub, onClose } = setupSub();
+      trigger().focus();
+      fireEvent.keyDown(trigger(), { key: "Enter" });
+      expect(sub()).toBeTruthy();
+      fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+      expect(sub()).toBeNull();
+      expect(document.activeElement).toBe(trigger());
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("escolher um item do submenu fecha o menu inteiro com 'select'", () => {
+      const { trigger, pick, onClose } = setupSub();
+      fireEvent.click(trigger());
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /English/ }));
+      expect(pick).toHaveBeenCalledWith("en");
+      expect(onClose).toHaveBeenCalledWith("select");
+    });
+
+    it("passar o mouse abre o submenu", () => {
+      const { trigger, sub } = setupSub();
+      fireEvent.mouseEnter(trigger());
+      expect(sub()).toBeTruthy();
+    });
   });
 });
