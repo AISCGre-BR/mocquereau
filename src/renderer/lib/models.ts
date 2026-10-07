@@ -1,5 +1,6 @@
 // src/renderer/lib/models.ts
 
+import type { RecentEntry, RecentMeta } from "@shared/recent";
 import type { BoxFrame, Classification, ImageBytesPayload, ImageRef, SourceMetadata } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
@@ -233,7 +234,8 @@ export interface MocquereauAPI {
   /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
   openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   // App state
-  getRecentFiles: () => Promise<string[]>;
+  getRecent: () => Promise<RecentEntry[]>;
+  updateRecentMeta: (filePath: string, meta: RecentMeta) => Promise<void>;
   addRecentFile: (filePath: string) => Promise<void>;
   clearRecentFiles: () => Promise<void>;
   getTutorialSeen: () => Promise<boolean>;

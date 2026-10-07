@@ -13,7 +13,7 @@ afterEach(async () => {
 
 function mockApi(recent: string[]) {
   const api = {
-    getRecentFiles: vi.fn().mockResolvedValue(recent),
+    getRecent: vi.fn().mockResolvedValue(recent.map((path) => ({ path }))),
     getAppVersion: vi.fn().mockResolvedValue("0.0.7-alpha"),
     clearRecentFiles: vi.fn().mockResolvedValue(undefined),
   };

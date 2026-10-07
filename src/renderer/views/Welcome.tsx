@@ -80,8 +80,8 @@ export function Welcome({ onNew, onOpen, onOpenRecent }: WelcomeProps) {
   useEffect(() => {
     let alive = true;
     window.mocquereau
-      .getRecentFiles()
-      .then((files) => alive && setRecent(files))
+      .getRecent()
+      .then((entries) => alive && setRecent(entries.map((e) => e.path)))
       .catch(() => undefined);
     window.mocquereau
       .getAppVersion()

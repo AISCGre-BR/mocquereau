@@ -40,7 +40,7 @@ beforeEach(() => {
     setClassification: vi.fn().mockResolvedValue(undefined),
     getLanguage: vi.fn().mockResolvedValue("pt-BR"),
     setLanguage: vi.fn().mockResolvedValue("pt-BR"),
-    getRecentFiles: vi.fn().mockResolvedValue([]),
+    getRecent: vi.fn().mockResolvedValue([]),
     clearRecentFiles: vi.fn().mockResolvedValue(undefined),
     addRecentFile: vi.fn().mockResolvedValue(undefined),
     getAppVersion: vi.fn().mockResolvedValue("0.0.7-alpha"),

@@ -34,7 +34,7 @@ function projectWith(raw: string, words = syllabifyText(raw, "sung")): Mocquerea
 const wait = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
 beforeEach(() => {
-  window.mocquereau = { getRecentFiles: vi.fn().mockResolvedValue([]) } as unknown as MocquereauAPI;
+  window.mocquereau = { getRecent: vi.fn().mockResolvedValue([]) } as unknown as MocquereauAPI;
 });
 afterEach(cleanup);
 

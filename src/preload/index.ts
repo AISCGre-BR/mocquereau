@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { RecentMeta } from "../shared/recent";
 
 const ALLOWED_PROTOCOLS = ["https:", "http:"];
 
@@ -29,7 +30,8 @@ contextBridge.exposeInMainWorld("mocquereau", {
     ipcRenderer.invoke("project:open-by-path", filePath),
 
   // App state (recent files, tutorial, version)
-  getRecentFiles: () => ipcRenderer.invoke("app:get-recent-files"),
+  getRecent: () => ipcRenderer.invoke("app:get-recent"),
+  updateRecentMeta: (filePath: string, meta: RecentMeta) => ipcRenderer.invoke("app:update-recent-meta", filePath, meta),
   addRecentFile: (filePath: string) => ipcRenderer.invoke("app:add-recent-file", filePath),
   clearRecentFiles: () => ipcRenderer.invoke("app:clear-recent-files"),
   getTutorialSeen: () => ipcRenderer.invoke("app:get-tutorial-seen"),
