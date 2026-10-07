@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { suggestBoxes } from './pipeline';
+import type { RasterRGBA } from './types';
 import {
   buildAdiastematicLine,
   buildDiastematicLine,
   createRaster,
+  fillRect,
+  INK,
   fracToPx,
   iou,
   pxToFrac,
@@ -231,5 +234,43 @@ describe('suggestBoxes — desempenho', () => {
     const good = fx.syllables.filter((s) => got[s.index] && iou(got[s.index], fx.truth[s.index]) >= 0.9);
     expect(good.length).toBeGreaterThanOrEqual(18);
     expect(dt).toBeLessThan(strict ? 1500 : 4000);
+  });
+});
+
+/** Duas linhas diastematicas empilhadas (a de baixo deslocada por 240 px). */
+function stackedStaves() {
+  const a = buildDiastematicLine({ seed: 11 });
+  const b = buildDiastematicLine({ seed: 12 });
+  const W = a.raster.width;
+  const H = a.raster.height;
+  const data = new Uint8ClampedArray(W * H * 2 * 4);
+  data.set(a.raster.data, 0);
+  data.set(b.raster.data, W * H * 4);
+  const raster: RasterRGBA = { data, width: W, height: H * 2 };
+  return { raster, a, b, W, H };
+}
+
+describe('suggestBoxes — varias pautas', () => {
+  it('duas pautas empilhadas sem ancora: pede a faixa e nao sugere nada', () => {
+    const { raster, a } = stackedStaves();
+    const res = suggestBoxes({ image: raster, notation: 'diastematic', syllables: a.syllables });
+    expect(res.debug.needsBand).toBe(true);
+    expect(res.suggestions).toEqual([]);
+  });
+
+  it('com ancora na pauta de baixo: sugere na pauta de baixo', () => {
+    const { raster, b, W, H } = stackedStaves();
+    const off = H;
+    const syllables = b.syllables;
+    const t = (i: number) => ({ ...b.truth[i], y: b.truth[i].y + off });
+    const anchors = [{ index: 0, box: pxToFrac(t(0), W, 2 * H) }];
+    const res = suggestBoxes({ image: raster, notation: 'diastematic', syllables, anchors });
+    expect(res.debug.mode).toBe('D');
+    expect(res.suggestions.map((s) => s.index)).toEqual([1, 2, 3]);
+    const got = boxesPx(res, W, 2 * H);
+    for (const i of [1, 2, 3]) {
+      expect(got[i].y).toBeGreaterThanOrEqual(off);
+      expect(iou(got[i], t(i))).toBeGreaterThanOrEqual(0.8);
+    }
   });
 });

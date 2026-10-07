@@ -122,6 +122,25 @@ function inkStage(work: Work, p: Params, staff: Staff | null, channel: 'r' | 'au
   return { comps: filterComponents(lab, p, reject), bars, channel: name, k, red };
 }
 
+/** Pauta cuja extensao vertical contem (ou, senao, esta mais perto de) a mediana dos centros das ancoras. */
+function pickStaffByAnchors(staves: Staff[], boxes: PxBox[]): Staff | null {
+  if (!boxes.length) return null;
+  const ys = boxes.map((b) => b.y + b.h / 2).sort((p, q) => p - q);
+  const my = ys[ys.length >> 1];
+  let best: Staff | null = null;
+  let bestD = Infinity;
+  for (const st of staves) {
+    const top = staffTop(st) - st.metrics.s;
+    const bottom = staffBottom(st) + st.metrics.s;
+    const d = my >= top && my <= bottom ? 0 : Math.min(Math.abs(my - top), Math.abs(my - bottom));
+    if (d < bestD) {
+      bestD = d;
+      best = st;
+    }
+  }
+  return best;
+}
+
 export function suggestBoxes(input: SuggestInput): SuggestResult {
   validate(input);
   const t0 = now();
@@ -181,13 +200,33 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
     return { suggestions: [], debug };
   }
 
+  const toWork = (b: PxBox): PxBox => {
+    const px = fracToPxRect(b, W, H);
+    return {
+      x: (px.x - work.ox) * work.scale,
+      y: (px.y - work.oy) * work.scale,
+      w: px.w * work.scale,
+      h: px.h * work.scale,
+    };
+  };
   // Etapa 3: pauta
   let staff: Staff | null = null;
   let metrics: StaffMetrics | null = null;
   if (input.notation === 'diastematic') {
     metrics = staffMetrics(grayInk);
     const staves = metrics ? findStaves(grayInk, metrics) : [];
-    staff = staves[0] ?? null;
+    if (staves.length > 1 && band.source === 'staff') {
+      // varias pautas e nada indica qual: pedir a faixa em vez de chutar a primeira
+      const picked = anchors.length ? pickStaffByAnchors(staves, anchors.map((a) => toWork(a.box))) : null;
+      if (!picked) {
+        debug.needsBand = true;
+        debug.bandSource = band.source;
+        return { suggestions: [], debug };
+      }
+      staff = picked;
+    } else if (staves.length > 1 && anchors.length) {
+      staff = pickStaffByAnchors(staves, anchors.map((a) => toWork(a.box))) ?? staves[0];
+    } else staff = staves[0] ?? null;
     if (staff && metrics && band.source === 'staff') {
       const s = metrics.s;
       const y0 = Math.max(0, Math.floor(staffTop(staff) - 2.5 * s));
@@ -271,15 +310,6 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   lap('glyphs');
 
   // Etapa 6: atribuicao
-  const toWork = (b: PxBox): PxBox => {
-    const px = fracToPxRect(b, W, H);
-    return {
-      x: (px.x - work.ox) * work.scale,
-      y: (px.y - work.oy) * work.scale,
-      w: px.w * work.scale,
-      h: px.h * work.scale,
-    };
-  };
   const anchorsWork = anchors.map((a) => ({ index: a.index, box: toWork(a.box) }));
   const ordered = [...input.syllables].sort((a, b) => order.get(a.index)! - order.get(b.index)!);
   const segments = segmentByAnchors(ordered, anchorsWork, glyphs, 0, work.r.width);
