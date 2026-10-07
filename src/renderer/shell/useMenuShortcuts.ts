@@ -1,12 +1,19 @@
 import { useEffect, useRef } from "react";
 import { matchAccelerator, type AcceleratorEvent } from "./accelerator";
-import type { MenuCommand, MenuDefinition } from "./menuTypes";
+import { isSubmenu, type MenuCommand, type MenuDefinition, type MenuEntry } from "./menuTypes";
 
 /** Primeiro comando habilitado cujo atalho (principal ou extra) casa com o evento. */
 export function findShortcut(menus: MenuDefinition[], e: AcceleratorEvent): MenuCommand | null {
+  function* commands(items: MenuEntry[]): Generator<MenuCommand> {
+    for (const item of items) {
+      if (item === "separator") continue;
+      if (isSubmenu(item)) yield* commands(item.items);
+      else yield item;
+    }
+  }
   for (const menu of menus) {
-    for (const item of menu.items) {
-      if (item === "separator" || item.disabled) continue;
+    for (const item of commands(menu.items)) {
+      if (item.disabled) continue;
       const accels = [item.accelerator, ...(item.altAccelerators ?? [])].filter((a): a is string => !!a);
       if (accels.some((a) => matchAccelerator(a, e))) return item;
     }

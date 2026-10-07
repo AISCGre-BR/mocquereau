@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { MenuItem, MenuSeparator, MenuSurface, type MenuCloseReason } from "../ui/Menu";
+import { MenuItem, MenuSeparator, MenuSubmenu, MenuSurface, type MenuCloseReason } from "../ui/Menu";
 import { formatAccelerator } from "./accelerator";
-import type { MenuDefinition } from "./menuTypes";
+import { isSubmenu, type MenuCommand, type MenuDefinition } from "./menuTypes";
 
 export interface MenuBarProps {
   menus: MenuDefinition[];
@@ -75,6 +75,19 @@ export function MenuBar({ menus, title, edited, platform }: MenuBarProps) {
     e.stopPropagation();
   }
 
+  function renderCommand(item: MenuCommand) {
+    return (
+      <MenuItem
+        key={item.id}
+        label={item.label}
+        shortcut={item.accelerator ? formatAccelerator(item.accelerator, platform) : undefined}
+        checked={item.checked}
+        disabled={item.disabled}
+        onSelect={item.onSelect}
+      />
+    );
+  }
+
   // Alt sozinho (Windows/Linux) leva o foco ao primeiro menu.
   useEffect(() => {
     if (isMac) return;
@@ -142,15 +155,14 @@ export function MenuBar({ menus, title, edited, platform }: MenuBarProps) {
               {menu.items.map((item, k) =>
                 item === "separator" ? (
                   <MenuSeparator key={`sep-${k}`} />
+                ) : isSubmenu(item) ? (
+                  <MenuSubmenu key={item.id} label={item.label} icon={item.icon}>
+                    {item.items.map((sub, j) =>
+                      sub === "separator" ? <MenuSeparator key={`sep-${j}`} /> : renderCommand(sub),
+                    )}
+                  </MenuSubmenu>
                 ) : (
-                  <MenuItem
-                    key={item.id}
-                    label={item.label}
-                    shortcut={item.accelerator ? formatAccelerator(item.accelerator, platform) : undefined}
-                    checked={item.checked}
-                    disabled={item.disabled}
-                    onSelect={item.onSelect}
-                  />
+                  renderCommand(item)
                 ),
               )}
             </MenuSurface>

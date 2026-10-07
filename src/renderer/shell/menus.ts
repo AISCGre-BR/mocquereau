@@ -1,9 +1,11 @@
 // Menus da janela (onda A1): ligados aos handlers existentes. Na onda B passam a vir
 // do registro de comandos do subprojeto 2.
-import type { MenuDefinition, MenuEntry } from "./menuTypes";
+import { createElement } from "react";
+import { Globe } from "lucide-react";
+import type { MenuCommand, MenuDefinition, MenuEntry } from "./menuTypes";
 import { VIEW_ORDER, type ViewId } from "./Toolbar";
 import type { ThemePreference } from "../lib/models";
-import { LANG_META, SUPPORTED_LANGS, type SupportedLang } from "../i18n";
+import { LANG_META, SUPPORTED_LANGS, languageMenuLabel, type SupportedLang } from "../i18n";
 
 export interface MenuState {
   hasProject: boolean;
@@ -56,7 +58,7 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
     }),
   );
   const languageItems = SUPPORTED_LANGS.map(
-    (lng): MenuEntry => ({
+    (lng): MenuCommand => ({
       id: `lang.${lng}`,
       label: LANG_META[lng].label,
       checked: state.language === lng,
@@ -109,7 +111,19 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
     {
       id: "view",
       label: t("shell.menu.view"),
-      items: [...viewItems, "separator", ...themeItems, "separator", ...languageItems],
+      items: [
+        ...viewItems,
+        "separator",
+        ...themeItems,
+        "separator",
+        {
+          // Submenu com rótulo bilíngue e globo: achável mesmo num idioma que não se lê.
+          id: "view.language",
+          label: languageMenuLabel(t, state.language),
+          icon: createElement(Globe, { className: "h-3.5 w-3.5", strokeWidth: 1.75, "aria-hidden": true }),
+          items: languageItems,
+        },
+      ],
     },
     {
       id: "help",

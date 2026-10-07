@@ -3,11 +3,12 @@ import {
   useContext,
   useEffect,
   useRef,
+  useState,
   type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 
 export type MenuCloseReason = "escape" | "select" | "outside" | "tab";
 
@@ -25,8 +26,11 @@ export interface MenuSurfaceProps {
   style?: CSSProperties;
 }
 
+/** Itens habilitados deste menu (os de um submenu aberto pertencem ao submenu). */
 function enabledItems(root: HTMLElement): HTMLButtonElement[] {
-  return Array.from(root.querySelectorAll<HTMLButtonElement>("[data-menu-item]:not(:disabled)"));
+  return Array.from(root.querySelectorAll<HTMLButtonElement>("[data-menu-item]:not(:disabled)")).filter(
+    (el) => el.closest('[role="menu"]') === root,
+  );
 }
 
 /** Placa do menu (sc-menu). Serve à menubar e a menus de contexto. */
@@ -159,4 +163,77 @@ export function MenuItem({ label, shortcut, checked, disabled, onSelect }: MenuI
 
 export function MenuSeparator() {
   return <div role="separator" className="sc-menu__sep" />;
+}
+
+export interface MenuSubmenuProps {
+  label: string;
+  /** Vai na coluna da marca de seleção (ex.: globo do Idioma). */
+  icon?: ReactNode;
+  disabled?: boolean;
+  children: ReactNode;
+}
+
+/**
+ * Item que abre um submenu à direita. Teclado: seta para a direita, Enter ou espaço
+ * abrem e focam o primeiro item; seta para a esquerda ou Esc fecham e devolvem o
+ * foco ao gatilho. Escolher um item fecha o menu inteiro. Mouse: passar por cima abre.
+ */
+export function MenuSubmenu({ label, icon, disabled, children }: MenuSubmenuProps) {
+  const ctx = useContext(MenuContext);
+  const [open, setOpen] = useState<false | "keyboard" | "pointer">(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  function close(reason: MenuCloseReason) {
+    setOpen(false);
+    if (reason === "select" || reason === "tab") ctx?.close(reason);
+    else if (reason === "escape") triggerRef.current?.focus();
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
+    if (e.key !== "ArrowRight" && e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen("keyboard");
+  }
+
+  return (
+    <div role="none" className="relative" onMouseLeave={() => open === "pointer" && setOpen(false)}>
+      <button
+        ref={triggerRef}
+        type="button"
+        data-menu-item
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={open !== false}
+        className="sc-menu__item"
+        disabled={disabled}
+        tabIndex={-1}
+        onClick={() => setOpen((o) => (o ? false : "keyboard"))}
+        onMouseEnter={() => setOpen((o) => o || "pointer")}
+        onKeyDown={onKeyDown}
+      >
+        <span className="sc-menu__check flex items-center justify-center" aria-hidden="true">
+          {icon}
+        </span>
+        <span>{label}</span>
+        <span className="sc-menu__kbd" aria-hidden="true">
+          <ChevronRight className="h-3 w-3" strokeWidth={2} />
+        </span>
+      </button>
+      {open && (
+        <MenuSurface
+          aria-label={label}
+          anchor={triggerRef.current}
+          autoFocus={open === "keyboard" ? "first" : false}
+          className="absolute left-full top-[-6px] z-[130] ml-1"
+          onClose={close}
+          onNavigateOut={(direction) => {
+            if (direction === "left") close("escape");
+          }}
+        >
+          {children}
+        </MenuSurface>
+      )}
+    </div>
+  );
 }

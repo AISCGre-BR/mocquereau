@@ -20,15 +20,33 @@ import ja from './locales/ja.json';
 export const SUPPORTED_LANGS = ['pt-BR', 'en', 'it', 'es', 'de', 'pl', 'ja'] as const;
 export type SupportedLang = typeof SUPPORTED_LANGS[number];
 
-export const LANG_META: Record<SupportedLang, { label: string; flag: string }> = {
-  'pt-BR': { label: 'Português', flag: '🇧🇷' },
-  en:      { label: 'English',   flag: '🇺🇸' },
-  it:      { label: 'Italiano',  flag: '🇮🇹' },
-  es:      { label: 'Español',   flag: '🇪🇸' },
-  de:      { label: 'Deutsch',   flag: '🇩🇪' },
-  pl:      { label: 'Polski',    flag: '🇵🇱' },
-  ja:      { label: '日本語',     flag: '🇯🇵' },
+/** Endônimos: cada idioma pelo nome que tem nele mesmo (sem bandeiras: o projeto não usa emojis). */
+export const LANG_META: Record<SupportedLang, { label: string }> = {
+  'pt-BR': { label: 'Português' },
+  en:      { label: 'English' },
+  it:      { label: 'Italiano' },
+  es:      { label: 'Español' },
+  de:      { label: 'Deutsch' },
+  pl:      { label: 'Polski' },
+  ja:      { label: '日本語' },
 };
+
+/** Idioma suportado correspondente ao do i18next ("ja-JP" -> "ja"); pt-BR se nenhum. */
+export function toSupportedLang(lng: string | undefined): SupportedLang {
+  if (!lng) return 'pt-BR';
+  if ((SUPPORTED_LANGS as readonly string[]).includes(lng)) return lng as SupportedLang;
+  const base = lng.split('-')[0].toLowerCase();
+  if (base === 'pt') return 'pt-BR';
+  return SUPPORTED_LANGS.find((l) => l === base) ?? 'pt-BR';
+}
+
+/**
+ * Rótulo do seletor de idioma, reconhecível em qualquer idioma: "言語 / Language",
+ * "Idioma / Language"...; só "Language" quando a interface já está em inglês.
+ */
+export function languageMenuLabel(t: (key: string) => string, lang: SupportedLang): string {
+  return lang === 'en' ? 'Language' : `${t('shell.language')} / Language`;
+}
 
 i18n
   .use(LanguageDetector)
