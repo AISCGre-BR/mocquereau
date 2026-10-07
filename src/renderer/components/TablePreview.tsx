@@ -43,12 +43,8 @@ function buildAccentedSet(words: SyllabifiedWord[]): Set<number> {
   return accented;
 }
 
-// ── Screen props (matches App.tsx ScreenProps) ───────────────────────────────
-interface ScreenProps {
-  onNext: () => void;
-  onPrev: () => void;
-  canGoNext: boolean;
-  canGoPrev: boolean;
+// ── Props ────────────────────────────────────────────────────────────────────
+interface TablePreviewProps {
   onNavigateToEditor?: (sourceId: string) => void;
 }
 
@@ -60,7 +56,7 @@ interface MenuState {
   syllableIdx: number;
 }
 
-export function TablePreview({ onNext, onPrev, canGoNext, canGoPrev, onNavigateToEditor }: ScreenProps) {
+export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   const { state, dispatch } = useContext(ProjectContext)!;
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -125,19 +121,6 @@ export function TablePreview({ onNext, onPrev, canGoNext, canGoPrev, onNavigateT
       <div className="flex flex-col h-full p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('tablePreview.title')}</h1>
         <p className="text-gray-400 text-sm">{t('tablePreview.empty')}</p>
-        <div className="flex-1" />
-        <div className="flex justify-between">
-          <button
-            onClick={onPrev}
-            disabled={!canGoPrev}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded disabled:opacity-40 hover:bg-gray-300"
-          >{t('tablePreview.previous')}</button>
-          <button
-            onClick={onNext}
-            disabled={!canGoNext}
-            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-40 hover:bg-blue-700"
-          >{t('tablePreview.next')}</button>
-        </div>
       </div>
     );
   }
@@ -247,19 +230,6 @@ export function TablePreview({ onNext, onPrev, canGoNext, canGoPrev, onNavigateT
               title={t('tablePreview.zoomInTitle')}
               aria-label={t('tablePreview.zoomIn')}
             >+</button>
-          </div>
-          {/* Navigation */}
-          <div className="flex gap-2">
-            <button
-              onClick={onPrev}
-              disabled={!canGoPrev}
-              className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded disabled:opacity-40 hover:bg-gray-300"
-            >{t('tablePreview.previous')}</button>
-            <button
-              onClick={onNext}
-              disabled={!canGoNext}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded disabled:opacity-40 hover:bg-blue-700"
-            >{t('tablePreview.next')}</button>
           </div>
         </div>
       </div>

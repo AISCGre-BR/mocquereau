@@ -16,13 +16,6 @@ import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface ScreenProps {
-  onNext: () => void;
-  onPrev: () => void;
-  canGoNext: boolean;
-  canGoPrev: boolean;
-}
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const NOTATION_BADGE: Record<ManuscriptSource["metadata"]["notation"], string> = {
@@ -93,7 +86,7 @@ function getImageCount(source: ManuscriptSource): number {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function SourceList({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps) {
+export function SourceList() {
   const { state, dispatch } = useProject();
   const { t } = useTranslation();
 
@@ -264,7 +257,7 @@ export function SourceList({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="flex flex-col">
       <div className="flex-1 w-full px-4 py-4 space-y-3">
         {/* Header + toolbar */}
         <div className="flex items-center justify-between">
@@ -590,26 +583,6 @@ export function SourceList({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps
           onClose={() => setEditingSource(null)}
         />
       )}
-
-      {/* Bottom navigation */}
-      <div className="sticky bottom-0 bg-white border-t border-gray-200 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onPrev}
-            disabled={!canGoPrev}
-            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40"
-          >
-            {t("sourceList.previous")}
-          </button>
-          <button
-            onClick={onNext}
-            disabled={!canGoNext}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
-          >
-            {t("sourceList.next")}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

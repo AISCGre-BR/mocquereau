@@ -14,15 +14,6 @@ import { flattenSyllables, computeSyllableCuts } from '../lib/sliceUtils';
 import type { ManuscriptSource, ManuscriptLine, StoredImage, ImageAdjustments } from '../lib/models';
 import { useTranslation } from 'react-i18next';
 
-// ── Screen props ─────────────────────────────────────────────────────────────
-
-interface ScreenProps {
-  onNext: () => void;
-  onPrev: () => void;
-  canGoNext: boolean;
-  canGoPrev: boolean;
-}
-
 // ── Helper: computeCoveredSyllables ─────────────────────────────────────────
 
 /**
@@ -43,7 +34,7 @@ function computeCoveredSyllables(source: ManuscriptSource, excludeLineId: string
 
 // ── SliceEditor ──────────────────────────────────────────────────────────────
 
-export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps) {
+export function SliceEditor() {
   const { state: globalState, dispatch: globalDispatch } = useProject();
   const { t } = useTranslation();
   const [editorState, editorDispatch] = useReducer(editorReducer, initialEditorState);
@@ -149,7 +140,11 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
   // ── Auto-save boxes to the active line (so TablePreview sees them immediately) ──
   // Debounced to avoid excessive dispatches during drag (drag updates are in
   // editorState only; on pointerup we get a final SET_BOX that fires this save).
+  // Ao desmontar (troca de vista), o sync pendente é executado na hora em vez de
+  // descartado (a onda B remove este sync de vez).
+  const pendingBoxSync = useRef<(() => void) | null>(null);
   useEffect(() => {
+    pendingBoxSync.current = null;
     if (!project || !editorState.activeSourceId || !editorState.activeLineId) return;
     const source = project.sources.find(s => s.id === editorState.activeSourceId);
     if (!source) return;
@@ -161,7 +156,8 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     const newJson = JSON.stringify(editorState.syllableBoxes);
     if (currentJson === newJson) return;
 
-    const timer = setTimeout(() => {
+    const sync = () => {
+      pendingBoxSync.current = null;
       // Auto-confirm the line when at least one box has been drawn.
       const hasAnyBox = Object.values(editorState.syllableBoxes).some(b => b != null);
       const updatedLine: ManuscriptLine = {
@@ -176,10 +172,19 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
         type: 'UPDATE_SOURCE',
         payload: { ...source, lines: updatedLines },
       });
-    }, 300);
+    };
+    pendingBoxSync.current = sync;
+    const timer = setTimeout(sync, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorState.syllableBoxes, editorState.syllableRange, editorState.gaps, editorState.activeLineId]);
+
+  // Flush do sync pendente ao sair da vista Recortes (antes de 300 ms).
+  useEffect(() => {
+    return () => {
+      pendingBoxSync.current?.();
+    };
+  }, []);
 
   // ── Paste handler ─────────────────────────────────────────────────────────
 
@@ -798,24 +803,6 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               activeSource={activeSource}
             />
           )}
-        </div>
-
-        {/* Navigation footer */}
-        <div className="flex justify-between px-4 py-2 border-t border-gray-200 bg-white flex-shrink-0">
-          <button
-            onClick={onPrev}
-            disabled={!canGoPrev}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded disabled:opacity-40 hover:bg-gray-300"
-          >
-            {t('sliceEditor.previous')}
-          </button>
-          <button
-            onClick={onNext}
-            disabled={!canGoNext}
-            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-40 hover:bg-blue-700"
-          >
-            {t('sliceEditor.next')}
-          </button>
         </div>
       </div>
     </div>

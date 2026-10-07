@@ -20,7 +20,7 @@ function Harness({ project, show }: { project: MocquereauProject; show: boolean 
   return (
     <ProjectContext.Provider value={{ state, dispatch }}>
       {show && state.project ? (
-        <ProjectSetup onNext={() => {}} onPrev={() => {}} canGoNext canGoPrev={false} />
+        <ProjectSetup />
       ) : null}
     </ProjectContext.Provider>
   );
