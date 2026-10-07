@@ -1,6 +1,7 @@
 // src/renderer/components/slice-editor/editorReducer.ts
 
 import type { SyllableBox } from '../../lib/models';
+import { clampZoom } from '../../lib/canvas-zoom';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -182,7 +183,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'SET_ZOOM': {
-      return { ...state, zoom: Math.max(0.25, Math.min(8, action.payload)) };
+      return { ...state, zoom: clampZoom(action.payload) };
     }
 
     case 'SET_PAN': {

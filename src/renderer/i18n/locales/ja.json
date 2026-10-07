@@ -275,5 +275,10 @@
   "welcome.new": "新規プロジェクト",
   "welcome.noRecent": "最近使ったプロジェクトはありません。",
   "welcome.open": "開く…",
-  "welcome.recent": "最近使った項目"
+  "welcome.recent": "最近使った項目",
+  "imageCanvas.zoomControls": "フォリオのズーム操作",
+  "imageCanvas.zoomIn": "拡大 (Ctrl+=)",
+  "imageCanvas.zoomOut": "縮小 (Ctrl+-)",
+  "imageCanvas.zoomFit": "幅に合わせる (Ctrl+0)",
+  "imageCanvas.zoomFitCurrent": "幅に合わせる（現在のズーム: {{zoom}}）"
 }

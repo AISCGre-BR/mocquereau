@@ -123,3 +123,24 @@ describe("SliceEditor: teclas globais não roubam as da casca", () => {
   });
 });
 
+describe("SliceEditor: largura presa à vista", () => {
+  // Regressão do zoom em Recortes: a RecortesView (onda A1) põe o editor como item
+  // de um flex em LINHA. Sem min-width:0 o item cresce até o min-content da faixa
+  // de sílabas (~7000 px com 198 sílabas), o contêiner de rolagem do fólio fica
+  // tão largo quanto a imagem e o zoom só amplia o canto superior esquerdo, sem
+  // barra de rolagem. jsdom não faz layout: este teste guarda a classe; a medição
+  // real está no PR (Chromium headless).
+  it("a raiz do editor encolhe no flex em linha (min-w-0)", () => {
+    const state = { ...initialStateForTest, project: projectWithBox() };
+    const { container } = render(
+      <ProjectContext.Provider value={{ state, dispatch: vi.fn() }}>
+        <div className="flex">
+          <SliceEditor />
+        </div>
+      </ProjectContext.Provider>,
+    );
+    const root = (container.firstChild as HTMLElement).firstChild as HTMLElement;
+    expect(root.className.split(/\s+/)).toContain("min-w-0");
+  });
+});
+

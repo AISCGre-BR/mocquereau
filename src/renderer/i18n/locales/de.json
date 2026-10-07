@@ -275,5 +275,10 @@
   "welcome.new": "Neues Projekt",
   "welcome.noRecent": "Keine zuletzt verwendeten Projekte.",
   "welcome.open": "Öffnen…",
-  "welcome.recent": "Zuletzt verwendet"
+  "welcome.recent": "Zuletzt verwendet",
+  "imageCanvas.zoomControls": "Zoomsteuerung des Folios",
+  "imageCanvas.zoomIn": "Vergrößern (Strg+=)",
+  "imageCanvas.zoomOut": "Verkleinern (Strg+-)",
+  "imageCanvas.zoomFit": "An Breite anpassen (Strg+0)",
+  "imageCanvas.zoomFitCurrent": "An Breite anpassen (aktueller Zoom: {{zoom}})"
 }

@@ -275,5 +275,10 @@
   "welcome.new": "New project",
   "welcome.noRecent": "No recent projects.",
   "welcome.open": "Open…",
-  "welcome.recent": "Recent"
+  "welcome.recent": "Recent",
+  "imageCanvas.zoomControls": "Folio zoom controls",
+  "imageCanvas.zoomIn": "Zoom in (Ctrl+=)",
+  "imageCanvas.zoomOut": "Zoom out (Ctrl+-)",
+  "imageCanvas.zoomFit": "Fit to width (Ctrl+0)",
+  "imageCanvas.zoomFitCurrent": "Fit to width (current zoom: {{zoom}})"
 }
