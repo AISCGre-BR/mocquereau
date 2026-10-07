@@ -259,6 +259,8 @@ export interface MocquereauAPI {
   openExternal: (url: string) => Promise<void>;
   getLanguage: () => Promise<string>;
   setLanguage: (lang: string) => Promise<string>;
+  getClassification: () => Promise<Classification>;
+  setClassification: (c: Classification) => Promise<void>;
   getTheme: () => Promise<ThemePreference>;
   setTheme: (theme: ThemePreference) => Promise<boolean>;
   platform: string;

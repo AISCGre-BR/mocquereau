@@ -11,10 +11,13 @@ import { registerSessionImageHandlers } from './session-ipc';
 import { initMainI18n, setMainLanguage, t } from './i18n';
 import { CloseFlow, SaveThenClose, closeChoiceFromResponse, createQuitGuard } from './close-coordinator';
 import { SaveQueue } from './save-queue';
+import { SUGGESTED_CLASSIFICATION, cloneClassification, type Classification } from '../shared/classification';
+import { readClassification } from '../shared/validate';
 
 interface UserPrefs {
   language: string;
   theme: ThemePreference;
+  classification?: Classification;
 }
 
 const userPrefs = new Conf<UserPrefs>({
@@ -181,6 +184,12 @@ function registerSystemHandlers(): void {
   });
 
   ipcMain.handle("settings:get-language", async () => userPrefs.get('language'));
+  ipcMain.handle("settings:get-classification", async () =>
+    userPrefs.get('classification') ?? cloneClassification(SUGGESTED_CLASSIFICATION));
+  ipcMain.handle("settings:set-classification", async (_event, c: unknown) => {
+    const valid = readClassification(c);
+    if (valid) userPrefs.set('classification', valid);
+  });
   ipcMain.handle("settings:set-language", async (_event, lang: string) => {
     userPrefs.set('language', lang);
     setMainLanguage(lang);
