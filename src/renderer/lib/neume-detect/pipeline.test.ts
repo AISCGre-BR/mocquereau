@@ -274,3 +274,24 @@ describe('suggestBoxes — varias pautas', () => {
     }
   });
 });
+
+describe('suggestBoxes — escalas x e y distintas', () => {
+  it('faixa estreita e alta: caixa volta ao lugar certo em y', () => {
+    const W = 33;
+    const H = 3000;
+    const r = createRaster(W, H);
+    fillRect(r, 15, 1500, 12, 24, INK);
+    const res = suggestBoxes({
+      image: r,
+      notation: 'adiastematic',
+      syllables: [{ index: 0, text: 'a', wordIndex: 0 }],
+      band: { x: 0, y: 0, w: 1, h: 1 },
+    });
+    expect(res.suggestions).toHaveLength(1);
+    const b = fracToPx(res.suggestions[0].box, W, H);
+    expect(b.y).toBeGreaterThanOrEqual(1500 - 20);
+    expect(b.y + b.h).toBeLessThanOrEqual(1524 + 20);
+    expect(b.y).toBeLessThanOrEqual(1500);
+    expect(b.y + b.h).toBeGreaterThanOrEqual(1524);
+  });
+});

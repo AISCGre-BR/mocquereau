@@ -48,10 +48,11 @@ interface Work {
   r: GrayImage;
   gray: GrayImage;
   valid: Mask;
-  /** px do raster = ox + x / scale */
+  /** px do raster = ox + x / sx, oy + y / sy (sx e sy diferem levemente por arredondamento) */
   ox: number;
   oy: number;
-  scale: number;
+  sx: number;
+  sy: number;
 }
 
 function cropWork(w: Work, box: PxBox): Work {
@@ -59,9 +60,10 @@ function cropWork(w: Work, box: PxBox): Work {
     r: cropGray(w.r, box),
     gray: cropGray(w.gray, box),
     valid: cropMask(w.valid, box),
-    ox: w.ox + box.x / w.scale,
-    oy: w.oy + box.y / w.scale,
-    scale: w.scale,
+    ox: w.ox + box.x / w.sx,
+    oy: w.oy + box.y / w.sy,
+    sx: w.sx,
+    sy: w.sy,
   };
 }
 
@@ -169,16 +171,18 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
     return { suggestions: [], debug };
   }
   const crop = cropRaster(image, band.rect);
-  let scale = Math.min(1, MAX_LONG_SIDE / Math.max(crop.width, crop.height));
+  const scale = Math.min(1, MAX_LONG_SIDE / Math.max(crop.width, crop.height));
   let work: Work = {
     r: downscaleGray(extractChannel(crop, 'r'), scale),
     gray: downscaleGray(extractChannel(crop, 'gray'), scale),
     valid: downscaleMask(alphaMask(crop), scale),
     ox: band.rect.x,
     oy: band.rect.y,
-    scale,
+    sx: 1,
+    sy: 1,
   };
-  work.scale = work.r.width / crop.width;
+  work.sx = work.r.width / crop.width;
+  work.sy = work.r.height / crop.height;
   let grayInk = binarizeOtsu(work.gray, work.valid);
   let u = estimateStrokeWidth(grayInk);
   if (u > 0 && u < 2) {
@@ -188,12 +192,13 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
       valid: upscale2xMask(work.valid),
       ox: work.ox,
       oy: work.oy,
-      scale: work.scale * 2,
+      sx: work.sx * 2,
+      sy: work.sy * 2,
     };
     grayInk = binarizeOtsu(work.gray, work.valid);
     u = estimateStrokeWidth(grayInk);
   }
-  debug.scale = work.scale;
+  debug.scale = work.sx;
   lap('prepare');
   if (u === 0) {
     debug.bandSource = band.source;
@@ -203,10 +208,10 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   const toWork = (b: PxBox): PxBox => {
     const px = fracToPxRect(b, W, H);
     return {
-      x: (px.x - work.ox) * work.scale,
-      y: (px.y - work.oy) * work.scale,
-      w: px.w * work.scale,
-      h: px.h * work.scale,
+      x: (px.x - work.ox) * work.sx,
+      y: (px.y - work.oy) * work.sy,
+      w: px.w * work.sx,
+      h: px.h * work.sy,
     };
   };
   // Etapa 3: pauta
@@ -284,7 +289,7 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
         if (c.y < tl.top && c.y + c.h > cut) return { ...c, h: Math.max(1, Math.floor(cut - c.y)) };
         return c;
       });
-    debug.textLine = { baseline: work.oy + tl.baseline / work.scale, xHeight: tl.xHeight / work.scale };
+    debug.textLine = { baseline: work.oy + tl.baseline / work.sy, xHeight: tl.xHeight / work.sy };
   }
   if (staff) {
     // fragmentos de texto cortados pela borda inferior da faixa da pauta
@@ -352,10 +357,10 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
       }
       if (x1 <= x0 || y1 <= y0) return;
       // trabalho -> raster (arredondando para fora) -> fracoes
-      const X0 = Math.max(0, floorPx(work.ox + x0 / work.scale));
-      const Y0 = Math.max(0, floorPx(work.oy + y0 / work.scale));
-      const X1 = Math.min(W, ceilPx(work.ox + x1 / work.scale));
-      const Y1 = Math.min(H, ceilPx(work.oy + y1 / work.scale));
+      const X0 = Math.max(0, floorPx(work.ox + x0 / work.sx));
+      const Y0 = Math.max(0, floorPx(work.oy + y0 / work.sy));
+      const X1 = Math.min(W, ceilPx(work.ox + x1 / work.sx));
+      const Y1 = Math.min(H, ceilPx(work.oy + y1 / work.sy));
       suggestions.push({
         index: syl.index,
         box: { x: X0 / W, y: Y0 / H, w: (X1 - X0) / W, h: (Y1 - Y0) / H },
@@ -368,12 +373,12 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   debug.band = {
     x: work.ox / W,
     y: work.oy / H,
-    w: work.r.width / work.scale / W,
-    h: work.r.height / work.scale / H,
+    w: work.r.width / work.sx / W,
+    h: work.r.height / work.sy / H,
   };
   if (staff && metrics)
     debug.staff = {
-      lines: staff.lines.map((l) => (work.oy + l.mean / work.scale) / H),
+      lines: staff.lines.map((l) => (work.oy + l.mean / work.sy) / H),
       spacing: metrics.s,
       lineThickness: metrics.t,
       red: st.red,
