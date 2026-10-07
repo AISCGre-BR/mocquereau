@@ -53,6 +53,7 @@ interface ImageCanvasProps {
   panelOpen?: boolean;
   onUpdateAdjustments?: (partial: Partial<ImageAdjustments>) => void;
   onClosePanel?: () => void;
+  onRealign?: () => void;
 }
 
 export function ImageCanvas({
@@ -72,6 +73,7 @@ export function ImageCanvas({
   panelOpen = false,
   onUpdateAdjustments,
   onClosePanel,
+  onRealign,
 }: ImageCanvasProps) {
   const { t } = useTranslation();
   const imageWrapperRef = useRef<HTMLDivElement>(null);
@@ -342,6 +344,7 @@ export function ImageCanvas({
             adjustments={adjustments}
             onUpdate={onUpdateAdjustments}
             onClose={onClosePanel}
+            onRealign={onRealign}
           />
         )}
         {/* Wrapper = AABB do retângulo da imagem rotacionada (axis-aligned com a tela).

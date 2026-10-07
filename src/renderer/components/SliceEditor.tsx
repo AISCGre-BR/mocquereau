@@ -11,7 +11,8 @@ import { ImageAdjustmentsPanel } from './slice-editor/ImageAdjustmentsPanel';
 import { SlidersHorizontal } from 'lucide-react';
 // SlicePreview import removed per UX feedback 2026-04-20
 import { flattenSyllables, computeSyllableCuts } from '../lib/sliceUtils';
-import { boxesInView } from '@shared/box-frame';
+import { boxesInView, hasAnyBox } from '@shared/box-frame';
+import { RealignBoxesDialog } from './slice-editor/RealignBoxesDialog';
 import { usePendingFlush } from '../hooks/pendingEdits';
 import type { ManuscriptSource, ManuscriptLine, StoredImage, ImageAdjustments } from '../lib/models';
 import { useTranslation } from 'react-i18next';
@@ -53,6 +54,7 @@ export function SliceEditor() {
   const [showAllBoxes, setShowAllBoxes] = useState<boolean>(true);
   const [sameSizeMode, setSameSizeMode] = useState<boolean>(false);
   const [showAdjustmentsPanel, setShowAdjustmentsPanel] = useState<boolean>(false);
+  const [showRealign, setShowRealign] = useState<boolean>(false);
 
   const project = globalState.project;
   const totalSyllableCount = project ? flattenSyllables(project.text.words).length : 0;
@@ -832,6 +834,15 @@ export function SliceEditor() {
               panelOpen={showAdjustmentsPanel}
               onUpdateAdjustments={handleUpdateAdjustments}
               onClosePanel={() => setShowAdjustmentsPanel(false)}
+              onRealign={
+                hasAnyBox(activeLine?.syllableBoxes)
+                  ? () => {
+                      // Boxes still in the editor's debounce go to the project first.
+                      pendingBoxSync.current?.();
+                      setShowRealign(true);
+                    }
+                  : undefined
+              }
             />
           ) : (
             <DropZone
@@ -844,6 +855,7 @@ export function SliceEditor() {
           )}
         </div>
       </div>
+      <RealignBoxesDialog open={showRealign} line={activeLine} onClose={() => setShowRealign(false)} />
     </div>
   );
 }

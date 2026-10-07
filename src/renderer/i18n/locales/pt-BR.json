@@ -288,5 +288,20 @@
   "imageCanvas.straightenTitle": "Endireitar",
   "imageCanvas.straightenAngle": "Ângulo fino (−10° a +10°)",
   "imageCanvas.straightenReadout": "Ângulo fino",
-  "imageCanvas.straightenReset": "Zerar ângulo fino"
+  "imageCanvas.straightenReset": "Zerar ângulo fino",
+  "realign.applied": "Caixas de {{count}} imagem(ns) realinhadas à rotação da imagem.",
+  "realign.undo": "Desfazer",
+  "realign.open": "Realinhar caixas…",
+  "realign.title": "Realinhar caixas",
+  "realign.hint": "Escolha o referencial em que as caixas foram desenhadas. A pontuação é a tinta dentro das caixas; a maior costuma ser a certa.",
+  "realign.candidates": "Referenciais candidatos",
+  "realign.flipH": "espelho H",
+  "realign.flipV": "espelho V",
+  "realign.current": "atual",
+  "realign.best": "melhor",
+  "realign.score": "tinta {{percent}}%",
+  "realign.scoring": "Analisando a tinta da imagem…",
+  "realign.failed": "Não foi possível ler a imagem desta linha.",
+  "realign.apply": "Aplicar",
+  "realign.cancel": "Cancelar"
 }

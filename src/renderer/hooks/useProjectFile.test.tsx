@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import "../i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { ProjectContext, createNewProject, useProject, useProjectReducer } from "./useProject";
 import { AUTOSAVE_DELAY_MS, useProjectFile } from "./useProjectFile";
 import { Toaster } from "../ui/Toast";
-import type { MocquereauAPI } from "../lib/models";
+import type { ManuscriptLine, MocquereauAPI, MocquereauProject } from "../lib/models";
+import type { RasterLike } from "../lib/box-frame-detect";
+import { blobs, boxesIn, page } from "../lib/box-frame-detect.fixtures";
 
 afterEach(() => {
   cleanup();
@@ -309,5 +311,76 @@ describe("useProjectFile", () => {
     act(() => result.current.file.newProject());
     act(() => result.current.file.close());
     expect(result.current.ctx.state.project).toBeNull();
+  });
+});
+
+describe("useProjectFile: realinhamento de caixas em arquivo legado", () => {
+  const W = 600;
+  const H = 400;
+  const BLOBS = blobs(W, H);
+  const RASTER = page(W, H, BLOBS);
+  const R0 = { rotation: 0, flipH: false, flipV: false };
+  const R5 = { rotation: 5, flipH: false, flipV: false };
+  const ADJ5 = { brightness: 100, contrast: 100, saturation: 100, grayscale: 0, invert: false, rotation: 5, flipH: false, flipV: false };
+
+  function legacyProject(): MocquereauProject {
+    const p = createNewProject("Gloria", "");
+    const line = (id: string, over: Partial<ManuscriptLine>): ManuscriptLine => ({
+      id,
+      image: { dataUrl: "data:,", width: W, height: H, mimeType: "image/png" },
+      syllableRange: { start: 0, end: 0 },
+      dividers: [],
+      gaps: [],
+      confirmed: true,
+      ...over,
+    });
+    p.sources = [
+      {
+        id: "S",
+        order: 1,
+        metadata: { siglum: "X", library: "", city: "", century: "", folio: "", notation: "square" },
+        lines: [
+          line("rot", { imageAdjustments: ADJ5, boxFrame: R5, syllableBoxes: boxesIn(R0, RASTER, BLOBS) }),
+          line("plain", { syllableBoxes: boxesIn(R0, RASTER, BLOBS) }),
+        ],
+        syllableCuts: {},
+      },
+    ];
+    return p;
+  }
+
+  function setupWith(loadRaster: () => Promise<RasterLike | null>) {
+    return renderHook(() => ({ file: useProjectFile({ loadRaster }), ctx: useProject() }), { wrapper: Providers });
+  }
+
+  it("corrige o referencial em um passo desfazível, avisa com toast e marca editado", async () => {
+    mockApi({ openProjectByPath: vi.fn().mockResolvedValue({ project: legacyProject(), filePath: null }) });
+    const { result } = setupWith(async () => RASTER);
+    await act(async () => {
+      await result.current.file.openRecent("/gloria.mocquereau.json");
+    });
+    await waitFor(() => expect(result.current.ctx.state.isDirty).toBe(true));
+    const [rot, plain] = result.current.ctx.state.project!.sources[0].lines;
+    expect(rot.boxFrame).toEqual(R0);
+    expect(rot.imageAdjustments).toEqual(ADJ5);
+    expect(plain.boxFrame).toBeUndefined();
+    const toast = screen.getByRole("status");
+    expect(toast.textContent).toContain("Caixas de 1 imagem(ns) realinhadas à rotação da imagem.");
+    act(() => screen.getByRole("button", { name: "Desfazer" }).click());
+    expect(result.current.ctx.state.project!.sources[0].lines[0].boxFrame).toEqual(R5);
+    expect(result.current.ctx.state.isDirty).toBe(false);
+  });
+
+  it("arquivo .mocquereau (com caminho) não é reanalisado", async () => {
+    const loadRaster = vi.fn(async () => RASTER);
+    mockApi({ openProjectByPath: vi.fn().mockResolvedValue({ project: legacyProject(), filePath: "/g.mocquereau" }) });
+    const { result } = setupWith(loadRaster);
+    await act(async () => {
+      await result.current.file.openRecent("/g.mocquereau");
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(loadRaster).not.toHaveBeenCalled();
+    expect(result.current.ctx.state.project!.sources[0].lines[0].boxFrame).toEqual(R5);
+    expect(result.current.ctx.state.isDirty).toBe(false);
   });
 });

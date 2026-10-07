@@ -11,7 +11,8 @@ import type {
 } from "../lib/models";
 import type { HyphenationMode } from "../lib/syllabify";
 import { normalizeRotation } from "../lib/image-adjustments";
-import { frameOf, hasAnyBox } from "@shared/box-frame";
+import { frameOf, framesEqual, hasAnyBox } from "@shared/box-frame";
+import type { BoxFrame } from "@shared/project-schema";
 import type { PendingEdits } from "./pendingEdits";
 import {
   canRedo,
@@ -84,7 +85,22 @@ export type ProjectAction =
         lineId: string;
         adjustments: Partial<ImageAdjustments>;
       };
+    }
+  | {
+      /**
+       * Declares which frame the line's stored boxes are in (realignment of
+       * legacy lines whose boxes predate the current rotation). The boxes are
+       * not rewritten: boxesInView reinterprets them. An array applies several
+       * lines as one undo step.
+       */
+      type: "SET_LINE_BOX_FRAME";
+      payload: LineBoxFrameUpdate | LineBoxFrameUpdate[];
     };
+
+export interface LineBoxFrameUpdate {
+  lineId: string;
+  frame: BoxFrame;
+}
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -395,6 +411,29 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         });
         return syllableCuts ? { ...s, lines, syllableCuts: { ...s.syllableCuts, ...syllableCuts } } : { ...s, lines };
       });
+      return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "SET_LINE_BOX_FRAME": {
+      if (!state.project) return state;
+      const updates = Array.isArray(action.payload) ? action.payload : [action.payload];
+      const wanted = new Map(updates.map((u) => [u.lineId, frameOf(u.frame)]));
+      let changed = false;
+      const sources = state.project.sources.map((s) => {
+        let sourceChanged = false;
+        const lines = s.lines.map((l) => {
+          const frame = wanted.get(l.id);
+          if (!frame) return l;
+          const stored = l.boxFrame ?? frameOf(l.imageAdjustments);
+          if (framesEqual(stored, frame)) return l;
+          sourceChanged = true;
+          return { ...l, boxFrame: frame };
+        });
+        if (!sourceChanged) return s;
+        changed = true;
+        return { ...s, lines };
+      });
+      if (!changed) return state;
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
 

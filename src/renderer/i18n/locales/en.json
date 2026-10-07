@@ -288,5 +288,20 @@
   "imageCanvas.straightenTitle": "Straighten",
   "imageCanvas.straightenAngle": "Fine angle (-10° to +10°)",
   "imageCanvas.straightenReadout": "Fine angle",
-  "imageCanvas.straightenReset": "Reset fine angle"
+  "imageCanvas.straightenReset": "Reset fine angle",
+  "realign.applied": "Boxes of {{count}} image(s) realigned to the image rotation.",
+  "realign.undo": "Undo",
+  "realign.open": "Realign boxes…",
+  "realign.title": "Realign boxes",
+  "realign.hint": "Choose the frame the boxes were drawn in. The score is the ink inside the boxes; the highest is usually right.",
+  "realign.candidates": "Candidate frames",
+  "realign.flipH": "flip H",
+  "realign.flipV": "flip V",
+  "realign.current": "current",
+  "realign.best": "best",
+  "realign.score": "ink {{percent}}%",
+  "realign.scoring": "Reading the ink of the image…",
+  "realign.failed": "Could not read the image of this line.",
+  "realign.apply": "Apply",
+  "realign.cancel": "Cancel"
 }

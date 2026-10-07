@@ -288,5 +288,20 @@
   "imageCanvas.straightenTitle": "傾き補正",
   "imageCanvas.straightenAngle": "微調整角度 (−10°〜+10°)",
   "imageCanvas.straightenReadout": "微調整角度",
-  "imageCanvas.straightenReset": "微調整角度をリセット"
+  "imageCanvas.straightenReset": "微調整角度をリセット",
+  "realign.applied": "{{count}} 枚の画像のボックスを画像の回転に合わせて再配置しました。",
+  "realign.undo": "元に戻す",
+  "realign.open": "ボックスを再配置…",
+  "realign.title": "ボックスを再配置",
+  "realign.hint": "ボックスを描いたときの向きを選んでください。スコアはボックス内のインク量で、最も高いものが通常正解です。",
+  "realign.candidates": "候補の向き",
+  "realign.flipH": "左右反転",
+  "realign.flipV": "上下反転",
+  "realign.current": "現在",
+  "realign.best": "最適",
+  "realign.score": "インク {{percent}}%",
+  "realign.scoring": "画像のインクを解析中…",
+  "realign.failed": "この行の画像を読み込めませんでした。",
+  "realign.apply": "適用",
+  "realign.cancel": "キャンセル"
 }

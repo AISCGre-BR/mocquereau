@@ -6,7 +6,7 @@
 // — a fonte de verdade fica no reducer do projeto (action
 // UPDATE_LINE_ADJUSTMENTS). Phase 10 / IMG-06.
 
-import { SlidersHorizontal, RotateCcw, RotateCw, X } from "lucide-react";
+import { SlidersHorizontal, RotateCcw, RotateCw, ScanSearch, X } from "lucide-react";
 import type { ImageAdjustments } from "../../lib/models";
 import {
   IMAGE_ADJUSTMENTS_DEFAULT,
@@ -19,9 +19,11 @@ interface Props {
   adjustments?: ImageAdjustments;
   onUpdate: (partial: Partial<ImageAdjustments>) => void;
   onClose: () => void;
+  /** Opens "Realinhar caixas…" (only offered when the line has boxes). */
+  onRealign?: () => void;
 }
 
-export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props) {
+export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose, onRealign }: Props) {
   const { t } = useTranslation();
   const adj = adjustments ?? IMAGE_ADJUSTMENTS_DEFAULT;
   const isDefault = isDefaultAdjustments(adjustments);
@@ -275,6 +277,20 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
             <span>+90°</span>
           </button>
         </div>
+
+        {onRealign && (
+          <div className="flex items-center gap-2 text-xs mt-1">
+            <span className="w-20" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={onRealign}
+              className="px-2 py-1 border border-rule rounded hover:bg-ink-wash flex items-center gap-1"
+            >
+              <ScanSearch size={12} />
+              <span>{t("realign.open")}</span>
+            </button>
+          </div>
+        )}
 
         <label className="flex items-center gap-2 text-xs text-ink-soft mt-1">
           <input

@@ -227,3 +227,46 @@ describe("documentReducer", () => {
     expect(v.h).toBeCloseTo(0.25, 12);
   });
 });
+
+describe("SET_LINE_BOX_FRAME", () => {
+  const R0 = { rotation: 0, flipH: false, flipV: false };
+  const R5 = { rotation: 5, flipH: false, flipV: false };
+  const ADJ5 = {
+    brightness: 100,
+    contrast: 100,
+    saturation: 100,
+    grayscale: 0,
+    invert: false,
+    rotation: 5,
+    flipH: false,
+    flipV: false,
+  };
+
+  it("reinterprets the stored boxes in another frame, keeps adjustments, one undo step", () => {
+    const h = harness();
+    h.dispatch({ type: "SET_PROJECT", payload: makeProject({ imageAdjustments: ADJ5, boxFrame: R5 }) });
+    const loaded = h.view.project;
+    h.dispatch({ type: "SET_LINE_BOX_FRAME", payload: [{ lineId: "L1", frame: R0 }] });
+    const line = firstLine(h.view.project);
+    expect(line.boxFrame).toEqual(R0);
+    expect(line.imageAdjustments).toEqual(ADJ5);
+    expect(line.syllableBoxes).toEqual({ 0: BOX });
+    expect(boxesInView(line)).not.toEqual({ 0: BOX });
+    expect(h.view.isDirty).toBe(true);
+    expect(h.doc.history.past).toHaveLength(1);
+    h.dispatch({ type: "UNDO" });
+    expect(h.view.project).toBe(loaded);
+    expect(h.view.isDirty).toBe(false);
+  });
+
+  it("accepts a single update and ignores no-ops and unknown lines", () => {
+    const h = harness();
+    h.dispatch({ type: "SET_PROJECT", payload: makeProject({ imageAdjustments: ADJ5 }) });
+    const before = h.doc;
+    h.dispatch({ type: "SET_LINE_BOX_FRAME", payload: { lineId: "L1", frame: R5 } });
+    h.dispatch({ type: "SET_LINE_BOX_FRAME", payload: { lineId: "nope", frame: R0 } });
+    expect(h.doc).toBe(before);
+    h.dispatch({ type: "SET_LINE_BOX_FRAME", payload: { lineId: "L1", frame: R0 } });
+    expect(firstLine(h.view.project).boxFrame).toEqual(R0);
+  });
+});
