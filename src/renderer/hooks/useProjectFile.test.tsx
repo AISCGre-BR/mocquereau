@@ -5,6 +5,7 @@ import { act, cleanup, renderHook, screen, waitFor } from "@testing-library/reac
 import type { ReactNode } from "react";
 import { ProjectContext, createNewProject, useProject, useProjectReducer } from "./useProject";
 import { AUTOSAVE_DELAY_MS, useProjectFile } from "./useProjectFile";
+import { makeThumbnail } from "../lib/thumbnail";
 import { Toaster } from "../ui/Toast";
 import type { ManuscriptLine, MocquereauAPI, MocquereauProject } from "../lib/models";
 import type { RasterLike } from "../lib/box-frame-detect";
@@ -42,6 +43,15 @@ function mockApi(overrides: Partial<Record<keyof MocquereauAPI, unknown>> = {}) 
   };
   window.mocquereau = api as unknown as MocquereauAPI;
   return api;
+}
+
+function withFirstPage(p: MocquereauProject): MocquereauProject {
+  const line = {
+    id: "l1", image: { dataUrl: "data:image/png;base64,UNIQUE1", width: 10, height: 10, mimeType: "image/png" },
+    syllableRange: { start: 0, end: 1 }, dividers: [], gaps: [], syllableBoxes: {}, confirmed: false,
+  } as unknown as ManuscriptLine;
+  const source = { id: "s", order: 1, metadata: { siglum: "P", library: "", city: "", century: "", classes: [null, null, null] }, lines: [line], syllableCuts: {} };
+  return { ...p, sources: [source as never] };
 }
 
 function setup() {
@@ -141,6 +151,44 @@ describe("useProjectFile", () => {
         expect.objectContaining({ sources: expect.any(Array) }),
       ),
     );
+  });
+
+  it("reuses the thumbnail when two saves share the same first page", async () => {
+    const mk = vi.mocked(makeThumbnail);
+    mk.mockClear();
+    mk.mockResolvedValue("data:image/jpeg;base64,CACHE");
+    const api = mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    act(() => {
+      result.current.ctx.dispatch({ type: "SET_PROJECT", payload: withFirstPage(result.current.ctx.state.project!) } as never);
+    });
+    await act(async () => {
+      await result.current.file.save();
+    });
+    await act(async () => {
+      await result.current.file.save();
+    });
+    await waitFor(() => expect(api.updateRecentMeta).toHaveBeenCalledTimes(2));
+    expect(mk).toHaveBeenCalledTimes(1);
+    mk.mockResolvedValue(undefined);
+  });
+
+  it("a project whose source has no lines array still saves without an error toast", async () => {
+    const api = mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    act(() => {
+      const p = result.current.ctx.state.project!;
+      result.current.ctx.dispatch({ type: "SET_PROJECT", payload: { ...p, sources: [{ id: "s" } as never] } } as never);
+    });
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.file.save();
+    });
+    expect(ok).toBe(true);
+    expect(api.saveProject).toHaveBeenCalled();
+    expect(screen.queryByText(/Não foi possível salvar/)).toBeNull();
   });
 
   it("does not send meta for a project without a path", async () => {

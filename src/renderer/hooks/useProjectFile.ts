@@ -11,7 +11,7 @@ import type { Classification } from "../../shared/classification";
 import { useToast } from "../ui/Toast";
 import { syllabifyText } from "../lib/syllabify";
 import type { MocquereauProject } from "../lib/models";
-import { buildRecentMeta, firstPageImage } from "../lib/recent-meta";
+import { buildRecentMeta, firstPageLine } from "../lib/recent-meta";
 import { makeThumbnail } from "../lib/thumbnail";
 import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
 
@@ -47,8 +47,25 @@ export interface ProjectFileOptions {
 }
 
 /** Calcula miniatura e progresso em segundo plano e os entrega ao main (sem dispatch). */
+let thumbCache: { key: string; thumb: string } | null = null;
+
+/** Miniatura da primeira página; reaproveita a última se a imagem e os ajustes não mudaram. */
+async function thumbnailFor(project: MocquereauProject): Promise<string | undefined> {
+  const line = firstPageLine(project);
+  const dataUrl = line?.image?.dataUrl;
+  if (!line || !dataUrl) return undefined;
+  const adj = line.imageAdjustments;
+  const key = `${adj?.rotation ?? 0}|${adj?.flipH ? 1 : 0}|${adj?.flipV ? 1 : 0}|${dataUrl}`;
+  if (thumbCache?.key === key) return thumbCache.thumb;
+  const thumb = await makeThumbnail(dataUrl, undefined, adj);
+  if (thumb) thumbCache = { key, thumb };
+  return thumb;
+}
+
 function publishRecentMeta(project: MocquereauProject, filePath: string): void {
-  void makeThumbnail(firstPageImage(project))
+  // Começa dentro da cadeia: qualquer erro (projeto malformado) não pode derrubar o salvamento.
+  void Promise.resolve()
+    .then(() => thumbnailFor(project))
     .then((thumb) => window.mocquereau.updateRecentMeta(filePath, buildRecentMeta(project, thumb)))
     .catch(() => {});
 }

@@ -9,9 +9,9 @@ const line = (boxes: Record<number, unknown>, dataUrl = "data:image/png;base64,A
 const box = { x: 0, y: 0, w: 0.1, h: 0.1 };
 
 describe("sourceProgress", () => {
-  it("counts distinct syllables with a non-null box across pages", () => {
+  it("counts distinct syllables with a box or an explicit gap across pages", () => {
     const s: any = { lines: [line({ 0: box, 1: null }), line({ 0: box, 2: box })] };
-    expect(sourceProgress(s, 4)).toBe(0.5);
+    expect(sourceProgress(s, 4)).toBe(0.75);
   });
   it("is 0 without syllables or pages", () => {
     expect(sourceProgress({ lines: [] } as any, 4)).toBe(0);
