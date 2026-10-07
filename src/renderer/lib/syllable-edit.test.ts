@@ -67,7 +67,29 @@ describe('replaceWordSyllables', () => {
     const l = p.sources[0].lines[0];
     expect(l.syllableBoxes![3]).toEqual(BOX[4]);
     expect(l.syllableRange).toEqual({ start: 3, end: 3 });
-    expect(p.sources[0].syllableCuts[3]).toEqual(IMG);
+  });
+  it('merge keeps only the cut of the first syllable, even when it has none', () => {
+    const p = replaceWordSyllables(base(), 1, ['dixit']);
+    expect(p.sources[0].syllableCuts).toEqual({});
+    const b = base();
+    b.sources[0].syllableCuts = { 3: IMG, 4: { ...IMG, dataUrl: 'data:image/png;base64,other' } };
+    expect(replaceWordSyllables(b, 1, ['dixit']).sources[0].syllableCuts).toEqual({ 3: IMG });
+  });
+  it('merge keeps a gap only when both syllables were gaps', () => {
+    expect(replaceWordSyllables(base(), 1, ['dixit']).sources[0].lines[0].gaps).toEqual([]);
+    const b = base();
+    b.sources[0].lines[0].gaps = [3, 4];
+    expect(replaceWordSyllables(b, 1, ['dixit']).sources[0].lines[0].gaps).toEqual([3]);
+  });
+  it('removing two or more syllables clamps a range start on a dropped syllable to the word', () => {
+    const b = base();
+    b.text.words = [
+      { original: 'dixit', syllables: ['di', 'xit'] },
+      { original: 'Dominus', syllables: ['Do', 'mi', 'nus'] },
+    ];
+    b.sources[0].lines[0].syllableRange = { start: 4, end: 4 };
+    const p = replaceWordSyllables(b, 1, ['Dominus']);
+    expect(p.sources[0].lines[0].syllableRange).toEqual({ start: 2, end: 2 });
   });
   it('does not mutate its input', () => {
     const b = base();

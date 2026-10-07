@@ -76,7 +76,9 @@ function detectEdit(prev: string[], next: string[]): Edit {
  * structure of every source. Does not mutate the input.
  *
  * - split of k: box/gap/cut of k stays on the first part; the new part has none.
- * - merge of k,k+1: keeps the box/cut of k (or that of k+1 if k has none).
+ * - merge of k,k+1: keeps the box of k (or that of k+1 if k has none) and only
+ *   the cut of k (a cut of k+1 belongs to the other box); stays a gap only if
+ *   both k and k+1 were gaps.
  * - anything else (same count or larger changes): entries in the word keep their
  *   local index while it exists; the rest are dropped.
  */
@@ -112,11 +114,17 @@ export function replaceWordSyllables(
     return local < m ? [g, g] : null;
   }
   const mapOne = (g: number): number | null => mapIdx(g)?.[0] ?? null;
+  /** Old index inside the word that the edit dropped: the word's last surviving syllable. */
+  const clampDropped = (g: number): number =>
+    g >= start && g < start + n ? start + Math.max(0, m - 1) : g;
 
-  function remapRecord<X>(rec: Record<number, X | null> | undefined): Record<number, X | null> {
+  function remapRecord<X>(
+    rec: Record<number, X | null> | undefined,
+    fallbackToNext: boolean,
+  ): Record<number, X | null> {
     const out: Record<number, X | null> = {};
     if (!rec) return out;
-    // Merge: the surviving entry is k's, unless k has nothing (null/absent), then k+1's.
+    // Merge: the surviving entry is k's; with fallbackToNext, k+1's when k has nothing (null/absent).
     const mergeFrom = edit.kind === 'merge' ? start + edit.k + 1 : -1;
     for (const [key, value] of Object.entries(rec)) {
       const g = Number(key);
@@ -124,7 +132,7 @@ export function replaceWordSyllables(
       const to = mapOne(g);
       if (to !== null) out[to] = value;
     }
-    if (edit.kind === 'merge') {
+    if (edit.kind === 'merge' && fallbackToNext) {
       const k = start + edit.k;
       const a = rec[k];
       const b = rec[mergeFrom];
@@ -139,20 +147,30 @@ export function replaceWordSyllables(
       let range = line.syllableRange;
       const s = mapIdx(range.start);
       const e = mapIdx(range.end);
-      const ns = s ? s[0] : mapOne(range.start) ?? 0;
-      const ne = e ? e[1] : Math.max(ns, range.end + delta);
+      const ns = s ? s[0] : clampDropped(range.start);
+      const ne = e ? e[1] : clampDropped(range.end);
       range = { start: ns, end: Math.max(ns, ne) };
+      const oldGaps = new Set(line.gaps ?? []);
       const gaps = [...new Set(
-        (line.gaps ?? []).map(mapOne).filter((v): v is number => v !== null),
+        [...oldGaps]
+          .filter((g) => {
+            if (edit.kind !== 'merge') return true;
+            const k = start + edit.k;
+            // The merged syllable is a gap only if both halves were.
+            if (g === k) return oldGaps.has(k + 1);
+            return g !== k + 1;
+          })
+          .map(mapOne)
+          .filter((v): v is number => v !== null),
       )].sort((a, b) => a - b);
       return {
         ...line,
         syllableRange: range,
         gaps,
-        syllableBoxes: line.syllableBoxes ? remapRecord(line.syllableBoxes) : line.syllableBoxes,
+        syllableBoxes: line.syllableBoxes ? remapRecord(line.syllableBoxes, true) : line.syllableBoxes,
       };
     }),
-    syllableCuts: remapRecord(source.syllableCuts),
+    syllableCuts: remapRecord(source.syllableCuts, false),
   }));
 
   return {
