@@ -14,6 +14,7 @@ import { buildMenus } from "./shell/menus";
 import { useMenuShortcuts } from "./shell/useMenuShortcuts";
 import { useTheme } from "./shell/useTheme";
 import { Welcome } from "./views/Welcome";
+import { NewProjectGuide } from "./views/NewProjectGuide";
 import { TextoView } from "./views/TextoView";
 import { FontesView } from "./views/FontesView";
 import { RecortesView } from "./views/RecortesView";
@@ -70,15 +71,21 @@ function Workbench() {
 
   const [welcomeKey, setWelcomeKey] = useState(0);
   const project = state.project;
-  const canExport = project !== null && project.sources.some((s) => s.lines.length > 0);
+  // Guia de criação aberto: ocupa a janela inteira, mesmo com um projeto aberto por baixo.
+  const creating = file.creating;
+  const canExport = !creating && project !== null && project.sources.some((s) => s.lines.length > 0);
   const language: SupportedLang = toSupportedLang(i18n.language);
-  const title = project ? project.meta.title.trim() || t("file.untitled") : "Mocquereau";
-  const edited = project !== null && state.isDirty;
+  const title = creating
+    ? t("newProject.title")
+    : project
+      ? project.meta.title.trim() || t("file.untitled")
+      : "Mocquereau";
+  const edited = !creating && project !== null && state.isDirty;
   const platform = window.mocquereau.platform;
 
   const menus = buildMenus(
     {
-      hasProject: project !== null,
+      hasProject: !creating && project !== null,
       canExport,
       view,
       theme,
@@ -116,16 +123,17 @@ function Workbench() {
 
   // Título da janela (barra de tarefas): "Puer natus est — Editado — Mocquereau".
   useEffect(() => {
-    document.title = project
-      ? [title, edited ? t("shell.edited") : null, "— Mocquereau"].filter(Boolean).join(" ")
-      : "Mocquereau";
-  }, [project, title, edited, t]);
+    document.title =
+      project || creating
+        ? [title, edited ? t("shell.edited") : null, "— Mocquereau"].filter(Boolean).join(" ")
+        : "Mocquereau";
+  }, [project, creating, title, edited, t]);
 
   return (
     <AppShell
       menubar={<MenuBar menus={menus} title={title} edited={edited} platform={platform} />}
       toolbar={
-        project ? (
+        project && !creating ? (
           <Toolbar
             view={view}
             onViewChange={setView}
@@ -146,7 +154,9 @@ function Workbench() {
         ) : undefined
       }
     >
-      {project === null ? (
+      {creating ? (
+        <NewProjectGuide onCancel={file.cancelNewProject} onCreate={(draft) => void file.createProject(draft)} />
+      ) : project === null ? (
         <Welcome
           key={welcomeKey}
           onNew={file.newProject}

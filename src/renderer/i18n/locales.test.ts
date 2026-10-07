@@ -43,6 +43,9 @@ const SAME_AS_EN: Record<string, "*" | readonly Translated[]> = {
   "sourceList.cityPlaceholder": ["ja"],
   "shell.menu.file": ["it"],
   "shell.view.texto": ["de"],
+  "newProject.step.text": ["de"],
+  "newProject.mode.modern.name": ["de"],
+  "newProject.mode.manual.name": ["es"],
 };
 
 function allowed(key: string, lng: Translated): boolean {

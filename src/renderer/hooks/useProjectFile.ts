@@ -14,6 +14,7 @@ import type { MocquereauProject } from "../lib/models";
 import { buildRecentMeta, firstPageLine } from "../lib/recent-meta";
 import { makeThumbnail } from "../lib/thumbnail";
 import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
+import type { NewProjectDraft } from "../views/NewProjectGuide";
 
 export const AUTOSAVE_DELAY_MS = 3000;
 
@@ -27,7 +28,16 @@ async function loadLibrary(): Promise<Classification> {
 }
 
 export interface ProjectFileActions {
-  newProject: () => Promise<void>;
+  /** Menu Ctrl+N e tela inicial: abre o guia de criação (= startNewProject). */
+  newProject: () => void;
+  /** Confirma o descarte do projeto aberto e abre o guia de criação. */
+  startNewProject: () => void;
+  /** Fecha o guia; o projeto aberto (se houver) continua como estava. */
+  cancelNewProject: () => void;
+  /** Cria o projeto do rascunho do guia (sem arquivo) e fecha o guia. */
+  createProject: (draft: NewProjectDraft) => Promise<void>;
+  /** Guia de criação aberto. */
+  creating: boolean;
   open: () => Promise<void>;
   openRecent: (filePath: string) => Promise<void>;
   /** Projeto de exemplo embutido: abre sem caminho, então o primeiro Salvar vira Salvar como. */
@@ -75,6 +85,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
   const { t } = useTranslation();
   const toast = useToast();
   const [projectEpoch, setProjectEpoch] = useState(0);
+  const [creating, setCreating] = useState(false);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -117,6 +128,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
   const adopt = useCallback(
     (project: MocquereauProject, filePath: string | null) => {
       docGen.current += 1;
+      setCreating(false);
       dispatch({ type: "SET_PROJECT", payload: project });
       dispatch({ type: "SET_FILE_PATH", payload: filePath });
       replaceDocument();
@@ -219,11 +231,24 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
   const save = useCallback(() => writeProject("save", false), [writeProject]);
   const saveAs = useCallback(() => writeProject("saveAs", false), [writeProject]);
 
-  const newProject = useCallback(async () => {
-    if (!confirmDiscard()) return;
-    const library = await loadLibrary();
-    adopt(createNewProject(t("file.untitled"), "", library), null);
-  }, [adopt, confirmDiscard, t]);
+  const creatingRef = useRef(creating);
+  creatingRef.current = creating;
+  const startNewProject = useCallback(() => {
+    // Ctrl+N com o guia já aberto: nada a fazer (o descarte já foi confirmado).
+    if (creatingRef.current || !confirmDiscard()) return;
+    setCreating(true);
+  }, [confirmDiscard]);
+
+  const cancelNewProject = useCallback(() => setCreating(false), []);
+
+  const createProject = useCallback(
+    async (draft: NewProjectDraft) => {
+      const library = await loadLibrary();
+      const project = createNewProject(draft.title.trim() || t("file.untitled"), draft.author.trim(), library);
+      adopt({ ...project, text: { raw: draft.raw, words: draft.words, hyphenationMode: draft.mode } }, null);
+    },
+    [adopt, t],
+  );
 
   const open = useCallback(async () => {
     if (!confirmDiscard()) return;
@@ -295,5 +320,19 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
     void window.mocquereau.setDirty(state.isDirty && state.project !== null);
   }, [state.isDirty, state.project, pending]);
 
-  return { newProject, open, openRecent, openExample, save, saveAs, close, importGueranger, projectEpoch };
+  return {
+    newProject: startNewProject,
+    startNewProject,
+    cancelNewProject,
+    createProject,
+    creating,
+    open,
+    openRecent,
+    openExample,
+    save,
+    saveAs,
+    close,
+    importGueranger,
+    projectEpoch,
+  };
 }
