@@ -107,11 +107,14 @@ export function buildFixture() {
   const project = {
     meta: { title: "Puer natus est", author: "", createdAt: now, updatedAt: now },
     text: {
-      raw: "Puer natus est nobis et filius datus est nobis",
+      raw: "Puer natus est nobis\net filius datus est nobis",
       words: SYLLABLES_BY_WORD.map((s) => ({ original: s.join(""), syllables: s })),
       hyphenationMode: "manual",
     },
-    sections: [],
+    sections: [
+      { id: "sec-1", name: "Intonação", wordRange: [0, 3] },
+      { id: "sec-2", name: "Et filius", wordRange: [4, 8] },
+    ],
     classification: structuredClone(SUGGESTED_CLASSIFICATION),
     sources: [
       source(0, "Einsiedeln 121", "Stiftsbibliothek", "Einsiedeln", "X",

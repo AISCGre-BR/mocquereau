@@ -166,7 +166,10 @@ function Workbench() {
         />
       ) : (
         <div key={`${file.projectEpoch}:${historyEpoch}`} className="flex min-h-0 flex-1 flex-col">
-          {view === "texto" && <TextoView />}
+          {view === "texto" && (
+            // Sem fontes, a vista Fontes já abre com uma fonte nova pronta para preencher.
+            <TextoView onAddSource={() => setView("fontes")} onImportGueranger={() => void file.importGueranger()} />
+          )}
           {view === "fontes" && <FontesView />}
           {view === "recortes" && <RecortesView />}
           {view === "tabela" && <TabelaView onNavigateToEditor={() => setView("recortes")} />}
