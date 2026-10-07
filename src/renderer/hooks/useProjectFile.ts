@@ -1,6 +1,7 @@
-// Ações de arquivo da onda A1, ligadas aos handlers que já existiam (StatusBar e
-// ProjectSetup). O ciclo de vida completo (salvar atômico, recuperação, registro de
-// comandos) é da onda B; aqui só mudam de lugar e ganham toasts.
+// Ações de arquivo da onda A1. Gravar/abrir (pacote .mocquereau, migração legada,
+// confirmação de sobrescrita, recentes) é do main (project-io, onda A2); aqui só
+// ficam o fluxo da interface, o autosave e os toasts. Recuperação e registro de
+// comandos são da onda B.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createNewProject, useProject } from "./useProject";
@@ -46,24 +47,31 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
       dispatch({ type: "SET_FILE_PATH", payload: filePath });
       setProjectEpoch((n) => n + 1);
       onOpenedRef.current?.();
-      if (filePath) void window.mocquereau.addRecentFile(filePath).catch(() => undefined);
+      // O main registra os arquivos abertos (inclusive legados) na lista de recentes.
     },
     [dispatch],
   );
 
   const writeProject = useCallback(
-    async (existingPath: string | undefined, silent: boolean): Promise<boolean> => {
+    async (mode: "save" | "saveAs", silent: boolean): Promise<boolean> => {
       const s = stateRef.current;
       if (!s.project) return false;
-      const updated = { ...s.project, meta: { ...s.project.meta, updatedAt: new Date().toISOString() } };
+      // B2 (onda A2): o ponto salvo é este snapshot, não o que existir quando o main responder.
+      const snapshot = s.project;
+      const updated = { ...snapshot, meta: { ...snapshot.meta, updatedAt: new Date().toISOString() } };
+      const currentPath = s.currentFilePath ?? undefined;
       try {
-        const result = await window.mocquereau.saveProject(updated, existingPath);
-        if (!result) return false; // diálogo cancelado
+        // Arquivo legado aberto tem filePath null: "Salvar" vira "Salvar como" para .mocquereau
+        // (decidido no main, que também confirma sobrescrita e registra o recente).
+        const result =
+          mode === "saveAs"
+            ? await window.mocquereau.saveProjectAs(updated, currentPath)
+            : await window.mocquereau.saveProject(updated, currentPath);
+        if (!result) return false; // diálogo cancelado ou erro já mostrado pelo main
         lastAutosaveError.current = null;
-        dispatch({ type: "SAVE_SUCCESS" });
-        if (result.filePath !== s.currentFilePath) {
+        dispatch({ type: "SAVE_SUCCESS", payload: { project: snapshot } });
+        if (result.filePath !== stateRef.current.currentFilePath) {
           dispatch({ type: "SET_FILE_PATH", payload: result.filePath });
-          void window.mocquereau.addRecentFile(result.filePath).catch(() => undefined);
         }
         if (!silent) toast.show({ kind: "ok", message: t("file.saved") });
         return true;
@@ -80,11 +88,8 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
     [dispatch, t, toast],
   );
 
-  const save = useCallback(
-    () => writeProject(stateRef.current.currentFilePath ?? undefined, false),
-    [writeProject],
-  );
-  const saveAs = useCallback(() => writeProject(undefined, false), [writeProject]);
+  const save = useCallback(() => writeProject("save", false), [writeProject]);
+  const saveAs = useCallback(() => writeProject("saveAs", false), [writeProject]);
 
   const newProject = useCallback(() => {
     if (!confirmDiscard()) return;
@@ -136,7 +141,7 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
   useEffect(() => {
     if (!state.isDirty || !state.project || !state.currentFilePath) return;
     const timer = window.setTimeout(() => {
-      void writeProject(stateRef.current.currentFilePath ?? undefined, true);
+      void writeProject("save", true);
     }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [state.isDirty, state.project, state.currentFilePath, writeProject]);

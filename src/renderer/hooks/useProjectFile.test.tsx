@@ -27,7 +27,8 @@ function mockApi(overrides: Partial<Record<keyof MocquereauAPI, unknown>> = {}) 
   const api = {
     setDirty: vi.fn().mockResolvedValue(undefined),
     addRecentFile: vi.fn().mockResolvedValue(undefined),
-    saveProject: vi.fn().mockResolvedValue({ filePath: "/pesquisa/puer.mocquereau.json" }),
+    saveProject: vi.fn().mockResolvedValue({ filePath: "/pesquisa/puer.mocquereau" }),
+    saveProjectAs: vi.fn().mockResolvedValue({ filePath: "/pesquisa/copia.mocquereau" }),
     openProject: vi.fn().mockResolvedValue(null),
     openProjectByPath: vi.fn().mockResolvedValue(null),
     importGueranger: vi.fn().mockResolvedValue(null),
@@ -64,9 +65,10 @@ describe("useProjectFile", () => {
       expect.objectContaining({ meta: expect.objectContaining({ title: "Puer natus est" }) }),
       undefined,
     );
-    expect(result.current.ctx.state.currentFilePath).toBe("/pesquisa/puer.mocquereau.json");
+    expect(result.current.ctx.state.currentFilePath).toBe("/pesquisa/puer.mocquereau");
     expect(result.current.ctx.state.isDirty).toBe(false);
-    expect(api.addRecentFile).toHaveBeenCalledWith("/pesquisa/puer.mocquereau.json");
+    // Recentes são registrados pelo main (project-io).
+    expect(api.addRecentFile).not.toHaveBeenCalled();
     expect(screen.getByRole("status").textContent).toContain("Projeto salvo.");
   });
 
@@ -87,11 +89,11 @@ describe("useProjectFile", () => {
     const saveProject = vi.fn().mockRejectedValue(new Error("ENOSPC"));
     mockApi({
       saveProject,
-      openProjectByPath: vi.fn().mockResolvedValue({ project: createNewProject("Puer", ""), filePath: "/p.mocquereau.json" }),
+      openProjectByPath: vi.fn().mockResolvedValue({ project: createNewProject("Puer", ""), filePath: "/p.mocquereau" }),
     });
     const { result } = setup();
     await act(async () => {
-      await result.current.file.openRecent("/p.mocquereau.json");
+      await result.current.file.openRecent("/p.mocquereau");
     });
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "A" } }));
     await act(async () => {
@@ -102,7 +104,7 @@ describe("useProjectFile", () => {
       await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
     });
     expect(saveProject).toHaveBeenCalledTimes(2);
-    expect(saveProject).toHaveBeenLastCalledWith(expect.anything(), "/p.mocquereau.json");
+    expect(saveProject).toHaveBeenLastCalledWith(expect.anything(), "/p.mocquereau");
     expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 
@@ -119,7 +121,7 @@ describe("useProjectFile", () => {
   it("abrir outro projeto troca o conteúdo e incrementa projectEpoch (as vistas remontam)", async () => {
     const onOpened = vi.fn();
     const api = mockApi({
-      openProject: vi.fn().mockResolvedValue({ project: createNewProject("Sanctus VIII", ""), filePath: "/s.mocquereau.json" }),
+      openProject: vi.fn().mockResolvedValue({ project: createNewProject("Sanctus VIII", ""), filePath: "/s.mocquereau" }),
     });
     const { result } = renderHook(() => ({ file: useProjectFile({ onOpened }), ctx: useProject() }), { wrapper: Providers });
     act(() => result.current.file.newProject());
@@ -127,10 +129,66 @@ describe("useProjectFile", () => {
       await result.current.file.open();
     });
     expect(result.current.ctx.state.project?.meta.title).toBe("Sanctus VIII");
-    expect(result.current.ctx.state.currentFilePath).toBe("/s.mocquereau.json");
+    expect(result.current.ctx.state.currentFilePath).toBe("/s.mocquereau");
     expect(result.current.file.projectEpoch).toBe(2);
     expect(onOpened).toHaveBeenCalledTimes(2);
-    expect(api.addRecentFile).toHaveBeenCalledWith("/s.mocquereau.json");
+    expect(api.addRecentFile).not.toHaveBeenCalled();
+  });
+
+  it("saveAs usa project:save-as com o caminho atual", async () => {
+    const api = mockApi({
+      openProjectByPath: vi.fn().mockResolvedValue({ project: createNewProject("Puer", ""), filePath: "/p.mocquereau" }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.openRecent("/p.mocquereau");
+    });
+    await act(async () => {
+      expect(await result.current.file.saveAs()).toBe(true);
+    });
+    expect(api.saveProjectAs).toHaveBeenCalledWith(expect.anything(), "/p.mocquereau");
+    expect(api.saveProject).not.toHaveBeenCalled();
+    expect(result.current.ctx.state.currentFilePath).toBe("/pesquisa/copia.mocquereau");
+  });
+
+  it("arquivo legado abre sem caminho: autosave desligado e Salvar pede destino", async () => {
+    vi.useFakeTimers();
+    const api = mockApi({
+      openProjectByPath: vi.fn().mockResolvedValue({ project: createNewProject("Antigo", ""), filePath: null }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.openRecent("/antigo.mocquereau.json");
+    });
+    expect(result.current.ctx.state.currentFilePath).toBeNull();
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "A" } }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS * 2);
+    });
+    expect(api.saveProject).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.file.save();
+    });
+    expect(api.saveProject).toHaveBeenCalledWith(expect.anything(), undefined);
+    expect(result.current.ctx.state.currentFilePath).toBe("/pesquisa/puer.mocquereau");
+  });
+
+  it("edição feita durante o salvamento continua pendente (snapshot do ponto salvo)", async () => {
+    let resolveSave: (v: { filePath: string }) => void = () => undefined;
+    mockApi({ saveProject: vi.fn(() => new Promise((r) => (resolveSave = r))) });
+    const { result } = setup();
+    act(() => result.current.file.newProject());
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
+    let pending: Promise<boolean> = Promise.resolve(false);
+    act(() => {
+      pending = result.current.file.save();
+    });
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "Durante" } }));
+    await act(async () => {
+      resolveSave({ filePath: "/x.mocquereau" });
+      await pending;
+    });
+    expect(result.current.ctx.state.isDirty).toBe(true);
   });
 
   it("com alterações, Novo projeto pergunta e respeita o Cancelar", () => {

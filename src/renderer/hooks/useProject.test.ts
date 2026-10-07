@@ -1,3 +1,4 @@
+import { boxesInView } from "@shared/box-frame";
 import { describe, it, expect } from "vitest";
 import { projectReducer, initialStateForTest } from "./useProject";
 import type { ManuscriptSource, ManuscriptLine, StoredImage, SyllabifiedWord, ImageAdjustments } from "../lib/models";
@@ -447,3 +448,133 @@ describe("projectReducer — UPDATE_LINE_ADJUSTMENTS", () => {
     expect(next).toBe(state);
   });
 });
+
+// ── Wave A2 additions ────────────────────────────────────────────────────────
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const v of Object.values(value as object)) deepFreeze(v);
+  }
+  return value;
+}
+
+describe("projectReducer — REORDER_SOURCE immutability", () => {
+  it("does not mutate source objects shared with the previous state", () => {
+    const state = deepFreeze(makeStateWithSources([makeSource("a", 1), makeSource("b", 2), makeSource("c", 3)]));
+    const next = projectReducer(state, { type: "REORDER_SOURCE", payload: { id: "b", direction: "up" } });
+    expect(next.project!.sources.map((s) => [s.id, s.order])).toEqual([["b", 1], ["a", 2], ["c", 3]]);
+    expect(state.project!.sources.map((s) => [s.id, s.order])).toEqual([["a", 1], ["b", 2], ["c", 3]]);
+    expect(next.project!.sources[2]).toBe(state.project!.sources[2]);
+  });
+});
+
+describe("projectReducer — REPLACE_PROJECT / LOAD_PROJECT", () => {
+  it("REPLACE_PROJECT swaps the project and marks it dirty", () => {
+    const state = makeStateWithSources([makeSource("a", 1)]);
+    const replacement = { ...state.project!, meta: { ...state.project!.meta, title: "New" } };
+    const next = projectReducer(state, { type: "REPLACE_PROJECT", payload: replacement });
+    expect(next.project).toBe(replacement);
+    expect(next.isDirty).toBe(true);
+  });
+
+  it("LOAD_PROJECT is clean unless dirty is requested", () => {
+    const state = makeStateWithSources([]);
+    const p = state.project!;
+    expect(projectReducer(state, { type: "LOAD_PROJECT", payload: { project: p } }).isDirty).toBe(false);
+    expect(projectReducer(state, { type: "LOAD_PROJECT", payload: { project: p, dirty: true } }).isDirty).toBe(true);
+    expect(projectReducer(state, { type: "LOAD_PROJECT", payload: { project: null } }).project).toBeNull();
+  });
+});
+
+describe("projectReducer — box frame model (spec R1, S6/S7)", () => {
+  const BOX = { x: 0, y: 0, w: 0.25, h: 0.5 };
+  const img = { dataUrl: "data:,", width: 200, height: 100, mimeType: "image/png" };
+  const R = (rotation: number, flipH = false, flipV = false) => ({ rotation, flipH, flipV });
+  const ADJ = { brightness: 100, contrast: 100, saturation: 100, grayscale: 0, invert: false, flipH: false, flipV: false };
+  const stateWithLine = (overrides: Partial<ManuscriptLine>) => {
+    const source = { ...makeSource("S1", 1), lines: [mkLine("L1", { image: img, ...overrides })] };
+    return makeStateWithSources([source]);
+  };
+  const adjust = (adjustments: Partial<ImageAdjustments>) => ({
+    type: "UPDATE_LINE_ADJUSTMENTS" as const,
+    payload: { sourceId: "S1", lineId: "L1", adjustments },
+  });
+  const lineOf = (s: { project: { sources: ManuscriptSource[] } | null }) => s.project!.sources[0].lines[0];
+
+  it("rotating leaves the stored boxes untouched and pins the frame they were drawn in", () => {
+    const state = stateWithLine({ syllableBoxes: { 0: BOX, 1: null } });
+    const l = lineOf(projectReducer(state, adjust({ rotation: 90 })));
+    expect(l.syllableBoxes).toBe(lineOf(state).syllableBoxes);
+    expect(l.boxFrame).toEqual(R(0));
+    expect(l.imageAdjustments?.rotation).toBe(90);
+    // What the user sees is derived by the selector.
+    const v = boxesInView(l);
+    expect(v[1]).toBeNull();
+    expect(v[0]!.x).toBeCloseTo(0.5, 9);
+    expect(v[0]!.y).toBeCloseTo(0, 9);
+    expect(v[0]!.w).toBeCloseTo(0.5, 9);
+    expect(v[0]!.h).toBeCloseTo(0.25, 9);
+  });
+
+  it("an existing boxFrame is kept as is", () => {
+    const state = stateWithLine({
+      syllableBoxes: { 0: BOX },
+      imageAdjustments: { ...ADJ, rotation: 90 },
+      boxFrame: R(90),
+    });
+    const l = lineOf(projectReducer(state, adjust({ rotation: 0 })));
+    expect(l.boxFrame).toEqual(R(90));
+    expect(l.syllableBoxes![0]).toBe(BOX);
+    expect(l.imageAdjustments).toBeUndefined();
+  });
+
+  it("colour-only changes keep the very same boxes object", () => {
+    const state = stateWithLine({ syllableBoxes: { 0: BOX } });
+    const next = projectReducer(state, adjust({ brightness: 150 }));
+    expect(lineOf(next).syllableBoxes).toBe(lineOf(state).syllableBoxes);
+  });
+
+  it("lines without boxes get no boxFrame", () => {
+    expect("boxFrame" in lineOf(projectReducer(stateWithLine({}), adjust({ rotation: 90 })))).toBe(false);
+  });
+
+  it("UPDATE_LINE_BOXES stores the editor's boxes in the current frame", () => {
+    const state = stateWithLine({
+      syllableBoxes: { 0: BOX, 1: BOX },
+      imageAdjustments: { ...ADJ, rotation: 90 },
+      boxFrame: R(0),
+    });
+    // The editor works on boxesInView (current frame) and sends back the whole map.
+    const view = boxesInView(lineOf(state));
+    const edited = { ...view, 2: { x: 0.1, y: 0.1, w: 0.1, h: 0.1 } };
+    const next = projectReducer(state, {
+      type: "UPDATE_LINE_BOXES",
+      payload: { sourceId: "S1", lineId: "L1", syllableBoxes: edited, confirmed: true },
+    });
+    const l = lineOf(next);
+    expect(l.boxFrame).toEqual(R(90));
+    expect(l.syllableBoxes).toBe(edited);
+    expect(l.confirmed).toBe(true);
+    expect(boxesInView(l)).toBe(edited);
+    expect(next.isDirty).toBe(true);
+  });
+
+  it("UPDATE_LINE_BOXES can merge crops into the source (confirm)", () => {
+    const state = stateWithLine({ syllableBoxes: {} });
+    const cut = { dataUrl: "data:image/png;base64,AA==", width: 1, height: 1, mimeType: "image/png" };
+    const next = projectReducer(state, {
+      type: "UPDATE_LINE_BOXES",
+      payload: {
+        sourceId: "S1", lineId: "L1", syllableBoxes: { 0: BOX },
+        syllableRange: { start: 0, end: 2 }, gaps: [1], confirmed: true, syllableCuts: { 0: cut },
+      },
+    });
+    const src = next.project!.sources[0];
+    expect(src.syllableCuts[0]).toBe(cut);
+    expect(src.lines[0].syllableRange).toEqual({ start: 0, end: 2 });
+    expect(src.lines[0].gaps).toEqual([1]);
+    expect(src.lines[0].boxFrame).toEqual(R(0));
+  });
+});
+

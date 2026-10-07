@@ -1,6 +1,7 @@
 // src/renderer/lib/tableUtils.ts
 
 import type { ManuscriptSource, SyllableBox, StoredImage, SyllabifiedWord } from './models';
+import { boxesInView } from '@shared/box-frame';
 
 // ── Cell state ───────────────────────────────────────────────────────────────
 
@@ -31,7 +32,8 @@ export function resolveCellState(
 
     // Line covers this syllable
     if (line.syllableBoxes) {
-      const entry = line.syllableBoxes[syllableIdx];
+      // Spec R1: boxes are stored in line.boxFrame; show them in the current view.
+      const entry = boxesInView(line)[syllableIdx];
       if (entry === null) return { kind: 'gap' };
       if (entry !== undefined) return { kind: 'filled', image: line.image, box: entry };
       // entry === undefined: syllable is in range but no box drawn yet

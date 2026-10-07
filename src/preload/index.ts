@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld("mocquereau", {
   saveProject: (project: unknown, existingPath?: string) =>
     ipcRenderer.invoke("project:save", project, existingPath),
 
+  saveProjectAs: (project: unknown, currentPath?: string) =>
+    ipcRenderer.invoke("project:save-as", project, currentPath),
+
   setDirty: (isDirty: boolean) =>
     ipcRenderer.invoke("project:set-dirty", isDirty),
 
@@ -35,6 +38,12 @@ contextBridge.exposeInMainWorld("mocquereau", {
     ipcRenderer.invoke("export:docx", project),
 
   // Imagens
+  putImage: (bytes: ArrayBuffer, mimeType: string) =>
+    ipcRenderer.invoke("images:put", { bytes, mimeType }),
+
+  getImages: (imageIds: string[]) =>
+    ipcRenderer.invoke("images:get", imageIds),
+
   fetchIiifImage: (url: string) =>
     ipcRenderer.invoke("image:fetch-iiif", url),
 

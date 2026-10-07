@@ -19,6 +19,7 @@ import { dialog, ipcMain } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { t } from './i18n';
 import type { DocxExportPayload, DocxCellData } from '../renderer/lib/models';
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
@@ -495,9 +496,9 @@ export function registerDocxExportHandler(): void {
       log(`docx built: ${buffer.length} bytes`);
 
       const { filePath, canceled } = await dialog.showSaveDialog({
-        title: 'Exportar tabela neumática',
+        title: t('main.dialog.exportDocx'),
         defaultPath: `${payload.title || 'tabela'}.docx`,
-        filters: [{ name: 'Word Document', extensions: ['docx'] }],
+        filters: [{ name: t('main.filter.word'), extensions: ['docx'] }],
       });
 
       if (canceled || !filePath) return null;

@@ -11,6 +11,8 @@ export interface MenuState {
   view: ViewId;
   theme: ThemePreference;
   language: SupportedLang;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 export interface MenuActions {
@@ -21,6 +23,8 @@ export interface MenuActions {
   importGueranger: () => void;
   exportDocx: () => void;
   closeProject: () => void;
+  undo: () => void;
+  redo: () => void;
   setView: (view: ViewId) => void;
   setTheme: (theme: ThemePreference) => void;
   setLanguage: (lng: SupportedLang) => void;
@@ -75,6 +79,29 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         { id: "file.exportDocx", label: t("shell.file.exportDocx"), accelerator: "Ctrl+E", disabled: !state.canExport, onSelect: actions.exportDocx },
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },
+      ],
+    },
+    {
+      id: "edit",
+      label: t("shell.menu.edit"),
+      items: [
+        {
+          id: "edit.undo",
+          label: t("shell.edit.undo"),
+          accelerator: "Ctrl+Z",
+          nativeInTextInput: true,
+          disabled: noProject || !state.canUndo,
+          onSelect: actions.undo,
+        },
+        {
+          id: "edit.redo",
+          label: t("shell.edit.redo"),
+          accelerator: "Ctrl+Shift+Z",
+          altAccelerators: ["Ctrl+Y"],
+          nativeInTextInput: true,
+          disabled: noProject || !state.canRedo,
+          onSelect: actions.redo,
+        },
       ],
     },
     {

@@ -53,4 +53,34 @@ describe("useMenuShortcuts", () => {
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledOnce();
   });
+
+  it("atalho extra (Ctrl+Y) chama o mesmo comando", () => {
+    const onRedo = vi.fn();
+    renderHook(() =>
+      useMenuShortcuts([
+        { id: "edit", label: "Editar", items: [{ id: "edit.redo", label: "Refazer", accelerator: "Ctrl+Shift+Z", altAccelerators: ["Ctrl+Y"], onSelect: onRedo }] },
+      ]),
+    );
+    press("y", { ctrlKey: true });
+    press("Z", { ctrlKey: true, shiftKey: true });
+    expect(onRedo).toHaveBeenCalledTimes(2);
+  });
+
+  it("comando nativo em campo de texto: Ctrl+Z num textarea fica com o campo", () => {
+    const onUndo = vi.fn();
+    renderHook(() =>
+      useMenuShortcuts([
+        { id: "edit", label: "Editar", items: [{ id: "edit.undo", label: "Desfazer", accelerator: "Ctrl+Z", nativeInTextInput: true, onSelect: onUndo }] },
+      ]),
+    );
+    const area = document.createElement("textarea");
+    document.body.appendChild(area);
+    const inField = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
+    area.dispatchEvent(inField);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(inField.defaultPrevented).toBe(false);
+    press("z", { ctrlKey: true });
+    expect(onUndo).toHaveBeenCalledOnce();
+    area.remove();
+  });
 });

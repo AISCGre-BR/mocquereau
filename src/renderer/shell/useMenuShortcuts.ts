@@ -2,15 +2,26 @@ import { useEffect, useRef } from "react";
 import { matchAccelerator, type AcceleratorEvent } from "./accelerator";
 import type { MenuCommand, MenuDefinition } from "./menuTypes";
 
-/** Primeiro comando habilitado cujo atalho casa com o evento. */
+/** Primeiro comando habilitado cujo atalho (principal ou extra) casa com o evento. */
 export function findShortcut(menus: MenuDefinition[], e: AcceleratorEvent): MenuCommand | null {
   for (const menu of menus) {
     for (const item of menu.items) {
-      if (item === "separator" || !item.accelerator || item.disabled) continue;
-      if (matchAccelerator(item.accelerator, e)) return item;
+      if (item === "separator" || item.disabled) continue;
+      const accels = [item.accelerator, ...(item.altAccelerators ?? [])].filter((a): a is string => !!a);
+      if (accels.some((a) => matchAccelerator(a, e))) return item;
     }
   }
   return null;
+}
+
+/** Campo onde Ctrl+Z/Ctrl+Y nativos desfazem a digitação. */
+export function isTextInput(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target.tagName === "TEXTAREA") return true;
+  if (target.tagName !== "INPUT") return false;
+  const type = (target as HTMLInputElement).type;
+  return !["button", "checkbox", "radio", "range", "color", "file", "submit", "reset", "image"].includes(type);
 }
 
 /** Atalhos de teclado derivados dos menus: menu, tooltip e teclado chamam o mesmo comando. */
@@ -23,6 +34,7 @@ export function useMenuShortcuts(menus: MenuDefinition[]): void {
       if (!e.ctrlKey && !e.metaKey) return;
       const command = findShortcut(menusRef.current, e);
       if (!command) return;
+      if (command.nativeInTextInput && isTextInput(e.target)) return;
       e.preventDefault();
       command.onSelect();
     }

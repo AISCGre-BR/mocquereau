@@ -1,105 +1,199 @@
-import { dialog, ipcMain } from 'electron';
-import { readFile, writeFile } from 'node:fs/promises';
+// src/main/project-io.ts
+//
+// Project IPC on top of document-io. Channel names and payloads are the ones
+// App.tsx and ProjectSetup.tsx already use (wave A2 keeps the UI untouched):
+//   project:save(project, existingPath?)  -> { filePath } | null
+//   project:save-as(project, currentPath?) -> { filePath } | null
+//   project:open()                        -> { project, filePath | null } | null
+//   project:open-by-path(path)            -> { project, filePath | null } | null
+// filePath null means "opened from a legacy .mocquereau.json": no writable path,
+// so autosave stays off and the next save becomes Save As (spec D8).
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import type { SessionProject } from '@shared/project-schema';
+import { DocumentError, openDocument, saveDocument } from './document-io';
+import {
+  decideSave,
+  ensurePackageExtension,
+  needsOverwriteConfirm,
+  saveDialogOptions,
+  type LegacyOrigin,
+} from './save-target';
+import { addRecentFile, replaceRecentFile } from './app-state';
+import { t } from './i18n';
+import type { SessionStore } from './session-store';
+import type { SaveQueue } from './save-queue';
 
-// Types are duplicated here to avoid importing from renderer path.
-// These must stay in sync with src/renderer/lib/models.ts.
-// A shared types path (src/shared/) can be introduced in a future cleanup.
-interface ProjectMeta { title: string; author: string; createdAt: string; updatedAt: string; }
-// Use 'unknown' for full project — the renderer sends a valid MocquereauProject,
-// main process just serializes/deserializes without inspecting fields.
-type SerializableProject = { meta: ProjectMeta; [key: string]: unknown };
-
-// Local copy of normalizeRotation (renderer/lib/image-adjustments.ts).
-// Duplicated here per existing pattern in this file ("Types are duplicated...");
-// both must stay in sync. Used to defensively clamp rotation values from
-// disk-loaded projects (Phase 11 / IMG-07).
-function normalizeRotation(deg: number): number {
-  if (!Number.isFinite(deg)) return 0;
-  return ((deg % 360) + 360) % 360;
+export interface ProjectIoHooks {
+  getStore(): SessionStore;
+  /** Serialises writes per target; also what the quit path waits on (B3). */
+  saveQueue: SaveQueue;
+  onSaveStarted(token: number): void;
+  onSaveFinished(token: number, ok: boolean): void;
 }
 
-function normalizeProjectRotations(project: unknown): unknown {
-  if (!project || typeof project !== 'object') return project;
-  const p = project as { sources?: unknown };
-  if (!Array.isArray(p.sources)) return project;
-  for (const src of p.sources) {
-    if (!src || typeof src !== 'object') continue;
-    const s = src as { lines?: unknown };
-    if (!Array.isArray(s.lines)) continue;
-    for (const line of s.lines) {
-      if (!line || typeof line !== 'object') continue;
-      const l = line as { imageAdjustments?: { rotation?: unknown } };
-      const adj = l.imageAdjustments;
-      if (adj && typeof adj.rotation === 'number') {
-        adj.rotation = normalizeRotation(adj.rotation);
-      }
-    }
+type OpenResult = { project: SessionProject; filePath: string | null };
+
+/** Legacy file the current document came from. It is never written to. */
+let legacyOrigin: LegacyOrigin | null = null;
+
+async function showError(message: string): Promise<void> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const options = { type: 'error' as const, title: 'Mocquereau', message };
+  if (win) await dialog.showMessageBox(win, options);
+  else await dialog.showMessageBox(options);
+}
+
+async function showOpenWarning(count: number, warnings: string[]): Promise<void> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const technical = warnings.slice(0, 8).join('\n') + (warnings.length > 8 ? '\n…' : '');
+  const options = {
+    type: 'warning' as const,
+    title: 'Mocquereau',
+    message: t('main.openWarning.missingImages', { count }),
+    detail: technical ? `${t('main.openWarning.detail')}\n\n${technical}` : t('main.openWarning.detail'),
+  };
+  if (win) await dialog.showMessageBox(win, options);
+  else await dialog.showMessageBox(options);
+}
+
+/** B1: the OS never confirmed this path (we changed its extension). */
+async function confirmOverwrite(target: string): Promise<boolean> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const options = {
+    type: 'warning' as const,
+    buttons: [t('main.overwrite.replace'), t('main.overwrite.cancel')],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+    title: 'Mocquereau',
+    message: t('main.overwrite.message', { name: basename(target) }),
+    detail: t('main.overwrite.detail'),
+  };
+  const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+  return response === 0;
+}
+
+function openErrorMessage(err: unknown): string {
+  if (err instanceof DocumentError && err.code === 'newer') {
+    return t('main.error.newerVersion', { version: err.info.version ?? '?' });
   }
-  return project;
+  return t('main.error.invalidFile');
 }
 
-export function registerProjectHandlers(): void {
-  ipcMain.handle('project:save', async (
-    _event,
-    project: SerializableProject,
-    existingPath?: string,
-  ) => {
-    // If existingPath is provided, overwrite silently (used by Ctrl+S and auto-save).
-    if (existingPath) {
-      await writeFile(existingPath, JSON.stringify(project, null, 2), 'utf-8');
-      return { filePath: existingPath };
+function saveErrorMessage(err: unknown, target: string): string {
+  if (err instanceof DocumentError && err.code === 'missing-images') {
+    return t('main.error.missingImages', { count: err.info.count ?? 0 });
+  }
+  return t('main.error.saveFailed', { path: target, reason: err instanceof Error ? err.message : String(err) });
+}
+
+async function openPath(filePath: string, hooks: ProjectIoHooks): Promise<OpenResult | null> {
+  try {
+    const doc = await openDocument(filePath, hooks.getStore());
+    if (doc.warnings.length > 0) console.warn('[project-io] open warnings', filePath, doc.warnings);
+    // S4/N1: images that could not be read open as placeholders; tell the user, not only the console.
+    if (doc.missingImages > 0) await showOpenWarning(doc.missingImages, doc.warnings);
+    if (doc.ambiguousLines.length > 0) {
+      console.info('[project-io] legacy lines with ambiguous box frame, v0.0.6 reading kept (R3)', doc.ambiguousLines);
     }
-    const defaultName = `${project.meta?.title || 'projeto'}.mocquereau.json`;
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      title: 'Salvar projeto',
-      defaultPath: defaultName,
-      filters: [{ name: 'Projeto Mocquereau', extensions: ['mocquereau.json'] }],
+    await addRecentFile(filePath);
+    if (doc.format === 'legacy') {
+      legacyOrigin = { path: filePath, createdAt: doc.project.meta.createdAt };
+      return { project: doc.project, filePath: null };
+    }
+    legacyOrigin = null;
+    return { project: doc.project, filePath };
+  } catch (err) {
+    console.error('[project-io] open failed', filePath, err);
+    await showError(openErrorMessage(err));
+    return null;
+  }
+}
+
+async function save(
+  project: SessionProject,
+  existingPath: string | undefined,
+  forceDialog: boolean,
+  hooks: ProjectIoHooks,
+): Promise<{ filePath: string } | null> {
+  const token = hooks.saveQueue.nextToken();
+  hooks.onSaveStarted(token);
+  let ok = false;
+  let target = existingPath ?? '';
+  try {
+    const decision = decideSave({
+      existingPath,
+      forceDialog,
+      legacy: legacyOrigin,
+      project,
+      defaultDir: app.getPath('documents'),
     });
-    if (canceled || !filePath) return null;
-    await writeFile(filePath, JSON.stringify(project, null, 2), 'utf-8');
-    return { filePath };
-  });
+    if (decision.kind === 'direct') {
+      target = decision.path;
+    } else {
+      const { canceled, filePath } = await dialog.showSaveDialog(
+        saveDialogOptions(decision.suggested, {
+          title: t('main.dialog.saveProject'),
+          filterName: t('main.filter.project'),
+        }),
+      );
+      if (canceled || !filePath) return null;
+      target = ensurePackageExtension(filePath);
+      if (needsOverwriteConfirm(filePath, target, existsSync) && !(await confirmOverwrite(target))) return null;
+    }
+    const finalTarget = target;
+    await hooks.saveQueue.run(finalTarget, async () => {
+      await saveDocument(project, finalTarget, hooks.getStore(), app.getVersion());
+      if (decision.kind === 'dialog' && decision.legacyPath) {
+        await replaceRecentFile(decision.legacyPath, finalTarget);
+        legacyOrigin = null;
+      } else {
+        await addRecentFile(finalTarget);
+      }
+    });
+    ok = true;
+    return { filePath: target };
+  } catch (err) {
+    console.error('[project-io] save failed', target, err);
+    await showError(saveErrorMessage(err, target));
+    return null;
+  } finally {
+    hooks.onSaveFinished(token, ok);
+  }
+}
+
+export function registerProjectHandlers(hooks: ProjectIoHooks): void {
+  ipcMain.handle('project:save', (_event, project: SessionProject, existingPath?: string) =>
+    save(project, existingPath || undefined, false, hooks),
+  );
+
+  ipcMain.handle('project:save-as', (_event, project: SessionProject, currentPath?: string) =>
+    save(project, currentPath || undefined, true, hooks),
+  );
 
   ipcMain.handle('project:open', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      title: 'Abrir projeto',
-      filters: [{ name: 'Projeto Mocquereau', extensions: ['mocquereau.json'] }],
+      title: t('main.dialog.openProject'),
+      filters: [{ name: t('main.filter.project'), extensions: ['mocquereau', 'json'] }],
       properties: ['openFile'],
     });
     if (canceled || !filePaths[0]) return null;
-    const raw = await readFile(filePaths[0], 'utf-8');
-    const project = JSON.parse(raw);
-    normalizeProjectRotations(project);
-    // SYLL-06 compat: v1.0 saved as 'liturgical'; v1.1 renamed the exact-same
-    // behavior to 'liturgical-typographic'. Map legacy → renamed to preserve
-    // syllableBox indices (changing to 'sung' would shift word boundaries and
-    // desalign crops in existing projects). New projects default to 'sung'.
-    if (project?.text?.hyphenationMode === 'liturgical') {
-      project.text.hyphenationMode = 'liturgical-typographic';
-    }
-    return { project, filePath: filePaths[0] };
+    return openPath(filePaths[0], hooks);
   });
 
-  // Open a specific project file directly (used by "recent files" list)
-  ipcMain.handle('project:open-by-path', async (_event, filePath: string) => {
-    try {
-      const raw = await readFile(filePath, 'utf-8');
-      const project = JSON.parse(raw);
-      normalizeProjectRotations(project);
-      // Same legacy compat as project:open — preserve syllableBox alignment.
-      if (project?.text?.hyphenationMode === 'liturgical') {
-        project.text.hyphenationMode = 'liturgical-typographic';
-      }
-      return { project, filePath };
-    } catch {
-      return null;
-    }
+  // Recent files list. Missing file -> null (ProjectSetup shows its own message).
+  ipcMain.handle('project:open-by-path', async (_event, filePath: unknown) => {
+    if (typeof filePath !== 'string' || !existsSync(filePath)) return null;
+    return openPath(filePath, hooks);
   });
 
   ipcMain.handle('project:import-gueranger', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      title: 'Importar do Gueranger',
-      filters: [{ name: 'Exportação Gueranger', extensions: ['json'] }],
+      title: t('main.dialog.importGueranger'),
+      filters: [{ name: t('main.filter.gueranger'), extensions: ['json'] }],
       properties: ['openFile'],
     });
     if (canceled || !filePaths[0]) return null;

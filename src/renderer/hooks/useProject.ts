@@ -1,12 +1,35 @@
-import { createContext, useContext, useReducer } from "react";
-import type { MocquereauProject, SyllabifiedWord, Section, ManuscriptSource, ImageAdjustments } from "../lib/models";
+import { createContext, useContext, useMemo, useReducer } from "react";
+import type {
+  ImageAdjustments,
+  ManuscriptLine,
+  ManuscriptSource,
+  MocquereauProject,
+  Section,
+  StoredImage,
+  SyllableBox,
+  SyllabifiedWord,
+} from "../lib/models";
 import type { HyphenationMode } from "../lib/syllabify";
 import { normalizeRotation } from "../lib/image-adjustments";
+import { frameOf, hasAnyBox } from "@shared/box-frame";
+import {
+  canRedo,
+  canUndo,
+  createHistory,
+  isDirty,
+  redoLabel,
+  undoLabel,
+  withHistory,
+  type HistoryMeta,
+  type HistoryState,
+} from "../history/history";
 
 // ── Action types ─────────────────────────────────────────────────────────────
 
-type ProjectAction =
+export type ProjectAction =
   | { type: "SET_PROJECT"; payload: MocquereauProject }
+  | { type: "REPLACE_PROJECT"; payload: MocquereauProject }
+  | { type: "LOAD_PROJECT"; payload: { project: MocquereauProject | null; dirty?: boolean } }
   | { type: "RESET" }
   | { type: "SET_META"; payload: Partial<MocquereauProject["meta"]> }
   | {
@@ -18,7 +41,12 @@ type ProjectAction =
   | { type: "ADD_SECTION"; payload: Section }
   | { type: "REMOVE_SECTION"; payload: string } // section id
   | { type: "UPDATE_SECTION"; payload: Section }
-  | { type: "SAVE_SUCCESS" }
+  /**
+   * B2: payload.project is the snapshot that was sent to main, captured before
+   * the IPC call; edits made while the save was in flight stay dirty.
+   * Without a payload the current present is marked saved.
+   */
+  | { type: "SAVE_SUCCESS"; payload?: { project: MocquereauProject | null } }
   | { type: "ADD_SOURCE"; payload: ManuscriptSource }
   | { type: "REMOVE_SOURCE"; payload: string }          // source id
   | { type: "UPDATE_SOURCE"; payload: ManuscriptSource }
@@ -31,6 +59,24 @@ type ProjectAction =
       payload: { sourceId: string; lineId: string; folio?: string; label?: string };
     }
   | {
+      /**
+       * Boxes edited in the SliceEditor (autosave, confirm). syllableBoxes is the
+       * line's COMPLETE map in the frame the user currently sees (boxesInView):
+       * the reducer stores it and sets boxFrame to the current adjustments.
+       */
+      type: "UPDATE_LINE_BOXES";
+      payload: {
+        sourceId: string;
+        lineId: string;
+        syllableBoxes: Record<number, SyllableBox | null>;
+        syllableRange?: { start: number; end: number };
+        gaps?: number[];
+        confirmed?: boolean;
+        /** Crops merged into source.syllableCuts (confirm). */
+        syllableCuts?: Record<number, StoredImage | null>;
+      };
+    }
+  | {
       type: "UPDATE_LINE_ADJUSTMENTS";
       payload: {
         sourceId: string;
@@ -41,7 +87,7 @@ type ProjectAction =
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-interface ProjectState {
+export interface ProjectState {
   project: MocquereauProject | null;
   isDirty: boolean;
   currentFilePath: string | null;
@@ -90,6 +136,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // Loading an existing project from disk starts clean; creating a new project
       // in-memory will typically dispatch SET_FILE_PATH right after to mark the path.
       return { ...state, project: action.payload, isDirty: false };
+
+    case "LOAD_PROJECT":
+      return { ...state, project: action.payload.project, isDirty: !!action.payload.dirty };
+
+    case "REPLACE_PROJECT":
+      // Whole-project edit (e.g. hyphenation migration): undoable and dirty.
+      return { ...state, project: action.payload, isDirty: true };
 
     case "RESET":
       return initialState;
@@ -242,8 +295,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const swapIdx = action.payload.direction === "up" ? idx - 1 : idx + 1;
       if (swapIdx < 0 || swapIdx >= sources.length) return state;
       [sources[idx], sources[swapIdx]] = [sources[swapIdx], sources[idx]];
-      sources.forEach((s, i) => { s.order = i + 1; });
-      return { ...state, project: { ...state.project, sources }, isDirty: true };
+      // Never mutate objects shared with the previous state: history keeps it.
+      const reordered = sources.map((s, i) => (s.order === i + 1 ? s : { ...s, order: i + 1 }));
+      return { ...state, project: { ...state.project, sources: reordered }, isDirty: true };
     }
 
     case "UPDATE_SYLLABLE_TEXT": {
@@ -295,17 +349,50 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...mergedRaw,
         rotation: normalizeRotation(mergedRaw.rotation),
       };
+      // Spec R1 (S6/S7): boxes stay in the frame they were drawn in
+      // (line.boxFrame); consumers read them through boxesInView. A rotation
+      // is a plain adjustment update. A line with boxes but no boxFrame yet
+      // has them in the frame that was current until now: pin it.
+      const pinFrame = hasAnyBox(tgt.syllableBoxes) && !tgt.boxFrame ? frameOf(current) : undefined;
       const sources = state.project.sources.map((s) => {
         if (s.id !== sourceId) return s;
         const lines = s.lines.map((l) => {
           if (l.id !== lineId) return l;
+          let next: ManuscriptLine;
           if (isAllDefaultAdjustments(merged)) {
             const { imageAdjustments: _drop, ...rest } = l;
-            return rest as typeof l;
+            next = rest as ManuscriptLine;
+          } else {
+            next = { ...l, imageAdjustments: merged };
           }
-          return { ...l, imageAdjustments: merged };
+          return pinFrame ? { ...next, boxFrame: pinFrame } : next;
         });
         return { ...s, lines };
+      });
+      return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "UPDATE_LINE_BOXES": {
+      if (!state.project) return state;
+      const { sourceId, lineId, syllableBoxes, syllableRange, gaps, confirmed, syllableCuts } = action.payload;
+      const src = state.project.sources.find((s) => s.id === sourceId);
+      if (!src || !src.lines.some((l) => l.id === lineId)) return state;
+      const sources = state.project.sources.map((s) => {
+        if (s.id !== sourceId) return s;
+        const lines = s.lines.map((l) => {
+          if (l.id !== lineId) return l;
+          const next: ManuscriptLine = {
+            ...l,
+            syllableBoxes,
+            // The editor drew/kept every box in the current view frame.
+            boxFrame: frameOf(l.imageAdjustments),
+          };
+          if (syllableRange) next.syllableRange = syllableRange;
+          if (gaps) next.gaps = gaps;
+          if (confirmed !== undefined) next.confirmed = confirmed;
+          return next;
+        });
+        return syllableCuts ? { ...s, lines, syllableCuts: { ...s.syllableCuts, ...syllableCuts } } : { ...s, lines };
       });
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
@@ -315,11 +402,107 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
   }
 }
 
+// ── Document state: undo/redo history around projectReducer ─────────────────
+
+export type ProjectActionWithMeta = ProjectAction & { meta?: HistoryMeta };
+
+export type DocumentAction =
+  | ProjectActionWithMeta
+  | { type: "UNDO" }
+  | { type: "REDO" }
+  | { type: "MARK_SAVED"; payload?: { project: MocquereauProject | null } };
+
+export interface DocumentState {
+  history: HistoryState<MocquereauProject>;
+  currentFilePath: string | null;
+}
+
+export const initialDocumentState: DocumentState = {
+  history: createHistory<MocquereauProject>(null),
+  currentFilePath: null,
+};
+
+function applyProjectAction(project: MocquereauProject | null, action: ProjectAction): MocquereauProject | null {
+  return projectReducer({ project, isDirty: false, currentFilePath: null }, action).project;
+}
+
+const sortedKeys = (o: object) => Object.keys(o).sort().join(",");
+
+/** Default coalescing for actions dispatched without meta (typing, sliders). */
+export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
+  switch (action.type) {
+    case "SET_META":
+      return { coalesceKey: `SET_META:${sortedKeys(action.payload)}` };
+    case "UPDATE_SYLLABLE_TEXT":
+      return { coalesceKey: `UPDATE_SYLLABLE_TEXT:${action.payload.wordIdx}:${action.payload.sylIdx}` };
+    case "UPDATE_LINE_METADATA":
+      return {
+        coalesceKey: `UPDATE_LINE_METADATA:${action.payload.lineId}`,
+        focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
+      };
+    case "UPDATE_LINE_BOXES":
+      return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId } };
+    case "UPDATE_LINE_ADJUSTMENTS":
+      return {
+        coalesceKey: `UPDATE_LINE_ADJUSTMENTS:${action.payload.lineId}:${sortedKeys(action.payload.adjustments)}`,
+        focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
+      };
+    default:
+      return undefined;
+  }
+}
+
+export function createDocumentReducer(now: () => number = Date.now) {
+  const historyReducer = withHistory<MocquereauProject, ProjectActionWithMeta>(applyProjectAction, {
+    now,
+    metaFor: historyMetaFor,
+  });
+  return function documentReducer(state: DocumentState, action: DocumentAction): DocumentState {
+    let history: HistoryState<MocquereauProject>;
+    switch (action.type) {
+      case "SET_FILE_PATH":
+        return state.currentFilePath === action.payload ? state : { ...state, currentFilePath: action.payload };
+      case "RESET":
+        return { history: createHistory<MocquereauProject>(null), currentFilePath: null };
+      case "SET_PROJECT":
+        history = historyReducer(state.history, { type: "LOAD_PROJECT", payload: { project: action.payload } });
+        break;
+      case "SAVE_SUCCESS":
+        history = historyReducer(state.history, { type: "MARK_SAVED", payload: action.payload });
+        break;
+      default:
+        history = historyReducer(state.history, action);
+    }
+    return history === state.history ? state : { ...state, history };
+  };
+}
+
+export const documentReducer = createDocumentReducer();
+
+export function toProjectState(doc: DocumentState): ProjectState {
+  return {
+    project: doc.history.present,
+    isDirty: isDirty(doc.history),
+    currentFilePath: doc.currentFilePath,
+  };
+}
+
 // ── Context ──────────────────────────────────────────────────────────────────
+
+export interface HistoryApi {
+  undo(): void;
+  redo(): void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+}
 
 interface ProjectContextValue {
   state: ProjectState;
-  dispatch: React.Dispatch<ProjectAction>;
+  dispatch: React.Dispatch<DocumentAction>;
+  /** Undo/redo API. Optional in wave A2: App.tsx does not pass it yet. */
+  history?: HistoryApi;
 }
 
 export const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -330,8 +513,21 @@ export function useProject(): ProjectContextValue {
   return ctx;
 }
 
-export function useProjectReducer() {
-  return useReducer(projectReducer, initialState);
+export function useProjectReducer(): [ProjectState, React.Dispatch<DocumentAction>, HistoryApi] {
+  const [doc, dispatch] = useReducer(documentReducer, initialDocumentState);
+  const state = useMemo(() => toProjectState(doc), [doc]);
+  const history = useMemo<HistoryApi>(
+    () => ({
+      undo: () => dispatch({ type: "UNDO" }),
+      redo: () => dispatch({ type: "REDO" }),
+      canUndo: canUndo(doc.history),
+      canRedo: canRedo(doc.history),
+      undoLabel: undoLabel(doc.history),
+      redoLabel: redoLabel(doc.history),
+    }),
+    [doc.history],
+  );
+  return [state, dispatch, history];
 }
 
 // ── Helper ───────────────────────────────────────────────────────────────────

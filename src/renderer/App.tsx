@@ -22,10 +22,10 @@ import { SUPPORTED_LANGS, type SupportedLang } from "./i18n";
 const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
 
 export function App() {
-  const [state, dispatch] = useProjectReducer();
+  const [state, dispatch, history] = useProjectReducer();
   const { t } = useTranslation();
   return (
-    <ProjectContext.Provider value={{ state, dispatch }}>
+    <ProjectContext.Provider value={{ state, dispatch, history }}>
       <Toaster dismissLabel={t("toast.dismiss")}>
         <Workbench />
       </Toaster>
@@ -34,11 +34,14 @@ export function App() {
 }
 
 function Workbench() {
-  const { state } = useProject();
+  const { state, history } = useProject();
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [view, setView] = useState<ViewId>("texto");
   const [exportOpen, setExportOpen] = useState(false);
+  // Desfazer/Refazer troca o projeto por baixo das vistas, que guardam cópias locais
+  // (campos do Texto, caixas do editor) até a onda B: remontá-las relê o projeto.
+  const [historyEpoch, setHistoryEpoch] = useState(0);
   const file = useProjectFile({ onOpened: () => setView("texto") });
 
   const project = state.project;
@@ -51,7 +54,15 @@ function Workbench() {
   const platform = window.mocquereau.platform;
 
   const menus = buildMenus(
-    { hasProject: project !== null, canExport, view, theme, language },
+    {
+      hasProject: project !== null,
+      canExport,
+      view,
+      theme,
+      language,
+      canUndo: history?.canUndo ?? false,
+      canRedo: history?.canRedo ?? false,
+    },
     {
       newProject: file.newProject,
       open: () => void file.open(),
@@ -60,6 +71,14 @@ function Workbench() {
       importGueranger: () => void file.importGueranger(),
       exportDocx: () => setExportOpen(true),
       closeProject: file.close,
+      undo: () => {
+        history?.undo();
+        setHistoryEpoch((n) => n + 1);
+      },
+      redo: () => {
+        history?.redo();
+        setHistoryEpoch((n) => n + 1);
+      },
       setView,
       setTheme,
       setLanguage: (lng) => void i18n.changeLanguage(lng),
@@ -105,7 +124,7 @@ function Workbench() {
       {project === null ? (
         <Welcome onNew={file.newProject} onOpen={() => void file.open()} onOpenRecent={(p) => void file.openRecent(p)} />
       ) : (
-        <div key={file.projectEpoch} className="flex min-h-0 flex-1 flex-col">
+        <div key={`${file.projectEpoch}:${historyEpoch}`} className="flex min-h-0 flex-1 flex-col">
           {view === "texto" && <TextoView />}
           {view === "fontes" && <FontesView />}
           {view === "recortes" && <RecortesView />}

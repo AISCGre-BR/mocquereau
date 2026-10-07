@@ -225,7 +225,7 @@ export function ProjectSetup() {
         const confirmed = window.confirm(msg);
         if (!confirmed) return;
         const { project: migrated } = migrateHyphenation(state.project, newMode);
-        dispatch({ type: 'SET_PROJECT', payload: migrated });
+        dispatch({ type: 'REPLACE_PROJECT', payload: migrated });
         setHyphenationMode(newMode);
         setSyllabifiedText(wordsToHyphenated(migrated.text.words));
         return;

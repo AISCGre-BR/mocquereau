@@ -88,4 +88,22 @@ describe("App", () => {
     expect(await screen.findByDisplayValue("Sanctus VIII")).toBeTruthy();
     expect(tab("Texto").getAttribute("aria-selected")).toBe("true");
   });
+
+  it("Editar > Desfazer (Ctrl+Z fora de campos) volta o título; dentro do campo o Ctrl+Z é do campo", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    const titleInput = screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement;
+    fireEvent.change(titleInput, { target: { value: "Puer natus est" } });
+    await wait(350);
+    expect(screen.getByText("— Editado")).toBeTruthy();
+    // Dentro do campo: o app não intercepta.
+    fireEvent.keyDown(titleInput, { key: "z", ctrlKey: true });
+    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Puer natus est");
+    ctrl("z");
+    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Sem título");
+    expect(screen.queryByText("— Editado")).toBeNull();
+    fireEvent.keyDown(window, { key: "y", ctrlKey: true });
+    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Puer natus est");
+  });
 });
+

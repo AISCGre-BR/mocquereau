@@ -14,6 +14,8 @@ function actions(): MenuActions {
     importGueranger: vi.fn(),
     exportDocx: vi.fn(),
     closeProject: vi.fn(),
+    undo: vi.fn(),
+    redo: vi.fn(),
     setView: vi.fn(),
     setTheme: vi.fn(),
     setLanguage: vi.fn(),
@@ -22,7 +24,7 @@ function actions(): MenuActions {
   };
 }
 
-const base: MenuState = { hasProject: true, canExport: true, view: "fontes", theme: "dark", language: "en" };
+const base: MenuState = { hasProject: true, canExport: true, view: "fontes", theme: "dark", language: "en", canUndo: true, canRedo: false };
 
 function find(menus: MenuDefinition[], id: string): MenuCommand {
   for (const menu of menus) {
@@ -32,9 +34,10 @@ function find(menus: MenuDefinition[], id: string): MenuCommand {
 }
 
 describe("buildMenus", () => {
-  it("monta Arquivo, Exibir e Ajuda nessa ordem", () => {
+  it("monta Arquivo, Editar, Exibir e Ajuda nessa ordem", () => {
     expect(buildMenus(base, actions(), t).map((m) => m.label)).toEqual([
       "shell.menu.file",
+      "shell.menu.edit",
       "shell.menu.view",
       "shell.menu.help",
     ]);
@@ -80,5 +83,21 @@ describe("buildMenus", () => {
     expect(a.setTheme).toHaveBeenCalledWith("light");
     expect(a.setLanguage).toHaveBeenCalledWith("pt-BR");
     expect(a.saveAs).toHaveBeenCalledOnce();
+  });
+
+  it("Editar: Desfazer/Refazer seguem o histórico, com Ctrl+Y como atalho extra e nativos em campos", () => {
+    const a = actions();
+    const menus = buildMenus(base, a, t);
+    const undo = find(menus, "edit.undo");
+    const redo = find(menus, "edit.redo");
+    expect(undo.accelerator).toBe("Ctrl+Z");
+    expect(undo.disabled).toBe(false);
+    expect(redo.accelerator).toBe("Ctrl+Shift+Z");
+    expect(redo.altAccelerators).toEqual(["Ctrl+Y"]);
+    expect(redo.disabled).toBe(true);
+    expect(undo.nativeInTextInput && redo.nativeInTextInput).toBe(true);
+    undo.onSelect();
+    expect(a.undo).toHaveBeenCalledOnce();
+    expect(find(buildMenus({ ...base, hasProject: false }, a, t), "edit.undo").disabled).toBe(true);
   });
 });

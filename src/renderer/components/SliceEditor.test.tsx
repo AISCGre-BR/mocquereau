@@ -58,15 +58,16 @@ describe("SliceEditor: sync de caixas ao sair da vista", () => {
     act(() => {
       fireEvent.keyDown(window, { key: "Delete" });
     });
-    expect(dispatch.mock.calls.filter(([a]) => a.type === "UPDATE_SOURCE")).toHaveLength(0);
+    expect(dispatch.mock.calls.filter(([a]) => a.type === "UPDATE_LINE_BOXES")).toHaveLength(0);
 
     unmount();
 
-    const updates = dispatch.mock.calls.map(([a]) => a).filter((a) => a.type === "UPDATE_SOURCE");
+    const updates = dispatch.mock.calls.map(([a]) => a).filter((a) => a.type === "UPDATE_LINE_BOXES");
     expect(updates).toHaveLength(1);
-    const payload = (updates[0] as Extract<ProjectAction, { type: "UPDATE_SOURCE" }>).payload;
-    expect(payload.lines[0].syllableBoxes?.[0] ?? null).toBeNull();
-    expect(payload.lines[0].confirmed).toBe(false);
+    const payload = (updates[0] as Extract<ProjectAction, { type: "UPDATE_LINE_BOXES" }>).payload;
+    expect(payload.lineId).toBe("line-1");
+    expect(payload.syllableBoxes[0] ?? null).toBeNull();
+    expect(payload.confirmed).toBe(false);
   });
 
   it("sem edição pendente, desmontar não despacha nada", () => {
@@ -78,6 +79,6 @@ describe("SliceEditor: sync de caixas ao sair da vista", () => {
       </ProjectContext.Provider>,
     );
     unmount();
-    expect(dispatch.mock.calls.filter(([a]) => a.type === "UPDATE_SOURCE")).toHaveLength(0);
+    expect(dispatch.mock.calls.filter(([a]) => a.type === "UPDATE_LINE_BOXES")).toHaveLength(0);
   });
 });

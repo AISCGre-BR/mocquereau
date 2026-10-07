@@ -1,5 +1,6 @@
 // src/renderer/lib/sliceUtils.ts
 
+import { frameOf, viewSize } from '@shared/box-frame';
 import type { SyllabifiedWord, StoredImage, SyllableBox, ImageAdjustments } from './models';
 import { buildImageFilter } from './image-adjustments';
 
@@ -97,14 +98,11 @@ export async function computeSyllableCuts(
   // fração desse AABB (axis-aligned com a tela), então o crop se resume a um
   // drawImage do canvas pré-renderizado.
   const θ = (rot * Math.PI) / 180;
-  const absCos = Math.abs(Math.cos(θ));
-  const absSin = Math.abs(Math.sin(θ));
-  const aabbW = needsGeometric
-    ? Math.max(1, Math.ceil(image.width * absCos + image.height * absSin))
-    : image.width;
-  const aabbH = needsGeometric
-    ? Math.max(1, Math.ceil(image.width * absSin + image.height * absCos))
-    : image.height;
+  // Same AABB as the box frame math (exact for quarter turns: Math.cos(90°)
+  // is 6e-17, which made ceil() add a spurious pixel column).
+  const view = viewSize(image, frameOf({ rotation: rot, flipH, flipV }));
+  const aabbW = needsGeometric ? Math.max(1, Math.ceil(view.width - 1e-9)) : image.width;
+  const aabbH = needsGeometric ? Math.max(1, Math.ceil(view.height - 1e-9)) : image.height;
 
   let sourceCanvas: HTMLCanvasElement | HTMLImageElement = imgEl;
   let sourceW = image.width;
