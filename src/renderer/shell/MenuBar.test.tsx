@@ -107,4 +107,36 @@ describe("MenuBar", () => {
     fireEvent.click(top("Arquivo"));
     expect(item(/Novo projeto/)?.textContent).toContain("⌘N");
   });
+
+  it("escolher um item ou Esc devolve o foco ao elemento focado antes do menu", () => {
+    const { top, item, onNew } = setup();
+    const field = document.createElement("input");
+    document.body.appendChild(field);
+    field.focus();
+    // Foco entra na menubar vindo do campo (Alt, clique ou Tab).
+    fireEvent.focus(top("Arquivo"), { relatedTarget: field });
+    fireEvent.click(top("Arquivo"));
+    fireEvent.click(item(/Novo projeto/)!);
+    expect(onNew).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(field);
+
+    fireEvent.focus(top("Arquivo"), { relatedTarget: field });
+    fireEvent.click(top("Arquivo"));
+    expect(document.activeElement).not.toBe(field);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(document.activeElement).toBe(field);
+    field.remove();
+  });
+
+  it("menu aberto engole atalhos que não usa (Ctrl+N não chega à window)", () => {
+    const { top } = setup();
+    const global = vi.fn();
+    window.addEventListener("keydown", global);
+    fireEvent.click(top("Arquivo"));
+    fireEvent.keyDown(document.activeElement!, { key: "n", ctrlKey: true });
+    fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+    expect(global).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", global);
+  });
 });
+

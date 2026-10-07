@@ -83,4 +83,36 @@ describe("useMenuShortcuts", () => {
     expect(onUndo).toHaveBeenCalledOnce();
     area.remove();
   });
+
+  it("tecla segurada (repeat) não repete o comando, salvo os marcados allowRepeat", () => {
+    const onSave = vi.fn();
+    const onUndo = vi.fn();
+    renderHook(() =>
+      useMenuShortcuts([
+        ...menus(onSave),
+        { id: "edit", label: "Editar", items: [{ id: "edit.undo", label: "Desfazer", accelerator: "Ctrl+Z", allowRepeat: true, onSelect: onUndo }] },
+      ]),
+    );
+    press("s", { ctrlKey: true });
+    const repeated = press("s", { ctrlKey: true, repeat: true });
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(repeated.defaultPrevented).toBe(true);
+    press("z", { ctrlKey: true });
+    press("z", { ctrlKey: true, repeat: true });
+    expect(onUndo).toHaveBeenCalledTimes(2);
+  });
+
+  it("com um menu aberto nenhum atalho dispara", () => {
+    const onSave = vi.fn();
+    renderHook(() => useMenuShortcuts(menus(onSave)));
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    document.body.appendChild(menu);
+    press("s", { ctrlKey: true });
+    expect(onSave).not.toHaveBeenCalled();
+    menu.remove();
+    press("s", { ctrlKey: true });
+    expect(onSave).toHaveBeenCalledOnce();
+  });
 });
+

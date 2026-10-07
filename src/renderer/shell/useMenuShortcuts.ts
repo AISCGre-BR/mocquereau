@@ -36,6 +36,10 @@ export function useMenuShortcuts(menus: MenuDefinition[]): void {
       if (!command) return;
       if (command.nativeInTextInput && isTextInput(e.target)) return;
       e.preventDefault();
+      // Tecla segurada não abre dez diálogos de Abrir nem alterna vistas sem parar.
+      if (e.repeat && !command.allowRepeat) return;
+      // Com um menu aberto o teclado é dele: nenhum atalho do app dispara por trás.
+      if (document.querySelector('[role="menu"]')) return;
       command.onSelect();
     }
     window.addEventListener("keydown", onKeyDown);

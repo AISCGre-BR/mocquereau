@@ -29,4 +29,11 @@ describe("accelerator", () => {
     expect(formatAccelerator("Ctrl+N", "darwin")).toBe("⌘N");
     expect(formatAccelerator("Ctrl+Shift+S", "win32")).toBe("Ctrl+Shift+S");
   });
+
+  it("dígitos casam pela tecla física (AZERTY: Ctrl+& é Ctrl+1)", () => {
+    expect(matchAccelerator("Ctrl+1", { ...ev("&", { ctrlKey: true }), code: "Digit1" })).toBe(true);
+    expect(matchAccelerator("Ctrl+2", { ...ev("é", { ctrlKey: true }), code: "Digit2" })).toBe(true);
+    expect(matchAccelerator("Ctrl+1", { ...ev("1", { ctrlKey: true }), code: "Digit2" })).toBe(false);
+  });
 });
+

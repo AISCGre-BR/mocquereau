@@ -96,6 +96,9 @@ export function MenuSurface({
         onNavigateOut(e.key === "ArrowLeft" ? "left" : "right");
         break;
       default:
+        // Menu aberto é modal para o teclado: teclas que ele não usa (Ctrl+N,
+        // Delete…) também não chegam aos atalhos globais nem ao editor.
+        e.stopPropagation();
         return;
     }
     // Nada que o menu trate chega aos atalhos globais (ex.: Enter/setas do editor).

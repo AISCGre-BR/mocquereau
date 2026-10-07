@@ -1,6 +1,8 @@
 // Atalhos no formato "Ctrl+Shift+S". "Ctrl" casa com Ctrl (Windows/Linux) e Cmd (macOS).
 
-export type AcceleratorEvent = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey">;
+export type AcceleratorEvent = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey"> & {
+  code?: string;
+};
 
 export function parseAccelerator(accel: string): { ctrl: boolean; shift: boolean; alt: boolean; key: string } {
   const parts = accel.split("+");
@@ -15,8 +17,14 @@ export function matchAccelerator(accel: string, e: AcceleratorEvent): boolean {
     a.ctrl === (e.ctrlKey || e.metaKey) &&
     a.shift === e.shiftKey &&
     a.alt === e.altKey &&
-    e.key.toLowerCase() === a.key
+    keyMatches(a.key, e)
   );
+}
+
+// Dígitos pela tecla física (Digit1…): no AZERTY Ctrl+1 chega com key "&".
+function keyMatches(key: string, e: AcceleratorEvent): boolean {
+  if (/^[0-9]$/.test(key) && e.code) return e.code === `Digit${key}` || e.code === `Numpad${key}`;
+  return e.key.toLowerCase() === key;
 }
 
 export function formatAccelerator(accel: string, platform: string): string {

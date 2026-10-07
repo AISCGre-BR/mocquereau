@@ -10,6 +10,8 @@ export interface MenuCommand {
    * desfaz a digitação, não o projeto).
    */
   nativeInTextInput?: boolean;
+  /** true: segurar a tecla repete o comando (Desfazer). Padrão: repetição ignorada. */
+  allowRepeat?: boolean;
   disabled?: boolean;
   /** Definido = item de alternância. */
   checked?: boolean;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { MenuItem, MenuSeparator, MenuSurface, type MenuCloseReason } from "../ui/Menu";
 import { formatAccelerator } from "./accelerator";
@@ -31,9 +31,22 @@ export function MenuBar({ menus, title, edited, platform }: MenuBarProps) {
     setOpenIndex(index);
   }
 
+  // Elemento focado antes de o foco entrar na menubar (Alt, clique, Tab): recebe o
+  // foco de volta quando um item é escolhido ou o menu é fechado com Esc.
+  const returnFocus = useRef<HTMLElement | null>(null);
+  function onFocusIn(e: FocusEvent<HTMLDivElement>) {
+    const from = e.relatedTarget;
+    if (from instanceof HTMLElement && !e.currentTarget.contains(from)) returnFocus.current = from;
+  }
+
   function closeMenu(index: number, reason: MenuCloseReason) {
     setOpenIndex(null);
-    if (reason === "escape") topRefs.current[index]?.focus();
+    const back = returnFocus.current;
+    returnFocus.current = null;
+    if (reason !== "escape" && reason !== "select") return;
+    if (back && back.isConnected && back !== document.body) back.focus();
+    else if (reason === "escape") topRefs.current[index]?.focus();
+    else (document.activeElement as HTMLElement | null)?.blur();
   }
 
   function onTopKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -88,6 +101,7 @@ export function MenuBar({ menus, title, edited, platform }: MenuBarProps) {
     <div
       role="menubar"
       aria-label={t("shell.menubar")}
+      onFocus={onFocusIn}
       className={["sc-menubar shrink-0 select-none [-webkit-app-region:drag]", isMac ? "pl-[78px]" : ""]
         .filter(Boolean)
         .join(" ")}
