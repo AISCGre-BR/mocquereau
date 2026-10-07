@@ -79,9 +79,18 @@ export async function detectRealignments(
     } catch (err) {
       console.warn("[box-frame-realign] could not score line", line.id, err);
     }
-    if (!scores) continue;
+    if (!scores) {
+      console.warn("[box-frame-realign] image not decoded, line skipped", line.id);
+      continue;
+    }
     const from = storedBoxFrame(line);
     const to = pickBoxFrame(scores, from);
+    console.info(
+      "[box-frame-realign]",
+      line.id,
+      scores.map((s) => `${s.frame.rotation}${s.frame.flipH ? "H" : ""}${s.frame.flipV ? "V" : ""}=${s.score.toFixed(4)}`).join(" "),
+      to ? `-> ${to.rotation}${to.flipH ? "H" : ""}${to.flipV ? "V" : ""}` : "-> keep",
+    );
     if (to) out.push({ sourceId, lineId: line.id, from, to, scores });
   }
   return opts.isCancelled?.() ? [] : out;

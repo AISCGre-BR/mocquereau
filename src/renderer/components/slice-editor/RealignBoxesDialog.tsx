@@ -126,7 +126,7 @@ export function RealignBoxesDialog({ open, line, onClose, loadRaster = loadRaste
         <div role="radiogroup" aria-label={t("realign.candidates")} className="flex flex-col gap-1">
           {scores.map((s) => {
             const isSelected = !!selected && framesEqual(s.frame, selected);
-            const percent = Math.round(s.score * 1000) / 10;
+            const percent = Math.round(s.inkInside * 1000) / 10;
             const width = best && best.score > 0 ? (s.score / best.score) * 100 : 0;
             return (
               <label

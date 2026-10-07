@@ -24,6 +24,12 @@ export interface RasterLike {
 export interface FrameScore {
   frame: BoxFrame;
   /** Fraction of the sampled points inside the boxes that are ink (0..1). */
+  inkInside: number;
+  /**
+   * inkInside minus the page's overall ink fraction (never negative): what the
+   * boxes catch above chance. Staff lines and text put ink everywhere, so the
+   * raw fraction barely separates a right frame from a slightly wrong one.
+   */
   score: number;
 }
 
@@ -80,8 +86,11 @@ export function scoreBoxFramesOnInk(
 ): FrameScore[] {
   const img = { width: ink.width, height: ink.height };
   const list = Object.values(boxes).filter((b): b is SyllableBox => !!b && b.w > 0 && b.h > 0);
+  let inkTotal = 0;
+  for (let i = 0; i < ink.data.length; i++) inkTotal += ink.data[i];
+  const global = ink.data.length > 0 ? inkTotal / ink.data.length : 0;
   return candidates.map((frame) => {
-    if (list.length === 0) return { frame, score: 0 };
+    if (list.length === 0) return { frame, inkInside: 0, score: 0 };
     const v = viewSize(img, frame);
     let hits = 0;
     let total = 0;
@@ -103,13 +112,15 @@ export function scoreBoxFramesOnInk(
         }
       }
     }
-    return { frame, score: total > 0 ? hits / total : 0 };
+    const inkInside = total > 0 ? hits / total : 0;
+    return { frame, inkInside, score: Math.max(0, inkInside - global) };
   });
 }
 
 /**
  * Scores each candidate frame for `boxes` against the ORIGINAL (unrotated,
- * unflipped) image: the mean ink fraction inside the boxes once mapped back.
+ * unflipped) image: the ink fraction inside the boxes once mapped back,
+ * above the page's overall ink fraction.
  */
 export function scoreBoxFrames(
   raster: RasterLike,
@@ -123,7 +134,11 @@ export function scoreBoxFrames(
  * The frame to switch to, or null to keep `stored`: the best candidate must
  * have real ink and beat the stored frame's score by `margin`.
  */
-export function pickBoxFrame(scores: FrameScore[], stored: BoxFrame, margin = REALIGN_MARGIN): BoxFrame | null {
+export function pickBoxFrame(
+  scores: Array<Pick<FrameScore, "frame" | "score">>,
+  stored: BoxFrame,
+  margin = REALIGN_MARGIN,
+): BoxFrame | null {
   if (scores.length === 0) return null;
   const best = scores.reduce((a, b) => (b.score > a.score ? b : a));
   if (best.score < MIN_SCORE || framesEqual(best.frame, stored)) return null;
