@@ -99,7 +99,14 @@ interface InkStage {
 }
 
 /** Etapas 1 e 3: binarizacao, manchas, remocao da pauta, rotulagem, barras, filtros. */
-function inkStage(work: Work, p: Params, staff: Staff | null, channel: 'r' | 'auto', k: number): InkStage {
+function inkStage(
+  work: Work,
+  p: Params,
+  staff: Staff | null,
+  channel: 'r' | 'auto',
+  k: number,
+  blobs: Mask = darkBlobs(work.gray, work.valid, p),
+): InkStage {
   let img = work.r;
   let name: ChannelName = 'r';
   if (channel === 'auto' && contrastScore(work.gray, work.valid) > contrastScore(work.r, work.valid)) {
@@ -112,7 +119,6 @@ function inkStage(work: Work, p: Params, staff: Staff | null, channel: 'r' | 'au
     if (staffCoverage(ink, staff) < RED_COVERAGE) red = true;
     else ink = removeStaffLines(ink, staff);
   }
-  const blobs = darkBlobs(work.gray, work.valid, p);
   const lab = labelComponents(ink);
   const reject = labelsTouching(lab, blobs);
   const bars: Component[] = [];
@@ -257,10 +263,11 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   const p = deriveParams(u, staff ? metrics : null);
 
   // Etapa 1: binarizacao comum (com repeticao k = 0,1 e canal auto se faltarem componentes)
-  const needed = free.length;
-  let st = inkStage(work, p, staff, 'r', p.k);
+  const needed = free.filter((s) => s.suggest !== false).length;
+  const blobs = darkBlobs(work.gray, work.valid, p); // independe de canal e de k: calculado uma vez
+  let st = inkStage(work, p, staff, 'r', p.k, blobs);
   if (st.comps.length < needed) {
-    const retry = inkStage(work, p, staff, 'auto', 0.1);
+    const retry = inkStage(work, p, staff, 'auto', 0.1, blobs);
     if (retry.comps.length > st.comps.length) st = retry;
   }
   debug.channel = st.channel;

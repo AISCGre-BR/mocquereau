@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cropRaster,
   alphaMask,
   contrastScore,
   cropGray,
@@ -60,5 +61,11 @@ describe('image', () => {
   it('cropGray copia a regiao', () => {
     const img: GrayImage = { data: Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9]), width: 3, height: 3 };
     expect(Array.from(cropGray(img, { x: 1, y: 1, w: 2, h: 2 }).data)).toEqual([5, 6, 8, 9]);
+  });
+
+  it('cropRaster com a caixa igual ao raster inteiro devolve a mesma vista, sem copiar', () => {
+    const r = { data: new Uint8ClampedArray(4 * 3 * 4), width: 4, height: 3 };
+    expect(cropRaster(r, { x: 0, y: 0, w: 4, h: 3 }).data).toBe(r.data);
+    expect(cropRaster(r, { x: 1, y: 0, w: 2, h: 3 }).data).not.toBe(r.data);
   });
 });

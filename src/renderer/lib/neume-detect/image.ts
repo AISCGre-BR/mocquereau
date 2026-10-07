@@ -184,6 +184,7 @@ export function maskedMedian(img: GrayImage, mask?: Mask | null): number {
 
 /** Recorte RGBA (copia) de [box.x, box.x + box.w) x [box.y, box.y + box.h); box deve caber no raster. */
 export function cropRaster(r: RasterRGBA, box: PxBox): RasterRGBA {
+  if (box.x === 0 && box.y === 0 && box.w === r.width && box.h === r.height) return r;
   const out = new Uint8ClampedArray(box.w * box.h * 4);
   for (let y = 0; y < box.h; y++) {
     const src = ((box.y + y) * r.width + box.x) * 4;
