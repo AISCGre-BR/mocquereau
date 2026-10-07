@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { createNewProject, useProject } from "./useProject";
 import { useToast } from "../ui/Toast";
 import { syllabifyText } from "../lib/syllabify";
-import type { ManuscriptLine, MocquereauProject } from "../lib/models";
+import type { MocquereauProject } from "../lib/models";
 import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
 
 export const AUTOSAVE_DELAY_MS = 3000;
@@ -29,17 +29,6 @@ export interface ProjectFileOptions {
   onOpened?: () => void;
   /** Decodes a line image for the legacy box realignment (tests inject a fake). */
   loadRaster?: RasterLoader;
-}
-
-/** Same boxes, frame and adjustments: the scored line is still the line on screen. */
-function sameBoxGeometry(a: ManuscriptLine, b: ManuscriptLine): boolean {
-  return (
-    a.syllableBoxes === b.syllableBoxes &&
-    a.boxFrame === b.boxFrame &&
-    (a.imageAdjustments?.rotation ?? 0) === (b.imageAdjustments?.rotation ?? 0) &&
-    !!a.imageAdjustments?.flipH === !!b.imageAdjustments?.flipH &&
-    !!a.imageAdjustments?.flipV === !!b.imageAdjustments?.flipV
-  );
 }
 
 export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileActions {
@@ -98,46 +87,43 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
     [dispatch, replaceDocument],
   );
 
+  const openSeq = useRef(0);
+
   /**
    * Legacy files (v0.0.6/0.0.7) did not remap boxes when the rotation changed,
-   * so the migration's frame can be wrong. The ink decides; a fix is one
-   * undoable step, announced with a toast.
+   * so the migration's frame can be wrong. The ink decides; the fix is part of
+   * loading (done before the project is adopted): no toast, no history step,
+   * not dirty. Failures fall back to the project as read.
    */
-  const realignLegacy = useCallback(
-    async (project: MocquereauProject) => {
-      const gen = docGen.current;
-      const found = await detectRealignments(project, loadRasterRef.current, {
-        isCancelled: () => gen !== docGen.current,
-      });
-      if (found.length === 0 || gen !== docGen.current) return;
-      const current = stateRef.current.project;
-      if (!current) return;
-      const scored = new Map(project.sources.flatMap((s) => s.lines.map((l) => [l.id, l] as const)));
-      const live = new Map(current.sources.flatMap((s) => s.lines.map((l) => [l.id, l] as const)));
-      // Lines edited while the ink was being read keep what the user did.
-      const updates = found
-        .filter((f) => {
-          const before = scored.get(f.lineId);
-          const now = live.get(f.lineId);
-          return !!before && !!now && sameBoxGeometry(before, now);
-        })
-        .map((f) => ({ lineId: f.lineId, frame: f.to }));
-      if (updates.length === 0) return;
-      dispatch({ type: "SET_LINE_BOX_FRAME", payload: updates });
-      toast.show({
-        kind: "ok",
-        message: t("realign.applied", { count: updates.length }),
-        action: { label: t("realign.undo"), onSelect: () => dispatch({ type: "UNDO" }) },
-      });
-    },
-    [dispatch, t, toast],
-  );
+  const realignLegacy = useCallback(async (project: MocquereauProject, isCancelled: () => boolean) => {
+    try {
+      const found = await detectRealignments(project, loadRasterRef.current, { isCancelled });
+      if (found.length === 0) return project;
+      const wanted = new Map(found.map((f) => [f.lineId, f.to] as const));
+      return {
+        ...project,
+        sources: project.sources.map((s) => ({
+          ...s,
+          lines: s.lines.map((l) => {
+            const frame = wanted.get(l.id);
+            return frame ? { ...l, boxFrame: frame } : l;
+          }),
+        })),
+      };
+    } catch (err) {
+      console.warn("[box-frame-realign] legacy realignment skipped", err);
+      return project;
+    }
+  }, []);
 
   /** Opened from main: a legacy .mocquereau.json comes back without a writable path. */
   const adoptOpened = useCallback(
-    (project: MocquereauProject, filePath: string | null) => {
-      adopt(project, filePath);
-      if (filePath === null) void realignLegacy(project);
+    async (project: MocquereauProject, filePath: string | null) => {
+      const seq = ++openSeq.current;
+      const ready =
+        filePath === null ? await realignLegacy(project, () => seq !== openSeq.current) : project;
+      if (seq !== openSeq.current) return; // a newer open superseded this one
+      adopt(ready, filePath);
     },
     [adopt, realignLegacy],
   );
@@ -195,7 +181,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
   const open = useCallback(async () => {
     if (!confirmDiscard()) return;
     const result = await window.mocquereau.openProject();
-    if (result) adoptOpened(result.project, result.filePath);
+    if (result) await adoptOpened(result.project, result.filePath);
   }, [adoptOpened, confirmDiscard]);
 
   const openRecent = useCallback(
@@ -206,7 +192,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
         toast.show({ kind: "error", message: t("file.openError", { filePath }) });
         return;
       }
-      adoptOpened(result.project, result.filePath);
+      await adoptOpened(result.project, result.filePath);
     },
     [adoptOpened, confirmDiscard, t, toast],
   );

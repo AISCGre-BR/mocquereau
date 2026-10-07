@@ -289,8 +289,6 @@
   "imageCanvas.straightenAngle": "Kąt precyzyjny (od −10° do +10°)",
   "imageCanvas.straightenReadout": "Kąt precyzyjny",
   "imageCanvas.straightenReset": "Zeruj kąt precyzyjny",
-  "realign.applied": "Ramki {{count}} obrazu/obrazów dopasowane do obrotu obrazu.",
-  "realign.undo": "Cofnij",
   "realign.open": "Wyrównaj ramki…",
   "realign.title": "Wyrównaj ramki",
   "realign.hint": "Wybierz układ, w którym narysowano ramki. Wynik to atrament wewnątrz ramek; najwyższy jest zwykle właściwy.",
