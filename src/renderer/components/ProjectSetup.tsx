@@ -231,6 +231,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   // Otherwise, open the save dialog.
   async function handleSave() {
     if (!state.project) return;
+    const snapshot = state.project; // B2: save point = what was sent
     const updated = {
       ...state.project,
       meta: { ...state.project.meta, updatedAt: new Date().toISOString() },
@@ -240,7 +241,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
       state.currentFilePath ?? undefined,
     );
     if (result) {
-      dispatch({ type: 'SAVE_SUCCESS' });
+      dispatch({ type: 'SAVE_SUCCESS', payload: { project: snapshot } });
       dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
       await window.mocquereau.addRecentFile(result.filePath);
       refreshRecents();

@@ -39,7 +39,12 @@ export type ProjectAction =
   | { type: "ADD_SECTION"; payload: Section }
   | { type: "REMOVE_SECTION"; payload: string } // section id
   | { type: "UPDATE_SECTION"; payload: Section }
-  | { type: "SAVE_SUCCESS" }
+  /**
+   * B2: payload.project is the snapshot that was sent to main, captured before
+   * the IPC call; edits made while the save was in flight stay dirty.
+   * Without a payload the current present is marked saved.
+   */
+  | { type: "SAVE_SUCCESS"; payload?: { project: MocquereauProject | null } }
   | { type: "ADD_SOURCE"; payload: ManuscriptSource }
   | { type: "REMOVE_SOURCE"; payload: string }          // source id
   | { type: "UPDATE_SOURCE"; payload: ManuscriptSource }
@@ -424,7 +429,7 @@ export function createDocumentReducer(now: () => number = Date.now) {
         history = historyReducer(state.history, { type: "LOAD_PROJECT", payload: { project: action.payload } });
         break;
       case "SAVE_SUCCESS":
-        history = historyReducer(state.history, { type: "MARK_SAVED" });
+        history = historyReducer(state.history, { type: "MARK_SAVED", payload: action.payload });
         break;
       default:
         history = historyReducer(state.history, action);

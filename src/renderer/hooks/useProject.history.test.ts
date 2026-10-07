@@ -111,6 +111,28 @@ describe("documentReducer", () => {
     expect(h.view.isDirty).toBe(false);
   });
 
+  it("edit during save stays dirty (B2): the save point is the snapshot sent to main", () => {
+    const h = harness();
+    h.dispatch({ type: "SET_PROJECT", payload: makeProject() });
+    h.dispatch({ type: "SET_META", payload: { title: "A" } });
+    const sent = h.view.project; // captured before the IPC call
+    h.tick(5000);
+    h.dispatch({ type: "SET_META", payload: { author: "typed while saving" } });
+    h.dispatch({ type: "SAVE_SUCCESS", payload: { project: sent } });
+    expect(h.view.isDirty).toBe(true);
+    h.dispatch({ type: "UNDO" });
+    expect(h.view.project).toBe(sent);
+    expect(h.view.isDirty).toBe(false);
+  });
+
+  it("SAVE_SUCCESS with the current snapshot is clean", () => {
+    const h = harness();
+    h.dispatch({ type: "SET_PROJECT", payload: makeProject() });
+    h.dispatch({ type: "SET_META", payload: { title: "A" } });
+    h.dispatch({ type: "SAVE_SUCCESS", payload: { project: h.view.project } });
+    expect(h.view.isDirty).toBe(false);
+  });
+
   it("SET_FILE_PATH is outside history and survives undo", () => {
     const h = harness();
     h.dispatch({ type: "SET_PROJECT", payload: makeProject() });
