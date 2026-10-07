@@ -1,9 +1,8 @@
 // src/renderer/history/history.ts
 //
 // Generic undo/redo around a reducer (spec D5/D7, section 7). Snapshots are
-// immutable and share structure; projects carry no image bytes in the state
-// that matters for wave B, so 200 entries are cheap. "Dirty" is reference
-// identity between present and the last saved snapshot.
+// immutable and share structure. "Dirty" is reference identity between
+// present and the last saved snapshot.
 
 export interface FocusHint {
   sourceId?: string;
@@ -45,7 +44,11 @@ export interface HistoryOptions<A> {
   metaFor?: (action: A) => HistoryMeta | undefined;
 }
 
-export const HISTORY_LIMIT = 200;
+// S5: in wave A2 snapshots still hold images as data URLs, so an edit that
+// re-creates image objects (e.g. a hyphenation migration) can pin many copies.
+// Keep the history short for now; wave B raises it (spec: 200) once images
+// are referenced by id and snapshots no longer carry bytes.
+export const HISTORY_LIMIT = 50;
 export const COALESCE_MS = 1000;
 
 export function createHistory<P>(present: P | null = null, dirty = false): HistoryState<P> {

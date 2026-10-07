@@ -106,6 +106,10 @@ describe("withHistory — coalescing", () => {
 });
 
 describe("withHistory — limit, load, save", () => {
+  it("defaults to 50 entries while snapshots still carry data URLs (S5)", () => {
+    expect(HISTORY_LIMIT).toBe(50);
+  });
+
   it(`keeps at most ${HISTORY_LIMIT} entries, dropping the oldest`, () => {
     const { reduce, h0 } = setup();
     let h = h0;
