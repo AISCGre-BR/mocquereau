@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("mocquereau", {
     };
   },
 
+  openExample: () => ipcRenderer.invoke("project:open-example"),
+
   openProjectByPath: (filePath: string) =>
     ipcRenderer.invoke("project:open-by-path", filePath),
 

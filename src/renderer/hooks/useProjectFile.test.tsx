@@ -277,6 +277,47 @@ describe("useProjectFile", () => {
     expect(result.current.ctx.state.currentFilePath).toBe("/pesquisa/puer.mocquereau");
   });
 
+  it("openExample adota o exemplo sem caminho, limpo, sem recentes e sem realinhar", async () => {
+    const opened = createNewProject("Dominus dixit ad me", "");
+    opened.classification = cloneClassification(SUGGESTED_CLASSIFICATION);
+    opened.classification[2].values.push({ id: "v-exemplo", name: "Exemplo" });
+    const loadRaster = vi.fn(async () => null);
+    const setClassification = vi.fn().mockResolvedValue(undefined);
+    const api = mockApi({
+      openExample: vi.fn().mockResolvedValue({ project: opened, filePath: null }),
+      getClassification: vi.fn().mockResolvedValue(cloneClassification(SUGGESTED_CLASSIFICATION)),
+      setClassification,
+    });
+    const { result } = renderHook(() => ({ file: useProjectFile({ loadRaster }), ctx: useProject() }), {
+      wrapper: Providers,
+    });
+    await act(async () => {
+      await result.current.file.openExample();
+    });
+    await waitFor(() => expect(setClassification).toHaveBeenCalledTimes(1));
+    // Mesma mesclagem silenciosa da abertura de arquivo: o valor do exemplo entra na biblioteca.
+    const merged = setClassification.mock.calls[0][0];
+    expect(merged[2].values.some((v: { id: string }) => v.id === "v-exemplo")).toBe(true);
+    expect(result.current.ctx.state.project?.meta.title).toBe("Dominus dixit ad me");
+    expect(result.current.ctx.state.currentFilePath).toBeNull();
+    expect(result.current.ctx.state.isDirty).toBe(false);
+    expect(result.current.ctx.history?.canUndo).toBe(false);
+    expect(loadRaster).not.toHaveBeenCalled();
+    expect(api.updateRecentMeta).not.toHaveBeenCalled();
+    expect(api.addRecentFile).not.toHaveBeenCalled();
+  });
+
+  it("openExample que falha mostra erro e mantém o projeto", async () => {
+    mockApi({ openExample: vi.fn().mockResolvedValue(null) });
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    await act(async () => {
+      await result.current.file.openExample();
+    });
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(result.current.ctx.state.project?.meta.title).toBe("Sem título");
+  });
+
   it("edição feita durante o salvamento continua pendente (snapshot do ponto salvo)", async () => {
     let resolveSave: (v: { filePath: string }) => void = () => undefined;
     mockApi({ saveProject: vi.fn(() => new Promise((r) => (resolveSave = r))) });

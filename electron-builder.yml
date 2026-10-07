@@ -6,6 +6,11 @@ directories:
 files:
   - out/**/*
   - "!node_modules/**/*"
+extraResources:
+  - from: resources/examples
+    to: examples
+    filter:
+      - "*.mocquereau"
 icon: resources/icon.png
 win:
   target:

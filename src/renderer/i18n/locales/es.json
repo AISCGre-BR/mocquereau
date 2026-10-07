@@ -21,6 +21,7 @@
   "file.confirmDiscard": "Hay cambios sin guardar. ¿Descartarlos y continuar?",
   "file.importTextFilled": "El texto ya está completado; la importación de Gueranger no lo reemplazó.",
   "file.openError": "No se pudo abrir {{filePath}}. Es posible que el archivo se haya movido o eliminado.",
+  "file.exampleError": "No se pudo abrir el proyecto de ejemplo.",
   "file.saved": "Proyecto guardado.",
   "file.saveError": "No se pudo guardar: {{message}}",
   "file.untitled": "Sin título",

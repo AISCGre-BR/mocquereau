@@ -21,6 +21,7 @@
   "file.confirmDiscard": "There are unsaved changes. Discard them and continue?",
   "file.importTextFilled": "The text is already filled in; the Gueranger import did not replace it.",
   "file.openError": "Could not open {{filePath}}. The file may have been moved or deleted.",
+  "file.exampleError": "Could not open the example project.",
   "file.saved": "Project saved.",
   "file.saveError": "Could not save: {{message}}",
   "file.untitled": "Untitled",

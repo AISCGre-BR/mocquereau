@@ -21,6 +21,7 @@
   "file.confirmDiscard": "Es gibt ungespeicherte Änderungen. Verwerfen und fortfahren?",
   "file.importTextFilled": "Der Text ist bereits ausgefüllt; der Gueranger-Import hat ihn nicht ersetzt.",
   "file.openError": "{{filePath}} konnte nicht geöffnet werden. Die Datei wurde möglicherweise verschoben oder gelöscht.",
+  "file.exampleError": "Das Beispielprojekt konnte nicht geöffnet werden.",
   "file.saved": "Projekt gespeichert.",
   "file.saveError": "Speichern fehlgeschlagen: {{message}}",
   "file.untitled": "Ohne Titel",

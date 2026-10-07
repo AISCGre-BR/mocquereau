@@ -231,6 +231,8 @@ export interface MocquereauAPI {
    * unsubscribe function.
    */
   onSaveRequested: (callback: () => void) => () => void;
+  /** Bundled example project: opened without a path (first save becomes Save As). */
+  openExample: () => Promise<{ project: MocquereauProject; filePath: null } | null>;
   /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
   openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   // App state

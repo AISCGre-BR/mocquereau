@@ -30,6 +30,8 @@ export interface ProjectFileActions {
   newProject: () => Promise<void>;
   open: () => Promise<void>;
   openRecent: (filePath: string) => Promise<void>;
+  /** Projeto de exemplo embutido: abre sem caminho, então o primeiro Salvar vira Salvar como. */
+  openExample: () => Promise<void>;
   save: () => Promise<boolean>;
   saveAs: () => Promise<boolean>;
   close: () => void;
@@ -138,10 +140,9 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
 
   /** Opened from main: a legacy .mocquereau.json comes back without a writable path. */
   const adoptOpened = useCallback(
-    async (project: MocquereauProject, filePath: string | null) => {
+    async (project: MocquereauProject, filePath: string | null, legacy = filePath === null) => {
       const seq = ++openSeq.current;
-      const ready =
-        filePath === null ? await realignLegacy(project, () => seq !== openSeq.current) : project;
+      const ready = legacy ? await realignLegacy(project, () => seq !== openSeq.current) : project;
       if (seq !== openSeq.current) return; // a newer open superseded this one
       // Valores do projeto entram na biblioteca em segundo plano: sem dispatch, o projeto não suja.
       // Leitura própria, sem fallback sugerido: se falhar, não grava (não sobrescreve a biblioteca real).
@@ -226,6 +227,17 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
     [adoptOpened, confirmDiscard, t, toast],
   );
 
+  const openExample = useCallback(async () => {
+    if (!confirmDiscard()) return;
+    const result = await window.mocquereau.openExample().catch(() => null);
+    if (!result) {
+      toast.show({ kind: "error", message: t("file.exampleError") });
+      return;
+    }
+    // Sem caminho, mas não é arquivo legado: sem realinhamento de caixas (o exemplo não tem caixas).
+    await adoptOpened(result.project, result.filePath, false);
+  }, [adoptOpened, confirmDiscard, t, toast]);
+
   const close = useCallback(() => {
     if (!confirmDiscard()) return;
     docGen.current += 1;
@@ -266,5 +278,5 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
     void window.mocquereau.setDirty(state.isDirty && state.project !== null);
   }, [state.isDirty, state.project, pending]);
 
-  return { newProject, open, openRecent, save, saveAs, close, importGueranger, projectEpoch };
+  return { newProject, open, openRecent, openExample, save, saveAs, close, importGueranger, projectEpoch };
 }

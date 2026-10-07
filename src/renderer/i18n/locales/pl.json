@@ -21,6 +21,7 @@
   "file.confirmDiscard": "Są niezapisane zmiany. Odrzucić je i kontynuować?",
   "file.importTextFilled": "Tekst jest już wypełniony; import z Gueranger go nie zastąpił.",
   "file.openError": "Nie można otworzyć {{filePath}}. Plik mógł zostać przeniesiony lub usunięty.",
+  "file.exampleError": "Nie można otworzyć projektu przykładowego.",
   "file.saved": "Projekt zapisany.",
   "file.saveError": "Nie można zapisać: {{message}}",
   "file.untitled": "Bez tytułu",

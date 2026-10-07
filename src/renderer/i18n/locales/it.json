@@ -21,6 +21,7 @@
   "file.confirmDiscard": "Ci sono modifiche non salvate. Scartarle e continuare?",
   "file.importTextFilled": "Il testo è già compilato; l'importazione da Gueranger non lo ha sostituito.",
   "file.openError": "Impossibile aprire {{filePath}}. Il file potrebbe essere stato spostato o eliminato.",
+  "file.exampleError": "Impossibile aprire il progetto di esempio.",
   "file.saved": "Progetto salvato.",
   "file.saveError": "Impossibile salvare: {{message}}",
   "file.untitled": "Senza titolo",

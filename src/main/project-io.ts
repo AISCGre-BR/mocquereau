@@ -6,11 +6,12 @@
 //   project:save-as(project, currentPath?) -> { filePath } | null
 //   project:open()                        -> { project, filePath | null } | null
 //   project:open-by-path(path)            -> { project, filePath | null } | null
+//   project:open-example()                -> { project, filePath: null } | null
 // filePath null means "opened from a legacy .mocquereau.json": no writable path,
 // so autosave stays off and the next save becomes Save As (spec D8).
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { existsSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { SessionProject } from '@shared/project-schema';
 import { DocumentError, openDocument, saveDocument } from './document-io';
@@ -165,6 +166,12 @@ async function save(
   }
 }
 
+function examplePath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'examples', 'dominus-dixit.mocquereau')
+    : join(app.getAppPath(), 'resources', 'examples', 'dominus-dixit.mocquereau');
+}
+
 export function registerProjectHandlers(hooks: ProjectIoHooks): void {
   ipcMain.handle('project:save', (_event, project: SessionProject, existingPath?: string) =>
     save(project, existingPath || undefined, false, hooks),
@@ -188,6 +195,18 @@ export function registerProjectHandlers(hooks: ProjectIoHooks): void {
   ipcMain.handle('project:open-by-path', async (_event, filePath: unknown) => {
     if (typeof filePath !== 'string' || !existsSync(filePath)) return null;
     return openPath(filePath, hooks);
+  });
+
+  // Bundled example: no renderer input, not a recent file, no writable path (first save is Save As).
+  ipcMain.handle('project:open-example', async (): Promise<OpenResult | null> => {
+    try {
+      const doc = await openDocument(examplePath(), hooks.getStore());
+      legacyOrigin = null;
+      return { project: doc.project, filePath: null };
+    } catch (err) {
+      console.error('[project-io] open example failed', err);
+      return null;
+    }
   });
 
   ipcMain.handle('project:import-gueranger', async () => {
