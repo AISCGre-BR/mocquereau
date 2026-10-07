@@ -173,3 +173,50 @@ describe("ImageCanvas: atalhos Ctrl+= / Ctrl+- / Ctrl+0", () => {
     expect(zooms()).toEqual([]);
   });
 });
+
+describe("ImageCanvas: etiquetas das caixas e painel Ajustes", () => {
+  function setupBoxes(extra: Record<string, unknown> = {}) {
+    return render(
+      <ImageCanvas
+        image={IMAGE}
+        syllableBoxes={{ 0: { x: 0.1, y: 0.2, w: 0.2, h: 0.3 }, 1: { x: 0.4, y: 0.2, w: 0.2, h: 0.3 } }}
+        activeSyllableIdx={0}
+        syllableRange={{ start: 0, end: 1 }}
+        gaps={[]}
+        hoveredSyllableIdx={null}
+        zoom={1}
+        panOffset={{ x: 0, y: 0 }}
+        dispatch={vi.fn()}
+        showAllBoxes
+        {...extra}
+      />,
+    );
+  }
+
+  it("caixa não ativa: etiqueta só aparece no hover/foco e fica fora da caixa (sc-box__tag)", () => {
+    const { container } = setupBoxes();
+    const box = container.querySelector("[data-image-wrapper] > div.group") as HTMLElement;
+    expect(box).not.toBeNull();
+    const label = box.querySelector("[data-box-label]") as HTMLElement;
+    expect(label.className).toContain("sc-box__tag");
+    expect(label.className).toContain("opacity-0");
+    expect(label.className).toContain("group-hover:opacity-100");
+    expect(label.className).toContain("group-focus:opacity-100");
+    expect(label.className).not.toMatch(/\btop-0\b/);
+  });
+
+  it("painel Ajustes fica fora do contêiner rolável, com max-height e rolagem própria", () => {
+    const { container } = setupBoxes({
+      panelOpen: true,
+      onUpdateAdjustments: vi.fn(),
+      onClosePanel: vi.fn(),
+    });
+    const panel = container.querySelector("[data-image-adjustments-panel]") as HTMLElement;
+    const scroller = container.querySelector("[data-canvas-scroller]") as HTMLElement;
+    expect(panel).not.toBeNull();
+    expect(scroller.contains(panel)).toBe(false);
+    expect(panel.className).toContain("sc-panel");
+    expect(panel.className).toContain("overflow-y-auto");
+    expect(panel.style.maxHeight).toBe("calc(100% - 16px)");
+  });
+});

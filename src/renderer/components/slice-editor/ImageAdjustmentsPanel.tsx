@@ -46,7 +46,8 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose, onRealig
 
   return (
     <div
-      className="absolute top-2 right-2 z-10 w-72 bg-surface border border-rule rounded shadow-lg p-3 space-y-3"
+      className="sc-panel absolute right-2 top-2 z-30 w-72 space-y-3 overflow-y-auto p-3"
+      style={{ maxHeight: "calc(100% - 16px)" }}
       data-image-adjustments-panel
     >
       {/* Header */}
