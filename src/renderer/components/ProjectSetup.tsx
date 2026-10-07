@@ -1,17 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { syllabifyText, type HyphenationMode } from '../lib/syllabify';
-import { useProject, createNewProject } from '../hooks/useProject';
+import { useProject } from '../hooks/useProject';
+import { usePendingFlush } from '../hooks/pendingEdits';
 import { SectionPanel } from './SectionPanel';
 import { migrateHyphenation, previewMigration } from '../lib/migrate-hyphenation';
-import type { GuerangerExport, SyllabifiedWord } from '../lib/models';
+import type { SyllabifiedWord } from '../lib/models';
 import { useTranslation } from 'react-i18next';
-
-interface ScreenProps {
-  onNext: () => void;
-  onPrev: () => void;
-  canGoNext: boolean;
-  canGoPrev: boolean;
-}
 
 const MODE_LABELS: Record<HyphenationMode, string> = {
   'sung': 'projectSetup.mode.sung',
@@ -84,8 +78,8 @@ function hyphenatedToWords(text: string): SyllabifiedWord[] {
     });
 }
 
-export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
-  const { state, dispatch } = useProject();
+export function ProjectSetup() {
+  const { state, dispatch, pending: pendingEdits } = useProject();
   const { t } = useTranslation();
 
   // ── Local state ────────────────────────────────────────────────────────────
@@ -96,7 +90,13 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   const [hyphenationMode, setHyphenationMode] = useState<HyphenationMode>(
     () => state.project?.text.hyphenationMode ?? 'sung'
   );
-  const [hasManualEdits, setHasManualEdits] = useState(false);
+  // Sílabas que não coincidem com a silabificação automática (editadas à mão aqui ou
+  // na Tabela) abrem em modo manual, para a montagem da vista não sobrescrevê-las.
+  const [hasManualEdits, setHasManualEdits] = useState<boolean>(() => {
+    const text = state.project?.text;
+    if (!text) return false;
+    return JSON.stringify(text.words) !== JSON.stringify(syllabifyText(text.raw, text.hyphenationMode));
+  });
   const [title, setTitle] = useState<string>(
     () => state.project?.meta.title ?? ''
   );
@@ -105,12 +105,27 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   );
 
   // Hyphenated text for the editable textarea
-  const [syllabifiedText, setSyllabifiedText] = useState<string>('');
+  const [syllabifiedText, setSyllabifiedText] = useState<string>(
+    () => wordsToHyphenated(state.project?.text.words ?? [])
+  );
+
+  // Projeto da última renderização (lido pelos flushes e timers).
+  const savedProject = useRef(state.project);
+  savedProject.current = state.project;
+
+  // Só grava no projeto depois de uma edição nesta vista: montar (trocar de vista,
+  // abrir projeto) não pode marcar o projeto como editado.
+  const userEdited = useRef(false);
 
   // ── Debounce ───────────────────────────────────────────────────────────────
+  const lastRawText = useRef(rawText);
   useEffect(() => {
     // When the raw text changes, reset manual edits so auto-syllabification takes over
-    setHasManualEdits(false);
+    // (só quando o texto mudou de fato: montar a vista não descarta edições manuais).
+    if (lastRawText.current !== rawText) {
+      lastRawText.current = rawText;
+      setHasManualEdits(false);
+    }
     const timer = setTimeout(() => setDebouncedText(rawText), 300);
     return () => clearTimeout(timer);
   }, [rawText]);
@@ -131,10 +146,19 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
 
   // Dispatch to project state when syllabified text changes
   useEffect(() => {
-    if (!state.project) return;
+    if (!state.project || !userEdited.current) return;
     const words = hasManualEdits
       ? hyphenatedToWords(syllabifiedText)
       : autoSyllabified;
+    // Já gravado (ex.: por um flush antes de salvar): não marca de novo como editado.
+    const current = state.project.text;
+    if (
+      current.raw === rawText &&
+      current.hyphenationMode === hyphenationMode &&
+      JSON.stringify(current.words) === JSON.stringify(words)
+    ) {
+      return;
+    }
     dispatch({
       type: 'SET_TEXT',
       payload: { raw: rawText, words, hyphenationMode },
@@ -156,20 +180,62 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
       return; // nada mudou — evita re-dispatch em loop
     }
     const timer = setTimeout(() => {
+      const meta = savedProject.current?.meta;
+      if (meta && meta.title === title && meta.author === author) return; // já gravado por um flush
       dispatch({ type: 'SET_META', payload: { title, author } });
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, author]);
 
+  // Ao sair da vista os debounces de 300 ms acima são cancelados; grava o que
+  // ficou pendente (título/autor, texto litúrgico e sílabas). O mesmo flush roda
+  // antes de Novo/Abrir/Fechar/Salvar/Desfazer (registro de pendências).
+  const latest = useRef({ title, author, rawText, syllabifiedText, hasManualEdits, hyphenationMode });
+  latest.current = { title, author, rawText, syllabifiedText, hasManualEdits, hyphenationMode };
+  usePendingFlush(() => {
+    const saved = savedProject.current;
+    if (!saved) return false;
+    const pending = latest.current;
+    let flushed = false;
+    if (
+      pending.title.trim() !== '' &&
+      (saved.meta.title !== pending.title || saved.meta.author !== pending.author)
+    ) {
+      dispatch({ type: 'SET_META', payload: { title: pending.title, author: pending.author } });
+      flushed = true;
+    }
+    if (!userEdited.current) return flushed;
+    // Texto novo descarta as sílabas manuais (mesma regra do efeito de debounce).
+    const textChanged = pending.rawText !== saved.text.raw;
+    const words =
+      pending.hasManualEdits && !textChanged
+        ? hyphenatedToWords(pending.syllabifiedText)
+        : syllabifyText(pending.rawText, pending.hyphenationMode);
+    if (
+      textChanged ||
+      pending.hyphenationMode !== saved.text.hyphenationMode ||
+      JSON.stringify(words) !== JSON.stringify(saved.text.words)
+    ) {
+      dispatch({
+        type: 'SET_TEXT',
+        payload: { raw: pending.rawText, words, hyphenationMode: pending.hyphenationMode },
+      });
+      flushed = true;
+    }
+    return flushed;
+  });
+
   // ── Syllabified text editing ──────────────────────────────────────────────
   function handleSyllabifiedChange(value: string) {
+    userEdited.current = true;
     setSyllabifiedText(value);
     setHasManualEdits(true);
   }
 
   // ── Mode change ────────────────────────────────────────────────────────────
   function handleModeChange(newMode: HyphenationMode) {
+    userEdited.current = true;
     if (hasManualEdits && newMode !== 'manual') {
       const ok = window.confirm(
         t('projectSetup.confirmDiscardManualEdits')
@@ -215,206 +281,56 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     }
   }
 
-  // ── Recent files ───────────────────────────────────────────────────────────
-  const [recentFiles, setRecentFiles] = useState<string[]>([]);
-  useEffect(() => {
-    window.mocquereau.getRecentFiles().then(setRecentFiles);
-  }, []);
-
-  async function refreshRecents() {
-    const r = await window.mocquereau.getRecentFiles();
-    setRecentFiles(r);
-  }
-
-  // ── Save ───────────────────────────────────────────────────────────────────
-  // If the project already has a filePath, overwrite silently.
-  // Otherwise, open the save dialog.
-  async function handleSave() {
-    if (!state.project) return;
-    const snapshot = state.project; // B2: save point = what was sent
-    const updated = {
-      ...state.project,
-      meta: { ...state.project.meta, updatedAt: new Date().toISOString() },
-    };
-    const result = await window.mocquereau.saveProject(
-      updated,
-      state.currentFilePath ?? undefined,
-    );
-    if (result) {
-      dispatch({ type: 'SAVE_SUCCESS', payload: { project: snapshot } });
-      dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
-      await window.mocquereau.addRecentFile(result.filePath);
-      refreshRecents();
-    }
-  }
-
-  // ── Open ───────────────────────────────────────────────────────────────────
-  async function handleOpen() {
-    const result = await window.mocquereau.openProject();
-    if (!result) return;
-    applyOpenedProject(result);
-  }
-
-  function applyOpenedProject(result: { project: typeof state.project extends null ? never : NonNullable<typeof state.project>; filePath: string | null }) {
-    if (!result.project) return;
-    dispatch({ type: 'SET_PROJECT', payload: result.project });
-    dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
-    setRawText(result.project.text.raw);
-    setHyphenationMode(result.project.text.hyphenationMode);
-    setSyllabifiedText(wordsToHyphenated(result.project.text.words));
-    setTitle(result.project.meta.title);
-    setAuthor(result.project.meta.author);
-    setHasManualEdits(false);
-    // The main process records opened files (legacy ones included) in the recent list.
-    refreshRecents();
-  }
-
-  async function handleOpenRecent(filePath: string) {
-    const result = await window.mocquereau.openProjectByPath(filePath);
-    if (!result) {
-      alert(t('projectSetup.openRecentError', { filePath }));
-      refreshRecents();
-      return;
-    }
-    applyOpenedProject(result);
-  }
-
-  // ── Import Gueranger ───────────────────────────────────────────────────────
-  async function handleImportGueranger() {
-    const result: GuerangerExport | null =
-      await window.mocquereau.importGueranger();
-    if (!result) return;
-    if (!rawText.trim() && result.manuscripts[0]?.incipit) {
-      setRawText(result.manuscripts[0].incipit);
-    }
-  }
-
-  // ── Create / Next ──────────────────────────────────────────────────────────
-  async function handleCreateOrNext() {
-    if (state.project) {
-      onNext();
-      return;
-    }
-    if (!title.trim()) {
-      alert(t('projectSetup.titleRequired'));
-      return;
-    }
-    const words = hasManualEdits
-      ? hyphenatedToWords(syllabifiedText)
-      : autoSyllabified;
-    const newProject = createNewProject(title, author);
-    const withText = {
-      ...newProject,
-      text: { raw: rawText, words, hyphenationMode },
-    };
-    // Ask user where to save the new project BEFORE navigating to next screen.
-    // This sets up the filePath so Ctrl+S / auto-save work immediately.
-    const saveResult = await window.mocquereau.saveProject(withText);
-    if (!saveResult) {
-      // User cancelled the save dialog — do not create the project; stay on this screen.
-      return;
-    }
-    dispatch({ type: 'SET_PROJECT', payload: withText });
-    dispatch({ type: 'SET_FILE_PATH', payload: saveResult.filePath });
-    await window.mocquereau.addRecentFile(saveResult.filePath);
-    refreshRecents();
-    onNext();
-  }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-  const projectExists = state.project !== null;
-
-  function shortenPath(p: string): { filename: string; folder: string } {
-    const parts = p.split(/[/\\]/);
-    const filename = parts[parts.length - 1] ?? p;
-    const folder = parts.slice(0, -1).join('/');
-    return { filename, folder };
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="flex flex-col">
       <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 space-y-6">
-        {/* Recent files — only shown when no project is loaded yet */}
-        {!projectExists && recentFiles.length > 0 && (
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                {t('projectSetup.recentFiles')}
-              </h2>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (confirm(t('projectSetup.clearRecentFilesConfirm'))) {
-                    await window.mocquereau.clearRecentFiles();
-                    refreshRecents();
-                  }
-                }}
-                className="text-xs text-gray-400 hover:text-gray-700"
-              >
-                {t('projectSetup.clearList')}
-              </button>
-            </div>
-            <ul className="divide-y divide-gray-100">
-              {recentFiles.map((path) => {
-                const { filename, folder } = shortenPath(path);
-                return (
-                  <li key={path}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenRecent(path)}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-50 rounded flex items-baseline gap-2"
-                    >
-                      <span className="font-medium text-gray-800 truncate">{filename}</span>
-                      <span className="text-xs text-gray-400 truncate">{folder}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-
         {/* Metadata card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <div className="sc-panel p-6">
+          <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-4">
             {t('projectSetup.projectInfo')}
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-soft mb-1">
                 {t('projectSetup.projectTitle')}
               </label>
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  pendingEdits?.markPending();
+                  setTitle(e.target.value);
+                }}
                 placeholder={t('projectSetup.projectTitlePlaceholder')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-soft mb-1">
                 {t('projectSetup.author')}
               </label>
               <input
                 type="text"
                 value={author}
-                onChange={(e) => setAuthor(e.target.value)}
+                onChange={(e) => {
+                  pendingEdits?.markPending();
+                  setAuthor(e.target.value);
+                }}
                 placeholder={t('projectSetup.authorPlaceholder')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               />
             </div>
           </div>
         </div>
 
         {/* Text input card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="sc-panel p-6">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide">
               {t('projectSetup.liturgicalText')}
             </h2>
             {hasManualEdits && (
-              <span className="text-xs text-amber-600">
+              <span className="text-xs text-warning">
                 {t('projectSetup.manualEditsWarning')}
               </span>
             )}
@@ -422,14 +338,18 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
           <textarea
             rows={4}
             value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
+            onChange={(e) => {
+              userEdited.current = true;
+              pendingEdits?.markPending();
+              setRawText(e.target.value);
+            }}
             placeholder={t('projectSetup.liturgicalTextPlaceholder')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none font-mono"
+            className="w-full px-3 py-2 border border-rule rounded-lg bg-surface font-serif text-liturgical focus:ring-2 focus:ring-focus focus:border-transparent outline-none resize-none"
           />
 
           {/* Mode selector */}
           <div className="flex items-center gap-2 mt-3">
-            <span className="text-sm text-gray-500 mr-1">{t('projectSetup.modeLabel')}</span>
+            <span className="text-sm text-ink-muted mr-1">{t('projectSetup.modeLabel')}</span>
             {MODES.map((mode) => (
               <button
                 key={mode}
@@ -438,8 +358,8 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
                 className={[
                   'px-3 py-1 rounded text-sm font-medium transition-colors',
                   hyphenationMode === mode
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
+                    ? 'bg-rubric text-on-rubric'
+                    : 'bg-surface text-ink-soft border border-rule hover:bg-ink-wash',
                 ].join(' ')}
               >
                 {t(MODE_LABELS[mode])}
@@ -449,18 +369,18 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
         </div>
 
         {/* Syllabification result card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="sc-panel p-6">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide">
               {t('projectSetup.syllabification')}
             </h2>
             {hasManualEdits && (
-              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+              <span className="text-xs text-warning bg-orpiment-wash px-2 py-0.5 rounded">
                 {t('projectSetup.editedManually')}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 mb-2">
+          <p className="text-xs text-ink-muted mb-2">
             {t('projectSetup.syllabificationHint')}
           </p>
           <textarea
@@ -468,12 +388,12 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
             value={syllabifiedText}
             onChange={(e) => handleSyllabifiedChange(e.target.value)}
             placeholder={t('projectSetup.syllabificationPlaceholder')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none font-mono"
+            className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none resize-none font-mono"
           />
         </div>
 
         {/* Section panel card */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="sc-panel p-6">
           <SectionPanel
             words={
               hasManualEdits
@@ -487,42 +407,6 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
             }
             onUpdate={(s) => dispatch({ type: 'UPDATE_SECTION', payload: s })}
           />
-        </div>
-      </div>
-
-      {/* Bottom action bar */}
-      <div className="sticky bottom-0 bg-white border-t border-gray-200 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex gap-2">
-            <button
-              onClick={handleOpen}
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              {t('projectSetup.open')}
-            </button>
-            <button
-              onClick={handleImportGueranger}
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              {t('projectSetup.importGueranger')}
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={!projectExists}
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
-            >
-              {t('projectSetup.save')}
-            </button>
-            <button
-              onClick={handleCreateOrNext}
-              disabled={!canGoNext && projectExists}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40"
-            >
-              {projectExists ? t('projectSetup.next') : t('projectSetup.createProject')}
-            </button>
-          </div>
         </div>
       </div>
     </div>

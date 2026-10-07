@@ -35,7 +35,7 @@ export function SyllableChip({
         value={inputValue}
         autoFocus
         size={Math.max(inputValue.length + 2, 3)}
-        className="px-1 py-0.5 rounded border border-blue-500 text-sm text-gray-900 outline-none ring-1 ring-blue-500"
+        className="px-1 py-0.5 rounded border border-rubric text-sm text-ink outline-none ring-1 ring-focus"
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === 'Tab') {
@@ -52,7 +52,7 @@ export function SyllableChip({
 
   return (
     <span
-      className="inline-flex items-center px-2 py-0.5 rounded-full border border-gray-300 bg-white text-sm text-gray-800 cursor-pointer select-none hover:border-blue-400 hover:bg-blue-50"
+      className="inline-flex items-center px-2 py-0.5 rounded-full border border-rule bg-surface text-sm text-ink cursor-pointer select-none hover:border-rubric hover:bg-rubric-wash"
       onClick={onEnterEdit}
     >
       {syllable}

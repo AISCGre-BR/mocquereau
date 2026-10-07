@@ -1,198 +1,155 @@
-import { useState, useEffect, useRef } from "react";
-import { Screen } from "./lib/constants";
-import { ProjectContext, useProject, useProjectReducer } from "./hooks/useProject";
-import { ProjectSetup } from "./components/ProjectSetup";
-import { SourceList } from "./components/SourceList";
-import { SliceEditor } from "./components/SliceEditor";
-import { TablePreview } from "./components/TablePreview";
-import { ExportDialog } from "./components/ExportDialog";
-import { Tutorial } from "./components/Tutorial";
-import { LanguageSelector } from "./components/LanguageSelector";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { FileDown } from "lucide-react";
+import { ProjectContext, useProject, useProjectReducer } from "./hooks/useProject";
+import { useProjectFile } from "./hooks/useProjectFile";
+import { createPendingEdits } from "./hooks/pendingEdits";
+import { Toaster } from "./ui/Toast";
+import { Button } from "./ui/Button";
+import { AppShell } from "./shell/AppShell";
+import { MenuBar } from "./shell/MenuBar";
+import { Toolbar, type ViewId } from "./shell/Toolbar";
+import { buildMenus } from "./shell/menus";
+import { useMenuShortcuts } from "./shell/useMenuShortcuts";
+import { useTheme } from "./shell/useTheme";
+import { Welcome } from "./views/Welcome";
+import { TextoView } from "./views/TextoView";
+import { FontesView } from "./views/FontesView";
+import { RecortesView } from "./views/RecortesView";
+import { TabelaView } from "./views/TabelaView";
+import { ExportDialog } from "./components/ExportDialog";
+import { SUPPORTED_LANGS, type SupportedLang } from "./i18n";
 
-const SCREEN_ORDER: Screen[] = [
-  Screen.ProjectSetup,
-  Screen.SourceList,
-  Screen.SliceEditor,
-  Screen.TablePreview,
-  Screen.Export,
-];
+const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
 
-// Top status bar — shown only when a project is loaded. Displays project name,
-// dirty indicator, and handles Ctrl+S + debounced auto-save to the current file.
-function StatusBar() {
-  const { state, dispatch } = useProject();
+export function App() {
+  const [state, dispatch, history] = useProjectReducer();
+  const [pending] = useState(createPendingEdits);
   const { t } = useTranslation();
-  const [saving, setSaving] = useState(false);
-  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
-  const [appVersion, setAppVersion] = useState<string>("");
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  useEffect(() => {
-    window.mocquereau.getAppVersion().then(setAppVersion);
-  }, []);
-
-  async function doSave(silent: boolean) {
-    const s = stateRef.current;
-    if (!s.project) return;
-    setSaving(true);
-    // B2: the save point is this snapshot, not whatever is present when main answers.
-    const snapshot = s.project;
-    try {
-      const updated = {
-        ...s.project,
-        meta: { ...s.project.meta, updatedAt: new Date().toISOString() },
-      };
-      const result = await window.mocquereau.saveProject(
-        updated,
-        s.currentFilePath ?? undefined,
-      );
-      if (result) {
-        dispatch({ type: "SAVE_SUCCESS", payload: { project: snapshot } });
-        dispatch({ type: "SET_FILE_PATH", payload: result.filePath });
-        setLastSavedAt(Date.now());
-      } else if (!silent) {
-        // User cancelled dialog — nothing to do
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Ctrl+S / Cmd+S keyboard shortcut
-  useEffect(() => {
-    function handler(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        doSave(false);
-      }
-    }
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Debounced auto-save to disk (only if we have a filePath already and project is dirty)
-  useEffect(() => {
-    if (!state.isDirty || !state.project || !state.currentFilePath) return;
-    const timer = setTimeout(() => doSave(true), 3000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.isDirty, state.project, state.currentFilePath]);
-
-  // Sync dirty state to main process so close-confirmation dialog works
-  useEffect(() => {
-    window.mocquereau.setDirty(state.isDirty && state.project !== null);
-  }, [state.isDirty, state.project]);
-
-  const title = state.project?.meta.title || t("app.statusBar.noProject");
-  const pathTail = state.currentFilePath?.split(/[/\\]/).pop() ?? "";
-  const justSaved = lastSavedAt !== null && Date.now() - lastSavedAt < 2000;
-  const versionLabel = appVersion ? `ALPHA ${appVersion.replace("-alpha", "")}` : "";
-
   return (
-    <div className="flex items-center justify-between px-4 py-1.5 bg-gray-100 border-b border-gray-300 text-xs text-gray-700 flex-shrink-0">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="font-bold text-gray-900">Mocquereau</span>
-        {versionLabel && (
-          <span className="px-1.5 py-0.5 text-[10px] font-mono bg-orange-100 text-orange-700 rounded border border-orange-200">
-            {versionLabel}
-          </span>
-        )}
-        {state.project && (
-          <>
-            <span className="text-gray-300">|</span>
-            <span className="font-semibold truncate">{title}</span>
-            {state.isDirty && (
-              <span className="text-amber-600 font-bold" title={t("app.statusBar.unsavedChangesTitle")}>•</span>
-            )}
-            {pathTail && (
-              <span className="text-gray-400 truncate">— {pathTail}</span>
-            )}
-          </>
-        )}
-      </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
-        {state.project && (
-          <>
-            {saving ? (
-              <span className="text-blue-600">{t("app.statusBar.saving")}</span>
-            ) : justSaved ? (
-              <span className="text-green-600">{t("app.statusBar.savedCheck")}</span>
-            ) : state.isDirty ? (
-              <span className="text-amber-600">{t("app.statusBar.pendingChanges")}</span>
-            ) : (
-              <span className="text-gray-400">{t("app.statusBar.saved")}</span>
-            )}
-            <button
-              type="button"
-              onClick={() => doSave(false)}
-              disabled={saving || !state.isDirty}
-              className="px-2 py-0.5 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-40"
-              title={t("app.statusBar.saveTitle")}
-            >
-              {t("app.statusBar.save")}
-            </button>
-          </>
-        )}
-        <LanguageSelector />
-      </div>
-    </div>
+    <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
+      <Toaster dismissLabel={t("toast.dismiss")}>
+        <Workbench />
+      </Toaster>
+    </ProjectContext.Provider>
   );
 }
 
-export function App() {
-  const [screen, setScreen] = useState<Screen>(Screen.ProjectSetup);
-  const [state, dispatch] = useProjectReducer();
-  const [showTutorial, setShowTutorial] = useState(false);
+function Workbench() {
+  const { state, history, pending } = useProject();
+  const { t, i18n } = useTranslation();
+  const { theme, setTheme } = useTheme();
+  const [view, setView] = useState<ViewId>("texto");
+  const [exportOpen, setExportOpen] = useState(false);
+  // Desfazer/Refazer troca o projeto por baixo das vistas, que guardam cópias locais
+  // (campos do Texto, caixas do editor) até a onda B: remontá-las relê o projeto.
+  const [historyEpoch, setHistoryEpoch] = useState(0);
+  function stepHistory(direction: "undo" | "redo") {
+    if (!history) return;
+    // Edições ainda no debounce entram no histórico antes, para Desfazer desfazê-las.
+    flushSync(() => {
+      pending?.flushAll();
+    });
+    if (direction === "undo") history.undo();
+    else history.redo();
+    pending?.bump();
+    setHistoryEpoch((n) => n + 1);
+  }
+  const file = useProjectFile({ onOpened: () => setView("texto") });
 
-  // On first launch, show the tutorial overlay
+  // "Salvar" no diálogo de fechar a janela: o main pede, o renderer salva (gravando
+  // antes as edições pendentes). O project:save iniciado aqui é o que o main aguarda.
+  const saveRef = useRef(file.save);
+  saveRef.current = file.save;
   useEffect(() => {
-    window.mocquereau.getTutorialSeen().then((seen) => {
-      if (!seen) setShowTutorial(true);
+    return window.mocquereau.onSaveRequested?.(() => {
+      void saveRef.current();
     });
   }, []);
 
-  async function dismissTutorial() {
-    setShowTutorial(false);
-    await window.mocquereau.setTutorialSeen(true);
-  }
+  const project = state.project;
+  const canExport = project !== null && project.sources.some((s) => s.lines.length > 0);
+  const language: SupportedLang = (SUPPORTED_LANGS as readonly string[]).includes(i18n.language)
+    ? (i18n.language as SupportedLang)
+    : "pt-BR";
+  const title = project ? project.meta.title.trim() || t("file.untitled") : "Mocquereau";
+  const edited = project !== null && state.isDirty;
+  const platform = window.mocquereau.platform;
 
-  const currentIndex = SCREEN_ORDER.indexOf(screen);
-  const canGoNext = currentIndex < SCREEN_ORDER.length - 1;
-  const canGoPrev = currentIndex > 0;
+  const menus = buildMenus(
+    {
+      hasProject: project !== null,
+      canExport,
+      view,
+      theme,
+      language,
+      canUndo: history?.canUndo ?? false,
+      canRedo: history?.canRedo ?? false,
+    },
+    {
+      newProject: file.newProject,
+      open: () => void file.open(),
+      save: () => void file.save(),
+      saveAs: () => void file.saveAs(),
+      importGueranger: () => void file.importGueranger(),
+      exportDocx: () => setExportOpen(true),
+      closeProject: file.close,
+      undo: () => stepHistory("undo"),
+      redo: () => stepHistory("redo"),
+      setView,
+      setTheme,
+      setLanguage: (lng) => void i18n.changeLanguage(lng),
+      openWebsite: () => void window.mocquereau.openExternal(HOMEPAGE),
+      reportIssue: () => void window.mocquereau.openExternal(`${HOMEPAGE}/issues`),
+    },
+    (key) => t(key),
+  );
+  useMenuShortcuts(menus);
 
-  function goNext() {
-    if (canGoNext) setScreen(SCREEN_ORDER[currentIndex + 1]);
-  }
-
-  function goPrev() {
-    if (canGoPrev) setScreen(SCREEN_ORDER[currentIndex - 1]);
-  }
-
-  const screenProps = { onNext: goNext, onPrev: goPrev, canGoNext, canGoPrev };
-
-  // D-06: navigate from TablePreview context menu back to SliceEditor.
-  // SliceEditor manages source selection internally via its own sidebar —
-  // pre-selection by sourceId is not yet supported (TODO: add initialSourceId prop to SliceEditor v2).
-  function navigateToEditor(_sourceId: string) {
-    setScreen(Screen.SliceEditor);
-  }
+  // Título da janela (barra de tarefas): "Puer natus est — Editado — Mocquereau".
+  useEffect(() => {
+    document.title = project
+      ? [title, edited ? t("shell.edited") : null, "— Mocquereau"].filter(Boolean).join(" ")
+      : "Mocquereau";
+  }, [project, title, edited, t]);
 
   return (
-    <ProjectContext.Provider value={{ state, dispatch }}>
-      <div className="flex flex-col h-screen">
-        <StatusBar />
-        {screen === Screen.ProjectSetup && <ProjectSetup {...screenProps} />}
-        {screen === Screen.SourceList && <SourceList {...screenProps} />}
-        {screen === Screen.SliceEditor && <SliceEditor {...screenProps} />}
-        {screen === Screen.TablePreview && (
-          <TablePreview {...screenProps} onNavigateToEditor={navigateToEditor} />
-        )}
-        {screen === Screen.Export && <ExportDialog {...screenProps} />}
-        {showTutorial && <Tutorial onClose={dismissTutorial} />}
-      </div>
-    </ProjectContext.Provider>
+    <AppShell
+      menubar={<MenuBar menus={menus} title={title} edited={edited} platform={platform} />}
+      toolbar={
+        project ? (
+          <Toolbar
+            view={view}
+            onViewChange={setView}
+            platform={platform}
+            primaryAction={
+              view === "tabela" ? (
+                <Button
+                  variant="filled"
+                  icon={<FileDown aria-hidden="true" />}
+                  disabled={!canExport}
+                  onClick={() => setExportOpen(true)}
+                >
+                  {t("shell.file.exportDocx")}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : undefined
+      }
+    >
+      {project === null ? (
+        <Welcome onNew={file.newProject} onOpen={() => void file.open()} onOpenRecent={(p) => void file.openRecent(p)} />
+      ) : (
+        <div key={`${file.projectEpoch}:${historyEpoch}`} className="flex min-h-0 flex-1 flex-col">
+          {view === "texto" && <TextoView />}
+          {view === "fontes" && <FontesView />}
+          {view === "recortes" && <RecortesView />}
+          {view === "tabela" && <TabelaView onNavigateToEditor={() => setView("recortes")} />}
+        </div>
+      )}
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+    </AppShell>
   );
 }

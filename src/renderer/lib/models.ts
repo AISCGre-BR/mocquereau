@@ -222,6 +222,9 @@ export interface GuerangerExport {
 
 // ── IPC bridge type ──────────────────────────────────────────────────────────
 
+/** Preferência de tema: Sistema, Pergaminho (light) ou Vigília (dark). */
+export type ThemePreference = "system" | "light" | "dark";
+
 /** API exposta como window.mocquereau pelo preload bridge */
 export interface MocquereauAPI {
   // Projeto
@@ -229,6 +232,11 @@ export interface MocquereauAPI {
   /** Always shows the Save As dialog; the chosen name gets the .mocquereau extension. */
   saveProjectAs: (project: MocquereauProject, currentPath?: string) => Promise<{ filePath: string } | null>;
   setDirty: (isDirty: boolean) => Promise<void>;
+  /**
+   * The main process asks the renderer to save (close prompt > Save). Returns the
+   * unsubscribe function.
+   */
+  onSaveRequested: (callback: () => void) => () => void;
   /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
   openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   // App state
@@ -258,8 +266,9 @@ export interface MocquereauAPI {
   openExternal: (url: string) => Promise<void>;
   getLanguage: () => Promise<string>;
   setLanguage: (lang: string) => Promise<string>;
-  getTheme: () => Promise<string>;
-  setTheme: (theme: string) => Promise<boolean>;
+  getTheme: () => Promise<ThemePreference>;
+  setTheme: (theme: ThemePreference) => Promise<boolean>;
+  platform: string;
 }
 
 // ── DOCX Export Payload ──────────────────────────────────────────────────────

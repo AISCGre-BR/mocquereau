@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from "electron";
 const ALLOWED_PROTOCOLS = ["https:", "http:"];
 
 contextBridge.exposeInMainWorld("mocquereau", {
+  // Plataforma (win32 | darwin | linux): a menubar React se ajusta à moldura.
+  platform: process.platform,
+
   // Projeto
   saveProject: (project: unknown, existingPath?: string) =>
     ipcRenderer.invoke("project:save", project, existingPath),
@@ -12,6 +15,15 @@ contextBridge.exposeInMainWorld("mocquereau", {
 
   setDirty: (isDirty: boolean) =>
     ipcRenderer.invoke("project:set-dirty", isDirty),
+
+  // "Salvar" no diálogo de fechar: o main pede, o renderer salva.
+  onSaveRequested: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("app:request-save", listener);
+    return () => {
+      ipcRenderer.removeListener("app:request-save", listener);
+    };
+  },
 
   openProjectByPath: (filePath: string) =>
     ipcRenderer.invoke("project:open-by-path", filePath),

@@ -1,15 +1,14 @@
 @import "tailwindcss";
+@import "parchment-design/tailwind/parchment-theme.css";
+/* Na camada components: utilitários de layout do Tailwind (camada utilities) podem
+   sobrescrever as classes sc-* sem !important. */
+@import "parchment-design/components.css" layer(components);
 
-/* Base styles */
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-  background-color: #f9fafb;
-  color: #111827;
+/* As fontes embutidas (@fontsource-variable, importadas em main.tsx) registram as
+   famílias com o sufixo "Variable"; o Parchment pede "Source Sans 3"/"Source Serif 4". */
+:root {
+  --font-sans: "Source Sans 3 Variable", "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", "Source Serif 4", Charter, Georgia, serif;
 }
 
 #root {

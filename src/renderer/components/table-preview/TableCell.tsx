@@ -71,15 +71,15 @@ export function TableCell({
     state.box.w > 0 &&
     state.box.h > 0;
 
-  // Word border: 2px solid gray-400 | intra-word: 1px solid gray-200 (D-05)
+  // Fronteira de palavra: 2px rule-strong | dentro da palavra: 1px rule-soft (D-05)
   const borderRight = isWordBoundary
-    ? '2px solid #9ca3af'   // gray-400
-    : '1px solid #e5e7eb';  // gray-200
+    ? '2px solid var(--rule-strong)'
+    : '1px solid var(--rule-soft)';
 
   return (
     <div
       ref={cellRef}
-      className="relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-b border-gray-200"
+      className="relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-b border-rule-soft"
       style={{
         width: colWidthPx,
         height: rowHeightPx,
@@ -126,18 +126,18 @@ export function TableCell({
       )}
       {/* Fallback when filled state is malformed — show error indicator */}
       {state.kind === 'filled' && !filledOk && (
-        <span className="text-orange-400 text-xs">?</span>
+        <span className="text-warning text-xs">?</span>
       )}
 
       {/* ── Gap: em dash in gray (D-04) ── */}
       {state.kind === 'gap' && (
-        <span className="text-gray-400 text-sm font-medium select-none">—</span>
+        <span className="text-ink-muted text-sm font-medium select-none">—</span>
       )}
 
       {/* ── Unfilled: dashed border + plus icon (D-04) ── */}
       {state.kind === 'unfilled' && (
-        <div className="w-full h-full flex items-center justify-center border-2 border-dashed border-gray-300 rounded-sm m-1">
-          <span className="text-gray-300 text-lg leading-none">+</span>
+        <div className="w-full h-full flex items-center justify-center border-2 border-dashed border-rule rounded-sm m-1">
+          <span className="text-ink-muted text-lg leading-none">+</span>
         </div>
       )}
 
@@ -161,7 +161,7 @@ export function TableCell({
             : Math.max(4, vh - TH - 4);
         return (
           <div
-            className="fixed z-50 rounded shadow-lg border border-gray-200 bg-white p-1 pointer-events-none"
+            className="fixed z-50 rounded shadow-lg border border-rule-soft bg-surface p-1 pointer-events-none"
             style={{ width: TW, height: TH, left, top }}
           >
             <div className="w-full h-full overflow-hidden relative">

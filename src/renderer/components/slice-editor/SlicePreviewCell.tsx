@@ -39,7 +39,7 @@ export function SlicePreviewCell({
     <div
       className={[
         'flex flex-col items-center flex-shrink-0',
-        isWordBoundaryRight ? 'border-r-2 border-gray-500' : 'border-r border-gray-300',
+        isWordBoundaryRight ? 'border-r-2 border-rule-strong' : 'border-r border-rule',
       ].join(' ')}
       style={{ minWidth: 40 }}
       onMouseEnter={() => onHover(globalIdx)}
@@ -49,9 +49,9 @@ export function SlicePreviewCell({
       <div
         className={[
           'text-xs px-1 py-0.5 font-mono select-none cursor-pointer',
-          isActive   ? 'text-blue-700 font-bold' : '',
-          isHovered  ? 'text-indigo-700 font-bold' : '',
-          !isActive && !isHovered ? 'text-gray-600' : '',
+          isActive   ? 'text-rubric font-bold' : '',
+          isHovered  ? 'text-lapis font-bold' : '',
+          !isActive && !isHovered ? 'text-ink-soft' : '',
         ].filter(Boolean).join(' ')}
         onClick={() => onClick(globalIdx)}
       >
@@ -62,8 +62,8 @@ export function SlicePreviewCell({
       <div
         className={[
           'w-full h-14 bg-no-repeat',
-          isActive  ? 'ring-2 ring-blue-500 ring-inset' : '',
-          isHovered ? 'ring-2 ring-indigo-400 ring-inset' : '',
+          isActive  ? 'ring-2 ring-focus ring-inset' : '',
+          isHovered ? 'ring-2 ring-lapis ring-inset' : '',
         ].filter(Boolean).join(' ')}
         style={{
           backgroundImage: `url(${image.dataUrl})`,

@@ -6,5 +6,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["electron.vite.config.ts"]
+  "include": ["electron.vite.config.ts", "vitest.config.ts"]
 }

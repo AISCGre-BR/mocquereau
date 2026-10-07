@@ -38,90 +38,90 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-ink/20 flex items-center justify-center z-50"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
-        <h2 className="text-base font-semibold text-gray-900 mb-5">
+      <div className="bg-surface rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
+        <h2 className="text-base font-semibold text-ink mb-5">
           {t("sourceModal.title")}
         </h2>
 
         <div className="space-y-4">
           {/* Sigla */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.siglum")}
             </label>
             <input
               type="text"
               value={draft.siglum}
               onChange={(e) => update({ siglum: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none font-mono"
               placeholder={t("sourceModal.siglumPlaceholder")}
             />
           </div>
 
           {/* Biblioteca */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.library")}
             </label>
             <input
               type="text"
               value={draft.library}
               onChange={(e) => update({ library: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               placeholder={t("sourceModal.libraryPlaceholder")}
             />
           </div>
 
           {/* Cidade */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.city")}
             </label>
             <input
               type="text"
               value={draft.city}
               onChange={(e) => update({ city: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               placeholder={t("sourceModal.cityPlaceholder")}
             />
           </div>
 
           {/* Século */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.century")}
             </label>
             <input
               type="text"
               value={draft.century}
               onChange={(e) => update({ century: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               placeholder={t("sourceModal.centuryPlaceholder")}
             />
           </div>
 
           {/* Fólio */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.folio")}
             </label>
             <input
               type="text"
               value={draft.folio}
               onChange={(e) => update({ folio: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               placeholder={t("sourceModal.folioPlaceholder")}
             />
           </div>
 
           {/* Cantus ID */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.cantusId")}
             </label>
             <input
@@ -130,14 +130,14 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
               onChange={(e) =>
                 update({ cantusId: e.target.value || undefined })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none font-mono"
               placeholder={t("sourceModal.cantusIdPlaceholder")}
             />
           </div>
 
           {/* URL da fonte */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.sourceUrl")}
             </label>
             <input
@@ -146,14 +146,14 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
               onChange={(e) =>
                 update({ sourceUrl: e.target.value || undefined })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               placeholder={t("sourceModal.sourceUrlPlaceholder")}
             />
           </div>
 
           {/* Manifesto IIIF */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.iiifManifest")}
             </label>
             <input
@@ -162,17 +162,17 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
               onChange={(e) =>
                 update({ iiifManifest: e.target.value || undefined })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               placeholder={t("sourceModal.iiifManifestPlaceholder")}
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-ink-muted mt-1">
               {t("sourceModal.iiifManifestHint")}
             </p>
           </div>
 
           {/* Notação */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-soft mb-1">
               {t("sourceModal.notationLabel")}
             </label>
             <select
@@ -182,7 +182,7 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
                   notation: e.target.value as ManuscriptSource["metadata"]["notation"],
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none bg-surface"
             >
               {NOTATION_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -194,16 +194,16 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
         </div>
 
         {/* Footer buttons */}
-        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-rule-soft">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm text-ink-soft border border-rule rounded-lg hover:bg-ink-wash transition-colors"
           >
             {t("sourceModal.cancel")}
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 text-sm bg-rubric text-on-rubric rounded-lg hover:bg-rubric-soft transition-colors"
           >
             {t("sourceModal.save")}
           </button>

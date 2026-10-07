@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, shell, dialog, Menu, nativeTheme } from "electron";
 import { join } from "node:path";
 import { Conf } from "electron-conf/main";
 import { registerProjectHandlers } from './project-io';
 import { registerImageHandlers } from './iiif-fetch';
 import { registerDocxExportHandler } from './docx-export';
 import { registerAppStateHandlers } from './app-state';
+import { normalizeTheme, overlayFor, shouldUseNativeFrame, windowChromeOptions, type ThemePreference } from './window-chrome';
 import { SessionStore } from './session-store';
 import { registerSessionImageHandlers } from './session-ipc';
 import { initMainI18n, setMainLanguage, t } from './i18n';
@@ -13,13 +14,17 @@ import { SaveQueue } from './save-queue';
 
 interface UserPrefs {
   language: string;
-  theme: string;
+  theme: ThemePreference;
 }
 
 const userPrefs = new Conf<UserPrefs>({
   name: 'user-prefs',
-  defaults: { language: 'pt-BR', theme: 'light' },
+  defaults: { language: 'pt-BR', theme: 'system' },
 });
+
+// Barra de título nativa quando o overlay não é confiável (heurística do Linux
+// em shouldUseNativeFrame) ou por MOCQUEREAU_NATIVE_FRAME=1 (=0 força o overlay).
+const useNativeFrame = shouldUseNativeFrame(process.platform, process.env);
 
 // Track dirty state for close confirmation. Set via IPC from renderer.
 let projectIsDirty = false;
@@ -52,12 +57,23 @@ const saveThenClose = new SaveThenClose(
   () => closeFlow.onCloseAborted(),
 );
 
-// Wave A2: the renderer does not listen to main-process commands yet, so we
-// reuse the Ctrl+S shortcut App.tsx already handles. Its project:save call
-// reports back through onSaveStarted/onSaveFinished.
+// Ask the renderer to save (it flushes pending edits first). Its project:save
+// call reports back through onSaveStarted/onSaveFinished; a synthetic Ctrl+S
+// would be swallowed by open dialogs or focused fields.
 function requestRendererSave(win: BrowserWindow): void {
-  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: ['control'] });
-  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: ['control'] });
+  win.webContents.send('app:request-save');
+}
+
+function refreshTitleBarOverlays(): void {
+  if (process.platform === 'darwin' || useNativeFrame) return;
+  const overlay = overlayFor(nativeTheme.shouldUseDarkColors);
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      win.setTitleBarOverlay(overlay);
+    } catch {
+      // Plataforma sem overlay de título: nada a atualizar.
+    }
+  }
 }
 
 function createWindow(): void {
@@ -65,6 +81,7 @@ function createWindow(): void {
     width: 1600,
     height: 900,
     icon: join(__dirname, "../../resources/icon.png"),
+    ...windowChromeOptions(process.platform, nativeTheme.shouldUseDarkColors, useNativeFrame),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: true,
@@ -87,6 +104,22 @@ function createWindow(): void {
   win.webContents.on('zoom-changed', () => {
     win.webContents.setZoomFactor(1);
   });
+
+  // Sem menu nativo no Windows/Linux, os atalhos padrão de DevTools e reload somem;
+  // em desenvolvimento eles voltam aqui.
+  if (!app.isPackaged) {
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = input.key.toLowerCase();
+      if (input.key === 'F12' || (input.control && input.shift && key === 'i')) {
+        win.webContents.toggleDevTools();
+        event.preventDefault();
+      } else if (input.control && !input.shift && key === 'r') {
+        win.webContents.reload();
+        event.preventDefault();
+      }
+    });
+  }
 
   // Intercept close to prompt when there are unsaved changes (spec 6, wave A2 form).
   win.on('close', (e) => {
@@ -153,14 +186,21 @@ function registerSystemHandlers(): void {
     setMainLanguage(lang);
     return lang;
   });
-  ipcMain.handle("settings:get-theme", async () => userPrefs.get('theme'));
-  ipcMain.handle("settings:set-theme", async (_event, theme: string) => {
-    userPrefs.set('theme', theme);
+  ipcMain.handle("settings:get-theme", async () => normalizeTheme(userPrefs.get('theme')));
+  ipcMain.handle("settings:set-theme", async (_event, theme: unknown) => {
+    const value = normalizeTheme(theme);
+    userPrefs.set('theme', value);
+    nativeTheme.themeSource = value;
+    refreshTitleBarOverlays();
     return true;
   });
 }
 
 app.whenReady().then(async () => {
+  nativeTheme.themeSource = normalizeTheme(userPrefs.get('theme'));
+  nativeTheme.on('updated', refreshTitleBarOverlays);
+  // Windows/Linux: a menubar é desenhada pelo renderer. macOS mantém o menu nativo padrão.
+  if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
   initMainI18n(userPrefs.get('language'));
   const sessionsRoot = join(app.getPath('userData'), 'sessions');
   await SessionStore.sweepStale(sessionsRoot, SESSION_MAX_AGE_MS);

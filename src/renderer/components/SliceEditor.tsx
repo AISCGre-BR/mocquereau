@@ -12,17 +12,9 @@ import { SlidersHorizontal } from 'lucide-react';
 // SlicePreview import removed per UX feedback 2026-04-20
 import { flattenSyllables, computeSyllableCuts } from '../lib/sliceUtils';
 import { boxesInView } from '@shared/box-frame';
+import { usePendingFlush } from '../hooks/pendingEdits';
 import type { ManuscriptSource, ManuscriptLine, StoredImage, ImageAdjustments } from '../lib/models';
 import { useTranslation } from 'react-i18next';
-
-// ── Screen props ─────────────────────────────────────────────────────────────
-
-interface ScreenProps {
-  onNext: () => void;
-  onPrev: () => void;
-  canGoNext: boolean;
-  canGoPrev: boolean;
-}
 
 // ── Helper: computeCoveredSyllables ─────────────────────────────────────────
 
@@ -44,8 +36,16 @@ function computeCoveredSyllables(source: ManuscriptSource, excludeLineId: string
 
 // ── SliceEditor ──────────────────────────────────────────────────────────────
 
-export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProps) {
-  const { state: globalState, dispatch: globalDispatch } = useProject();
+/** Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas). */
+export function isOutsideEditorKeys(target: Element): boolean {
+  if (target.tagName === 'BUTTON' || target.tagName === 'SELECT') return true;
+  return (
+    target.closest('[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist]') !== null
+  );
+}
+
+export function SliceEditor() {
+  const { state: globalState, dispatch: globalDispatch, pending } = useProject();
   const { t } = useTranslation();
   const [editorState, editorDispatch] = useReducer(editorReducer, initialEditorState);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
@@ -176,7 +176,11 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
   // ── Auto-save boxes to the active line (so TablePreview sees them immediately) ──
   // Debounced to avoid excessive dispatches during drag (drag updates are in
   // editorState only; on pointerup we get a final SET_BOX that fires this save).
+  // Ao desmontar (troca de vista), o sync pendente é executado na hora em vez de
+  // descartado (a onda B remove este sync de vez).
+  const pendingBoxSync = useRef<(() => void) | null>(null);
   useEffect(() => {
+    pendingBoxSync.current = null;
     if (!project || !editorState.activeSourceId || !editorState.activeLineId) return;
     const source = project.sources.find(s => s.id === editorState.activeSourceId);
     if (!source) return;
@@ -189,7 +193,10 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     const newJson = JSON.stringify(editorState.syllableBoxes);
     if (currentJson === newJson) return;
 
-    const timer = setTimeout(() => {
+    const sync = () => {
+      // Já gravado por um flush (Salvar, Desfazer…): o timer não repete o dispatch.
+      if (pendingBoxSync.current !== sync) return;
+      pendingBoxSync.current = null;
       // Auto-confirm the line when at least one box has been drawn.
       const hasAnyBox = Object.values(editorState.syllableBoxes).some(b => b != null);
       globalDispatch({
@@ -203,10 +210,22 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           confirmed: hasAnyBox,
         },
       });
-    }, 300);
+    };
+    pendingBoxSync.current = sync;
+    pending?.markPending();
+    const timer = setTimeout(sync, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorState.syllableBoxes, editorState.syllableRange, editorState.gaps, editorState.activeLineId]);
+
+  // Flush do sync pendente ao sair da vista Recortes (antes de 300 ms) e antes de
+  // Novo/Abrir/Fechar/Salvar/Desfazer (registro de pendências do projeto).
+  usePendingFlush(() => {
+    const sync = pendingBoxSync.current;
+    if (!sync) return false;
+    sync();
+    return true;
+  });
 
   // ── Paste handler ─────────────────────────────────────────────────────────
 
@@ -481,6 +500,10 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return;
       }
+      // Teclas da casca e de controles nativos ficam com eles: menus, barra de
+      // ferramentas, abas de vista e diálogos navegam com setas/Tab/Enter, e um
+      // botão ou select focado responde a Enter/setas por conta própria.
+      if (target instanceof Element && isOutsideEditorKeys(target)) return;
       const { editorState: es, editorDispatch: ed, navigateSource: ns, navigateLines: nl } = keyHandlerStateRef.current;
       const range = es.syllableRange;
       if (!range) return;
@@ -568,7 +591,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
 
   if (!project) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
+      <div className="flex items-center justify-center h-full text-ink-muted">
         {t('sliceEditor.empty')}
       </div>
     );
@@ -627,17 +650,17 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
       {/* Main panel */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
-          <span className="text-sm font-medium text-gray-700 truncate">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rule-soft bg-surface flex-shrink-0">
+          <span className="text-sm font-medium text-ink-soft truncate">
             {activeSource?.metadata.siglum ?? t('sliceEditor.noSourceSelected')}
           </span>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-ink-muted">
               {t('sliceEditor.autoSaved')}
             </span>
             <button
               type="button"
-              className="px-3 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-300 disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs bg-rubric-wash hover:bg-rubric-wash text-rubric rounded border border-rubric disabled:opacity-40 flex items-center gap-1.5"
               onClick={() => setShowAdjustmentsPanel(v => !v)}
               disabled={!hasImage}
               title={t('sliceEditor.adjustmentsTitle')}
@@ -648,7 +671,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
             </button>
             <button
               type="button"
-              className="px-3 py-1.5 text-xs bg-orange-50 hover:bg-orange-100 text-orange-700 rounded border border-orange-300 disabled:opacity-40"
+              className="px-3 py-1.5 text-xs bg-orpiment-wash hover:bg-orpiment-wash text-warning rounded border border-warning disabled:opacity-40"
               onClick={() => {
                 if (editorState.activeSyllableIdx !== null) {
                   editorDispatch({ type: 'DELETE_BOX', payload: { syllableIdx: editorState.activeSyllableIdx } });
@@ -665,7 +688,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
             </button>
             <button
               type="button"
-              className="px-3 py-1.5 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-300"
+              className="px-3 py-1.5 text-xs bg-rubric-wash hover:bg-rubric-wash text-danger rounded border border-danger"
               onClick={handleClear}
               disabled={!hasImage}
             >
@@ -676,11 +699,11 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
 
         {/* Range controls — shown when an image is loaded */}
         {hasImage && (
-          <div className="flex-shrink-0 bg-white border-b border-gray-200 px-3 py-2">
+          <div className="flex-shrink-0 bg-surface border-b border-rule-soft px-3 py-2">
             {/* Numeric inputs row */}
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-xs text-gray-500 font-medium">{t('sliceEditor.range')}</span>
-              <label className="flex items-center gap-1 text-xs text-gray-600">
+              <span className="text-xs text-ink-muted font-medium">{t('sliceEditor.range')}</span>
+              <label className="flex items-center gap-1 text-xs text-ink-soft">
                 {t('sliceEditor.from')}
                 <input
                   type="number"
@@ -693,10 +716,10 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
                     const end = editorState.syllableRange?.end ?? totalSyllableCount - 1;
                     editorDispatch({ type: 'SET_RANGE', payload: { start: Math.min(val, end), end } });
                   }}
-                  className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-center"
+                  className="w-14 px-1 py-0.5 border border-rule rounded text-xs text-center"
                 />
               </label>
-              <label className="flex items-center gap-1 text-xs text-gray-600">
+              <label className="flex items-center gap-1 text-xs text-ink-soft">
                 {t('sliceEditor.to')}
                 <input
                   type="number"
@@ -709,7 +732,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
                     const start = editorState.syllableRange?.start ?? 0;
                     editorDispatch({ type: 'SET_RANGE', payload: { start, end: Math.max(val, start) } });
                   }}
-                  className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-center"
+                  className="w-14 px-1 py-0.5 border border-rule rounded text-xs text-center"
                 />
               </label>
             </div>
@@ -748,20 +771,20 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
 
         {/* Instruction banner — active syllable indicator + toggle */}
         {hasImage && (
-          <div className="flex-shrink-0 bg-blue-50 border-b border-blue-200 px-4 py-2 text-xs text-blue-900 flex items-center justify-between gap-3">
+          <div className="flex-shrink-0 bg-rubric-wash border-b border-rubric-soft px-4 py-2 text-xs text-rubric flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {activeSyllableLabel !== null ? (
                 <span className="flex items-center gap-2">
-                  <span className="text-gray-600">{t('sliceEditor.markingAreaFor')}</span>
-                  <span className="inline-block px-2 py-0.5 bg-blue-600 text-white font-bold rounded text-sm font-mono">
+                  <span className="text-ink-soft">{t('sliceEditor.markingAreaFor')}</span>
+                  <span className="inline-block px-2 py-0.5 bg-rubric text-on-rubric font-bold rounded text-sm font-mono">
                     {activeSyllableLabel}
                   </span>
-                  <span className="text-gray-500 hidden md:inline">
+                  <span className="text-ink-muted hidden md:inline">
                     {t('sliceEditor.markingHint')}
                   </span>
                 </span>
               ) : (
-                <span className="text-gray-600">
+                <span className="text-ink-soft">
                   <><span className="font-medium">{t('sliceEditor.clickSyllableAbove')}</span> {t('sliceEditor.clickSyllableAboveSuffix')}</>
                 </span>
               )}
@@ -820,24 +843,6 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
             />
           )}
         </div>
-
-        {/* Navigation footer */}
-        <div className="flex justify-between px-4 py-2 border-t border-gray-200 bg-white flex-shrink-0">
-          <button
-            onClick={onPrev}
-            disabled={!canGoPrev}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded disabled:opacity-40 hover:bg-gray-300"
-          >
-            {t('sliceEditor.previous')}
-          </button>
-          <button
-            onClick={onNext}
-            disabled={!canGoNext}
-            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-40 hover:bg-blue-700"
-          >
-            {t('sliceEditor.next')}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -878,7 +883,7 @@ function DropZone({
 
   return (
     <div
-      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-3 m-4 text-gray-400"
+      className="flex-1 border-2 border-dashed border-rule rounded-lg flex flex-col items-center justify-center gap-3 m-4 text-ink-muted"
       onDragOver={(e) => { e.preventDefault(); }}
       onDrop={handleImageDrop}
     >
@@ -886,7 +891,7 @@ function DropZone({
       <p className="text-xs">{t('sliceEditor.dropZone.or')}</p>
       <button
         type="button"
-        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+        className="px-3 py-1.5 bg-rubric text-on-rubric text-sm rounded hover:bg-rubric-soft"
         onClick={handleUploadClick}
       >
         {t('sliceEditor.dropZone.selectFile')}
