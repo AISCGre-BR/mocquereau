@@ -11,6 +11,8 @@ import type { Classification } from "../../shared/classification";
 import { useToast } from "../ui/Toast";
 import { syllabifyText } from "../lib/syllabify";
 import type { MocquereauProject } from "../lib/models";
+import { buildRecentMeta, firstPageImage } from "../lib/recent-meta";
+import { makeThumbnail } from "../lib/thumbnail";
 import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
 
 export const AUTOSAVE_DELAY_MS = 3000;
@@ -40,6 +42,13 @@ export interface ProjectFileOptions {
   onOpened?: () => void;
   /** Decodes a line image for the legacy box realignment (tests inject a fake). */
   loadRaster?: RasterLoader;
+}
+
+/** Calcula miniatura e progresso em segundo plano e os entrega ao main (sem dispatch). */
+function publishRecentMeta(project: MocquereauProject, filePath: string): void {
+  void makeThumbnail(firstPageImage(project))
+    .then((thumb) => window.mocquereau.updateRecentMeta(filePath, buildRecentMeta(project, thumb)))
+    .catch(() => {});
 }
 
 export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileActions {
@@ -141,6 +150,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
         .then((lib) => window.mocquereau.setClassification(mergeClassification(lib, ready.classification)))
         .catch(() => {});
       adopt(ready, filePath);
+      if (filePath !== null) publishRecentMeta(ready, filePath);
     },
     [adopt, realignLegacy],
   );
@@ -172,6 +182,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
             dispatch({ type: "SET_FILE_PATH", payload: result.filePath });
           }
         }
+        publishRecentMeta(updated, result.filePath);
         if (!silent) toast.show({ kind: "ok", message: t("file.saved") });
         return true;
       } catch (err) {

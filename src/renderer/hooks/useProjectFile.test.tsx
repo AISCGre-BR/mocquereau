@@ -11,6 +11,8 @@ import type { RasterLike } from "../lib/box-frame-detect";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "../../shared/classification";
 import { blobs, boxesIn, page } from "../lib/box-frame-detect.fixtures";
 
+vi.mock("../lib/thumbnail", () => ({ makeThumbnail: vi.fn().mockResolvedValue(undefined) }));
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -35,6 +37,7 @@ function mockApi(overrides: Partial<Record<keyof MocquereauAPI, unknown>> = {}) 
     openProject: vi.fn().mockResolvedValue(null),
     openProjectByPath: vi.fn().mockResolvedValue(null),
     importGueranger: vi.fn().mockResolvedValue(null),
+    updateRecentMeta: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   window.mocquereau = api as unknown as MocquereauAPI;
@@ -107,6 +110,50 @@ describe("useProjectFile", () => {
     const { result } = setup();
     await act(async () => result.current.file.newProject());
     expect(result.current.ctx.state.project?.classification).toEqual(SUGGESTED_CLASSIFICATION);
+  });
+
+  it("sends recent meta after opening a project with a path", async () => {
+    const api = mockApi({
+      openProject: vi.fn().mockResolvedValue({ project: createNewProject("Puer", ""), filePath: "/x.mocquereau" }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await waitFor(() =>
+      expect(api.updateRecentMeta).toHaveBeenCalledWith(
+        "/x.mocquereau",
+        expect.objectContaining({ title: "Puer", sources: expect.any(Array) }),
+      ),
+    );
+  });
+
+  it("sends recent meta after a successful save", async () => {
+    const api = mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    await act(async () => {
+      await result.current.file.save();
+    });
+    await waitFor(() =>
+      expect(api.updateRecentMeta).toHaveBeenCalledWith(
+        "/pesquisa/puer.mocquereau",
+        expect.objectContaining({ sources: expect.any(Array) }),
+      ),
+    );
+  });
+
+  it("does not send meta for a project without a path", async () => {
+    const api = mockApi({
+      openProject: vi.fn().mockResolvedValue({ project: createNewProject("Antigo", ""), filePath: null }),
+    });
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.updateRecentMeta).not.toHaveBeenCalled();
   });
 
   it("save sem arquivo pede o caminho, grava, limpa o Editado e confirma com toast", async () => {
