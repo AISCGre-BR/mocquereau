@@ -59,6 +59,13 @@ describe("mergeClassification", () => {
     expect(merged[2].values.at(-1)).toEqual({ id: "v-mozarabe", name: "Moçárabe" });
     expect(merged[2].values).toHaveLength(9);
   });
+  it("appends a duplicated project id only once", () => {
+    const lib = cloneClassification(SUGGESTED_CLASSIFICATION);
+    const proj = cloneClassification(SUGGESTED_CLASSIFICATION);
+    proj[2].values.push({ id: "v-dup", name: "A" }, { id: "v-dup", name: "B" });
+    const merged = mergeClassification(lib, proj);
+    expect(merged[2].values.filter((v) => v.id === "v-dup")).toEqual([{ id: "v-dup", name: "A" }]);
+  });
   it("keeps the library level name and does not mutate inputs", () => {
     const lib = cloneClassification(SUGGESTED_CLASSIFICATION);
     lib[0].name = "Notação";

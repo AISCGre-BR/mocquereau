@@ -68,7 +68,11 @@ export function mergeClassification(library: Classification, project: Classifica
   const out = cloneClassification(library);
   project.forEach((pl, i) => {
     const known = new Set(out[i].values.map((v) => v.id));
-    for (const v of pl.values) if (!known.has(v.id)) out[i].values.push({ ...v });
+    for (const v of pl.values) {
+      if (known.has(v.id)) continue;
+      known.add(v.id);
+      out[i].values.push({ ...v });
+    }
   });
   return out;
 }

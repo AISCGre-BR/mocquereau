@@ -83,6 +83,25 @@ describe("useProjectFile", () => {
     expect(result.current.ctx.state.isDirty).toBe(false);
   });
 
+  it("opening with a failed library read does not overwrite the library", async () => {
+    const opened = createNewProject("Extra", "");
+    const api = mockApi({
+      getClassification: vi.fn().mockRejectedValue(new Error("io")),
+      setClassification: vi.fn().mockResolvedValue(undefined),
+      openProject: vi.fn().mockResolvedValue({ project: opened, filePath: "/x.mocquereau" }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(api.getClassification).toHaveBeenCalled();
+    expect(api.setClassification).not.toHaveBeenCalled();
+    expect(result.current.ctx.state.isDirty).toBe(false);
+  });
+
   it("a library read failure falls back to the suggested list", async () => {
     mockApi({ getClassification: vi.fn().mockRejectedValue(new Error("io")) });
     const { result } = setup();

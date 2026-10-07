@@ -25,7 +25,7 @@ async function loadLibrary(): Promise<Classification> {
 }
 
 export interface ProjectFileActions {
-  newProject: () => void;
+  newProject: () => Promise<void>;
   open: () => Promise<void>;
   openRecent: (filePath: string) => Promise<void>;
   save: () => Promise<boolean>;
@@ -135,7 +135,9 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
         filePath === null ? await realignLegacy(project, () => seq !== openSeq.current) : project;
       if (seq !== openSeq.current) return; // a newer open superseded this one
       // Valores do projeto entram na biblioteca em segundo plano: sem dispatch, o projeto não suja.
-      void loadLibrary()
+      // Leitura própria, sem fallback sugerido: se falhar, não grava (não sobrescreve a biblioteca real).
+      void Promise.resolve()
+        .then(() => window.mocquereau.getClassification())
         .then((lib) => window.mocquereau.setClassification(mergeClassification(lib, ready.classification)))
         .catch(() => {});
       adopt(ready, filePath);
