@@ -35,6 +35,50 @@ export function Dialog({ open, title, onClose, onConfirm, children, actions, cla
     };
   }, [open]);
 
+  // Modal de verdade para o teclado: se o foco saiu do painel (botão focado ficou
+  // desabilitado durante a exportação, clique fora), as teclas iriam para o body e
+  // dali para os atalhos globais (Delete apaga caixa, Ctrl+N troca de projeto).
+  // Um listener de captura na window barra essas teclas e devolve o foco ao painel.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusIsLost = () => {
+      const active = document.activeElement as HTMLElement | null;
+      return !active || !panel.contains(active) || (active as HTMLButtonElement).disabled === true;
+    };
+    let active = true;
+    const reclaim = () => {
+      if (active && panel.isConnected && focusIsLost()) panel.focus();
+    };
+    function onKeyDownCapture(e: globalThis.KeyboardEvent) {
+      if (e.target instanceof Node && panel!.contains(e.target) && !focusIsLost()) return;
+      e.stopPropagation();
+      panel!.focus();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCloseRef.current();
+      }
+    }
+    function onFocusOut(e: FocusEvent) {
+      if (e.relatedTarget instanceof Node && panel!.contains(e.relatedTarget)) return;
+      // Depois do evento: o foco já está no destino (ou no body).
+      queueMicrotask(reclaim);
+    }
+    const observer = new MutationObserver(reclaim);
+    observer.observe(panel, { subtree: true, attributes: true, attributeFilter: ["disabled"], childList: true });
+    window.addEventListener("keydown", onKeyDownCapture, true);
+    panel.addEventListener("focusout", onFocusOut);
+    return () => {
+      active = false;
+      observer.disconnect();
+      window.removeEventListener("keydown", onKeyDownCapture, true);
+      panel.removeEventListener("focusout", onFocusOut);
+    };
+  }, [open]);
+
   if (!open) return null;
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
