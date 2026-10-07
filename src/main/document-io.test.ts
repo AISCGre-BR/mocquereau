@@ -169,6 +169,18 @@ describe("openDocument — damaged packages", () => {
     expect(again.project.sources[0].lines[0].image.dataUrl).toBe("");
   });
 
+  it("counts an unreadable image entry as missing so the open dialog reports it (N1)", async () => {
+    const path = join(dir, "unreadable.mocquereau");
+    await writeZip(path, [
+      { name: "mimetype", data: PACKAGE_MIMETYPE },
+      { name: "project.json", data: JSON.stringify(makeV2Project()), compress: true },
+      { name: `images/${IMG_A}.png`, data: Buffer.alloc(0) },
+    ]);
+    const doc = await openDocument(path, store);
+    expect(doc.missingImages).toBe(1);
+    expect(doc.project.sources[0].lines[0].image.dataUrl).toBe("");
+  });
+
   it("accepts an image under its real hash when the entry name lies", async () => {
     const path = join(dir, "liar.mocquereau");
     await writeZip(path, [

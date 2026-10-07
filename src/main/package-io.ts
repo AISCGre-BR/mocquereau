@@ -171,6 +171,9 @@ function readEntries(zip: ReadZip, limits: PackageLimits): Promise<ReadPackageRe
     let sawMimetype = false;
     let index = 0;
     let total = 0;
+    // N1: a second project.json or image with the same name could shadow the
+    // first one depending on the reader; refuse the package instead.
+    const seen = new Set<string>();
     let failed = false;
     const fail = (err: unknown) => {
       if (failed) return;
@@ -194,6 +197,8 @@ function readEntries(zip: ReadZip, limits: PackageLimits): Promise<ReadPackageRe
       const name = entry.fileName;
       const isFirst = index++ === 0;
       void (async () => {
+        if (seen.has(name)) throw new PackageError("invalid", `duplicate entry: ${name}`);
+        seen.add(name);
         if (entry.uncompressedSize > limits.maxEntryBytes) {
           throw new PackageError("invalid", `entry too large: ${name}`);
         }

@@ -131,6 +131,15 @@ export function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; mimeType: s
   const mimeType = (header.split(";")[0] || "text/plain").toLowerCase();
   try {
     if (/;base64$/i.test(header)) {
+      // N1: in the main process (Node) decode with Buffer: no multi-megabyte
+      // binary string, no per-byte loop. Buffer silently skips bad characters,
+      // so validate the alphabet first to keep atob's strictness.
+      const NodeBuffer = (globalThis as { Buffer?: { from(s: string, enc: "base64"): Uint8Array } }).Buffer;
+      if (NodeBuffer) {
+        if (!/^[A-Za-z0-9+/\s]*={0,2}\s*$/.test(body)) return null;
+        const buf = NodeBuffer.from(body, "base64");
+        return { bytes: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), mimeType };
+      }
       const bin = atob(body);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

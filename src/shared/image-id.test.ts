@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   IMAGE_ENTRY_RE,
   IMAGE_ID_RE,
@@ -34,6 +34,19 @@ describe("sha256Hex", () => {
 });
 
 describe("decodeDataUrl", () => {
+  it("decodes base64 with Buffer where available (main process), without atob (N1)", () => {
+    vi.stubGlobal("atob", () => {
+      throw new Error("atob must not be used in Node");
+    });
+    try {
+      const r = decodeDataUrl("data:image/png;base64,iVBORw0KGgo=");
+      expect(Array.from(r!.bytes)).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      expect(decodeDataUrl("data:image/png;base64,@@@@")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("decodes a base64 PNG data URL", () => {
     const r = decodeDataUrl("data:image/png;base64,iVBORw0KGgo=");
     expect(r?.mimeType).toBe("image/png");

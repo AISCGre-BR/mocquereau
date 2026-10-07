@@ -152,6 +152,19 @@ describe("readPackage — hostile or broken input", () => {
     expect(r.warnings).toEqual(["ignored entry: notes/evil.sh", "ignored entry: images/abc.png"]);
   });
 
+  it("rejects packages with duplicate entry names (N1)", async () => {
+    const img = { name: `images/${sha(PNG_BYTES)}.png`, data: Buffer.from(PNG_BYTES) };
+    const a = join(dir, "dup-project.mocquereau");
+    await writeZip(a, [MIMETYPE, PROJECT(), { name: "project.json", data: JSON.stringify({ evil: true }) }]);
+    await expect(readPackage(a)).rejects.toMatchObject({ code: "invalid", message: expect.stringMatching(/duplicate/) });
+    const b = join(dir, "dup-image.mocquereau");
+    await writeZip(b, [MIMETYPE, PROJECT(), img, { ...img, data: Buffer.from(JPEG_BYTES) }]);
+    await expect(readPackage(b)).rejects.toMatchObject({ code: "invalid", message: expect.stringMatching(/duplicate/) });
+    const c = join(dir, "dup-mimetype.mocquereau");
+    await writeZip(c, [MIMETYPE, PROJECT(), MIMETYPE]);
+    await expect(readPackage(c)).rejects.toMatchObject({ code: "invalid" });
+  });
+
   it("rejects path traversal entries (zip-slip)", async () => {
     const path = join(dir, "slip.mocquereau");
     await writeFile(path, rawStoredZip([
