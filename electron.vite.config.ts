@@ -13,7 +13,7 @@ export default defineConfig({
     resolve: { alias: sharedAlias },
     plugins: [
       externalizeDepsPlugin({
-        exclude: ["docx", "electron-conf"],
+        exclude: ["docx", "electron-conf", "yazl", "yauzl"],
       }),
     ],
   },
