@@ -56,10 +56,11 @@ async function rasterizeSvgs(browser, data) {
 
 const server = http.createServer((req, res) => {
   let file = path.join(ROOT, decodeURIComponent(req.url.split("?")[0]));
-  if (!file.startsWith(ROOT) || !existsSync(file) || statSync(file).isDirectory()) file = path.join(ROOT, "index.html");
+  if (!file.startsWith(ROOT + path.sep) || !existsSync(file) || statSync(file).isDirectory()) file = path.join(ROOT, "index.html");
   res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
   res.end(readFileSync(file));
-}).listen(0);
+}).listen(0, "127.0.0.1");
+await new Promise((resolve) => server.once("listening", resolve));
 const port = server.address().port;
 
 /** Substitui window.mocquereau (preload) por um stub com o projeto e as imagens da fixture. */
