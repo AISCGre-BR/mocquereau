@@ -8,6 +8,7 @@ import { AUTOSAVE_DELAY_MS, useProjectFile } from "./useProjectFile";
 import { Toaster } from "../ui/Toast";
 import type { ManuscriptLine, MocquereauAPI, MocquereauProject } from "../lib/models";
 import type { RasterLike } from "../lib/box-frame-detect";
+import { SUGGESTED_CLASSIFICATION, cloneClassification } from "../../shared/classification";
 import { blobs, boxesIn, page } from "../lib/box-frame-detect.fixtures";
 
 afterEach(() => {
@@ -45,19 +46,73 @@ function setup() {
 }
 
 describe("useProjectFile", () => {
-  it("newProject cria projeto sem arquivo e incrementa projectEpoch", () => {
+  it("newProject cria projeto sem arquivo e incrementa projectEpoch", async () => {
     mockApi();
     const { result } = setup();
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     expect(result.current.ctx.state.project?.meta.title).toBe("Sem título");
     expect(result.current.ctx.state.currentFilePath).toBeNull();
     expect(result.current.file.projectEpoch).toBe(1);
   });
 
+  it("new project starts from the user library", async () => {
+    const lib = cloneClassification(SUGGESTED_CLASSIFICATION);
+    lib[0].name = "Notação";
+    mockApi({ getClassification: vi.fn().mockResolvedValue(lib) });
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    expect(result.current.ctx.state.project?.classification[0].name).toBe("Notação");
+  });
+
+  it("opening a project merges its values into the library without dirtying it", async () => {
+    const opened = createNewProject("Extra", "");
+    opened.classification = cloneClassification(SUGGESTED_CLASSIFICATION);
+    opened.classification[2].values.push({ id: "v-mozarabe", name: "Moçárabe" });
+    const api = mockApi({
+      getClassification: vi.fn().mockResolvedValue(cloneClassification(SUGGESTED_CLASSIFICATION)),
+      setClassification: vi.fn().mockResolvedValue(undefined),
+      openProject: vi.fn().mockResolvedValue({ project: opened, filePath: "/x.mocquereau" }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await waitFor(() => expect(api.setClassification).toHaveBeenCalled());
+    const saved = (api.setClassification as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(saved[2].values.at(-1)).toEqual({ id: "v-mozarabe", name: "Moçárabe" });
+    expect(result.current.ctx.state.isDirty).toBe(false);
+  });
+
+  it("opening with a failed library read does not overwrite the library", async () => {
+    const opened = createNewProject("Extra", "");
+    const api = mockApi({
+      getClassification: vi.fn().mockRejectedValue(new Error("io")),
+      setClassification: vi.fn().mockResolvedValue(undefined),
+      openProject: vi.fn().mockResolvedValue({ project: opened, filePath: "/x.mocquereau" }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(api.getClassification).toHaveBeenCalled();
+    expect(api.setClassification).not.toHaveBeenCalled();
+    expect(result.current.ctx.state.isDirty).toBe(false);
+  });
+
+  it("a library read failure falls back to the suggested list", async () => {
+    mockApi({ getClassification: vi.fn().mockRejectedValue(new Error("io")) });
+    const { result } = setup();
+    await act(async () => result.current.file.newProject());
+    expect(result.current.ctx.state.project?.classification).toEqual(SUGGESTED_CLASSIFICATION);
+  });
+
   it("save sem arquivo pede o caminho, grava, limpa o Editado e confirma com toast", async () => {
     const api = mockApi();
     const { result } = setup();
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer natus est" } }));
     expect(result.current.ctx.state.isDirty).toBe(true);
     await act(async () => {
@@ -77,7 +132,7 @@ describe("useProjectFile", () => {
   it("falha ao gravar mostra erro persistente e o projeto continua editado", async () => {
     mockApi({ saveProject: vi.fn().mockRejectedValue(new Error("EACCES: permission denied")) });
     const { result } = setup();
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
     await act(async () => {
       expect(await result.current.file.save()).toBe(false);
@@ -126,7 +181,7 @@ describe("useProjectFile", () => {
       openProject: vi.fn().mockResolvedValue({ project: createNewProject("Sanctus VIII", ""), filePath: "/s.mocquereau" }),
     });
     const { result } = renderHook(() => ({ file: useProjectFile({ onOpened }), ctx: useProject() }), { wrapper: Providers });
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     await act(async () => {
       await result.current.file.open();
     });
@@ -179,7 +234,7 @@ describe("useProjectFile", () => {
     let resolveSave: (v: { filePath: string }) => void = () => undefined;
     mockApi({ saveProject: vi.fn(() => new Promise((r) => (resolveSave = r))) });
     const { result } = setup();
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
     let pending: Promise<boolean> = Promise.resolve(false);
     act(() => {
@@ -214,7 +269,7 @@ describe("useProjectFile", () => {
       await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
     });
     expect(saveProject).toHaveBeenCalledTimes(1);
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     await act(async () => {
       resolveSave({ filePath: "/a.mocquereau" });
       await Promise.resolve();
@@ -276,7 +331,7 @@ describe("useProjectFile", () => {
     let resolveSave: (v: { filePath: string }) => void = () => undefined;
     mockApi({ saveProject: vi.fn(() => new Promise((r) => (resolveSave = r))) });
     const { result } = setup();
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     let saving: Promise<boolean> = Promise.resolve(false);
     act(() => {
       saving = result.current.file.save();
@@ -293,22 +348,22 @@ describe("useProjectFile", () => {
     expect(result.current.ctx.state.currentFilePath).toBeNull();
   });
 
-  it("com alterações, Novo projeto pergunta e respeita o Cancelar", () => {
+  it("com alterações, Novo projeto pergunta e respeita o Cancelar", async () => {
     mockApi();
     const { result } = setup();
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     expect(confirm).toHaveBeenCalledOnce();
     expect(result.current.ctx.state.project?.meta.title).toBe("Puer");
     expect(result.current.file.projectEpoch).toBe(1);
   });
 
-  it("fechar volta para sem projeto", () => {
+  it("fechar volta para sem projeto", async () => {
     mockApi();
     const { result } = setup();
-    act(() => result.current.file.newProject());
+    await act(async () => result.current.file.newProject());
     act(() => result.current.file.close());
     expect(result.current.ctx.state.project).toBeNull();
   });
@@ -338,7 +393,7 @@ describe("useProjectFile: realinhamento de caixas em arquivo legado", () => {
       {
         id: "S",
         order: 1,
-        metadata: { siglum: "X", library: "", city: "", century: "", folio: "", notation: "square" },
+        metadata: { siglum: "X", library: "", city: "", century: "", classes: [null, null, null] },
         lines: [
           line("rot", { imageAdjustments: ADJ5, boxFrame: R5, syllableBoxes: boxesIn(R0, RASTER, BLOBS) }),
           line("plain", { syllableBoxes: boxesIn(R0, RASTER, BLOBS) }),

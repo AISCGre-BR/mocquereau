@@ -17,7 +17,7 @@ function projectWithBox(): MocquereauProject {
   const source: ManuscriptSource = {
     id: "src-1",
     order: 0,
-    metadata: { siglum: "A", library: "", city: "", century: "", folio: "", notation: "adiastematic" },
+    metadata: { siglum: "A", library: "", city: "", century: "", classes: [null, null, null] },
     lines: [
       {
         id: "line-1",

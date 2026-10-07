@@ -1,6 +1,7 @@
 import { boxesInView } from "@shared/box-frame";
 import { describe, it, expect } from "vitest";
-import { projectReducer, initialStateForTest } from "./useProject";
+import { projectReducer, initialStateForTest, createNewProject, type ProjectState } from "./useProject";
+import { SUGGESTED_CLASSIFICATION, cloneClassification } from "@shared/classification";
 import type { ManuscriptSource, ManuscriptLine, StoredImage, SyllabifiedWord, ImageAdjustments } from "../lib/models";
 
 // Helper to create a minimal ManuscriptSource for testing
@@ -13,8 +14,7 @@ function makeSource(id: string, order: number): ManuscriptSource {
       library: "Test Library",
       city: "Test City",
       century: "XII",
-      folio: "1r",
-      notation: "adiastematic",
+      classes: [null, null, null],
     },
     lines: [],
     syllableCuts: {},
@@ -28,6 +28,7 @@ function makeStateWithSources(sources: ManuscriptSource[], words: SyllabifiedWor
       meta: { title: "Test", author: "Author", createdAt: "2026-01-01", updatedAt: "2026-01-01" },
       text: { raw: "", words, hyphenationMode: "sung" as const },
       sections: [],
+      classification: SUGGESTED_CLASSIFICATION,
       sources,
     },
     isDirty: false,
@@ -243,8 +244,7 @@ describe("projectReducer — UPDATE_LINE_METADATA", () => {
         library: "",
         city: "",
         century: "",
-        folio: "",
-        notation: "square",
+        classes: [null, null, null],
       },
       lines: [mkLine(lineId)],
       syllableCuts: {},
@@ -336,8 +336,7 @@ describe("projectReducer — UPDATE_LINE_ADJUSTMENTS", () => {
         library: "",
         city: "",
         century: "",
-        folio: "",
-        notation: "square",
+        classes: [null, null, null],
       },
       lines: [mkLine(lineId, lineOverrides)],
       syllableCuts: {},
@@ -578,3 +577,21 @@ describe("projectReducer — box frame model (spec R1, S6/S7)", () => {
   });
 });
 
+
+describe("classification", () => {
+  it("createNewProject starts from the given classification or the suggested one", () => {
+    expect(createNewProject("T", "").classification).toEqual(SUGGESTED_CLASSIFICATION);
+    const custom = cloneClassification(SUGGESTED_CLASSIFICATION);
+    custom[0].name = "Notação";
+    expect(createNewProject("T", "", custom).classification[0].name).toBe("Notação");
+  });
+
+  it("SET_CLASSIFICATION replaces the taxonomy and marks dirty", () => {
+    const s0: ProjectState = { project: createNewProject("T", ""), isDirty: false, currentFilePath: null };
+    const next = cloneClassification(SUGGESTED_CLASSIFICATION);
+    next[2].values.push({ id: "v1", name: "Moçárabe" });
+    const s1 = projectReducer(s0, { type: "SET_CLASSIFICATION", payload: next });
+    expect(s1.project!.classification[2].values.at(-1)!.name).toBe("Moçárabe");
+    expect(s1.isDirty).toBe(true);
+  });
+});

@@ -3,7 +3,7 @@
 import { useState, useContext, useCallback, useEffect } from 'react';
 import { ProjectContext } from '../hooks/useProject';
 import { flattenSyllables } from '../lib/sliceUtils';
-import { resolveCellState, isWordBoundary } from '../lib/tableUtils';
+import { resolveCellState, isWordBoundary, firstFolio } from '../lib/tableUtils';
 import { TableCell } from './table-preview/TableCell';
 import { ContextMenu } from './table-preview/ContextMenu';
 import type { ManuscriptSource, SyllabifiedWord } from '../lib/models';
@@ -352,13 +352,13 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                 >
                   {source.metadata.century}
                 </span>
-                {source.metadata.folio && (
+                {firstFolio(source) && (
                   <span
                     className="text-ink-muted truncate"
                     style={{ fontSize: sylFontSize }}
-                    title={t('tablePreview.folioTitle', { folio: source.metadata.folio })}
+                    title={t('tablePreview.folioTitle', { folio: firstFolio(source) })}
                   >
-                    f. {source.metadata.folio}
+                    f. {firstFolio(source)}
                   </span>
                 )}
               </div>

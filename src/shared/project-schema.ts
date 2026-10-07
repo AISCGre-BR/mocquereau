@@ -1,11 +1,11 @@
 // src/shared/project-schema.ts
 //
 // Project model shared by main and renderer. No Electron, no DOM, no Node.
-// ProjectFileV2 is what lives in project.json inside a .mocquereau package
+// ProjectFile (schema 3) is what lives in project.json inside a .mocquereau package
 // (images referenced by imageId). SessionProject is the in-memory shape the
 // renderer still uses in wave A2 (images inline as data URLs + optional imageId).
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 export const PACKAGE_MIMETYPE = "application/vnd.mocquereau.project+zip";
 
 export type HyphenationMode =
@@ -16,6 +16,13 @@ export type HyphenationMode =
   | "manual";
 
 export type Notation = "adiastematic" | "diastematic" | "square" | "modern" | "other";
+
+export interface ClassValue { id: string; name: string }
+export interface ClassLevel { id: string; name: string; values: ClassValue[] }
+/** Three user-named grouping levels (spec R4). Level order drives grouping. */
+export type Classification = [ClassLevel, ClassLevel, ClassLevel];
+/** One ClassValue id (or null) per level. */
+export type SourceClasses = [string | null, string | null, string | null];
 
 export interface SyllableBox {
   x: number;
@@ -91,11 +98,12 @@ export interface SourceMetadata {
   library: string;
   city: string;
   century: string;
-  folio: string;
   cantusId?: string;
   sourceUrl?: string;
   iiifManifest?: string;
-  notation: Notation;
+  classes: SourceClasses;
+  /** Folio from an import (Gueranger) waiting for the first page; consumed when a page is added. */
+  folioHint?: string;
 }
 
 export interface LineOf<I> {
@@ -124,6 +132,7 @@ export interface ProjectBody<I> {
   meta: ProjectMeta;
   text: { raw: string; words: SyllabifiedWordData[]; hyphenationMode: HyphenationMode };
   sections: SectionData[];
+  classification: Classification;
   sources: SourceOf<I>[];
 }
 
@@ -133,11 +142,13 @@ export interface PackagedImageMeta {
   byteLength: number;
 }
 
-export interface ProjectFileV2 extends ProjectBody<ImageRef> {
-  schemaVersion: 2;
+export interface ProjectFile extends ProjectBody<ImageRef> {
+  schemaVersion: 3;
   app: { name: "mocquereau"; version: string };
   images: Record<string, PackagedImageMeta>;
 }
+/** @deprecated name kept to avoid churn; same as ProjectFile. */
+export type ProjectFileV2 = ProjectFile;
 
 export type SessionProject = ProjectBody<InlineImage>;
 

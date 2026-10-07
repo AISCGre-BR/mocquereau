@@ -81,6 +81,12 @@ contextBridge.exposeInMainWorld("mocquereau", {
   setLanguage: (lang: string) =>
     ipcRenderer.invoke("settings:set-language", lang),
 
+  getClassification: () =>
+    ipcRenderer.invoke("settings:get-classification"),
+
+  setClassification: (c: unknown) =>
+    ipcRenderer.invoke("settings:set-classification", c),
+
   getTheme: () =>
     ipcRenderer.invoke("settings:get-theme"),
 

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
 import { createNewProject } from "./hooks/useProject";
+import { SUGGESTED_CLASSIFICATION, cloneClassification } from "../shared/classification";
 import { syllabifyText } from "./lib/syllabify";
 import type { ManuscriptSource, MocquereauAPI, MocquereauProject } from "./lib/models";
 
@@ -13,7 +14,7 @@ function projectWithBox(): MocquereauProject {
   const source: ManuscriptSource = {
     id: "src-1",
     order: 0,
-    metadata: { siglum: "A", library: "", city: "", century: "", folio: "", notation: "adiastematic" },
+    metadata: { siglum: "A", library: "", city: "", century: "", classes: [null, null, null] },
     lines: [
       {
         id: "line-1",
@@ -35,6 +36,8 @@ beforeEach(() => {
     platform: "linux",
     getTheme: vi.fn().mockResolvedValue("system"),
     setTheme: vi.fn().mockResolvedValue(true),
+    getClassification: vi.fn().mockResolvedValue(cloneClassification(SUGGESTED_CLASSIFICATION)),
+    setClassification: vi.fn().mockResolvedValue(undefined),
     getLanguage: vi.fn().mockResolvedValue("pt-BR"),
     setLanguage: vi.fn().mockResolvedValue("pt-BR"),
     getRecentFiles: vi.fn().mockResolvedValue([]),
@@ -73,6 +76,7 @@ describe("App", () => {
   it("Novo projeto leva ao Texto; Ctrl+2 e Ctrl+4 trocam de vista; não há Avançar/Voltar", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
     expect(tab("Texto").getAttribute("aria-selected")).toBe("true");
     ctrl("2");
     expect(tab("Fontes").getAttribute("aria-selected")).toBe("true");
@@ -87,6 +91,7 @@ describe("App", () => {
   it("criar projeto e só trocar de vista não marca '— Editado'", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
     await wait(350);
     ctrl("4");
     ctrl("1");
@@ -108,6 +113,7 @@ describe("App", () => {
       .mockResolvedValue({ project: createNewProject("Sanctus VIII", "Solesmes"), filePath: "/p/sanctus.mocquereau.json" });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
     ctrl("4");
     ctrl("o");
     expect(await screen.findByDisplayValue("Sanctus VIII")).toBeTruthy();
@@ -117,6 +123,7 @@ describe("App", () => {
   it("Editar > Desfazer (Ctrl+Z fora de campos) volta o título; dentro do campo o Ctrl+Z é do campo", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
     const titleInput = screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Puer natus est" } });
     await wait(350);
@@ -134,6 +141,7 @@ describe("App", () => {
   it("título digitado e Ctrl+N antes de 300 ms: pergunta antes de descartar; Cancelar mantém o título", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
     await wait(350);
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
@@ -146,6 +154,7 @@ describe("App", () => {
   it("título digitado e Ctrl+N confirmado: o título não vaza para o projeto novo", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
     await wait(350);
     vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
@@ -200,6 +209,7 @@ describe("App", () => {
   it("título digitado: o main sabe que há alterações antes dos 300 ms do debounce", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
     await wait(50);
     const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
     setDirty.mockClear();

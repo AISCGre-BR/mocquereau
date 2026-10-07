@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SUGGESTED_CLASSIFICATION } from "@shared/classification";
 import {
   createDocumentReducer,
   initialDocumentState,
@@ -16,11 +17,12 @@ function makeProject(lineOverrides: Partial<ManuscriptLine> = {}): MocquereauPro
     meta: { title: "T", author: "A", createdAt: "2026-01-01", updatedAt: "2026-01-01" },
     text: { raw: "", words: [], hyphenationMode: "sung" },
     sections: [],
+    classification: SUGGESTED_CLASSIFICATION,
     sources: [
       {
         id: "S1",
         order: 1,
-        metadata: { siglum: "X", library: "", city: "", century: "", folio: "", notation: "square" },
+        metadata: { siglum: "X", library: "", city: "", century: "", classes: [null, null, null] },
         lines: [
           {
             id: "L1",

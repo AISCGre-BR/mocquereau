@@ -12,29 +12,13 @@ import { useProject } from "../hooks/useProject";
 import { fileToDataUrl, resizeImageIfNeeded } from "../lib/image-utils";
 import type { ManuscriptSource, StoredImage, GuerangerManuscript } from "../lib/models";
 import { SourceModal } from "./SourceModal";
+import { appendLineConsumingFolioHint } from "../lib/tableUtils";
+import { emptyClasses } from "@shared/classification";
 import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const NOTATION_BADGE: Record<ManuscriptSource["metadata"]["notation"], string> = {
-  adiastematic: "bg-lapis-wash text-ink",
-  diastematic: "bg-verdigris-wash text-ink",
-  square: "bg-orpiment-wash text-ink",
-  modern: "bg-murex-wash text-ink",
-  other: "bg-parchment-deep text-ink-soft",
-};
-
-const NOTATION_LABELS: Record<ManuscriptSource["metadata"]["notation"], string> = {
-  adiastematic: "sourceList.notation.adiastematic",
-  diastematic: "sourceList.notation.diastematic",
-  square: "sourceList.notation.square",
-  modern: "sourceList.notation.modern",
-  other: "sourceList.notation.other",
-};
-
-const NOTATION_OPTIONS = Object.keys(NOTATION_LABELS) as ManuscriptSource["metadata"]["notation"][];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,8 +31,7 @@ function createEmptySource(): ManuscriptSource {
       library: "",
       city: "",
       century: "",
-      folio: "",
-      notation: "other",
+      classes: emptyClasses(),
     },
     lines: [],
     syllableCuts: {},
@@ -64,8 +47,8 @@ function guerangerToSource(gm: GuerangerManuscript, order: number): ManuscriptSo
       library: gm.library || "",
       city: gm.city || "",
       century: gm.century || "",
-      folio: gm.folio || "",
-      notation: "other",
+      classes: emptyClasses(),
+      folioHint: gm.folio || undefined,
       cantusId: gm.cantusId || undefined,
       sourceUrl: gm.sourceUrl || undefined,
       iiifManifest: gm.iiifManifest || undefined,
@@ -91,6 +74,7 @@ export function SourceList() {
   const { t } = useTranslation();
 
   const sources = state.project?.sources ?? [];
+  const level1 = state.project?.classification[0] ?? { name: "", values: [] };
   const totalSyllables =
     state.project?.text.words.flatMap((w) => w.syllables).length ?? 0;
 
@@ -141,11 +125,7 @@ export function SourceList() {
       gaps: [],
       confirmed: false,
     };
-    const updated: ManuscriptSource = {
-      ...source,
-      lines: [...source.lines, newLine],
-    };
-    dispatch({ type: "UPDATE_SOURCE", payload: updated });
+    dispatch({ type: "UPDATE_SOURCE", payload: appendLineConsumingFolioHint(source, newLine) });
   }
 
   async function handleImageLoaded(
@@ -209,13 +189,11 @@ export function SourceList() {
     dispatch({ type: "UPDATE_SOURCE", payload: updated });
   }
 
-  function handleNotationChange(
-    source: ManuscriptSource,
-    value: ManuscriptSource["metadata"]["notation"]
-  ) {
+  function handleLevel1Change(source: ManuscriptSource, value: string) {
+    const classes: ManuscriptSource["metadata"]["classes"] = [value || null, source.metadata.classes[1], source.metadata.classes[2]];
     dispatch({
       type: "UPDATE_SOURCE",
-      payload: { ...source, metadata: { ...source.metadata, notation: value } },
+      payload: { ...source, metadata: { ...source.metadata, classes } },
     });
   }
 
@@ -303,8 +281,7 @@ export function SourceList() {
                   <th className="px-2 py-1.5 text-left">Sigla</th>
                   <th className="px-2 py-1.5 text-left">Cidade</th>
                   <th className="px-2 py-1.5 text-left w-16">{t("sourceList.centuryHeader")}</th>
-                  <th className="px-2 py-1.5 text-left w-16">{t("sourceList.folioHeader")}</th>
-                  <th className="px-2 py-1.5 text-left w-16">{t("sourceList.notationHeader")}</th>
+                  <th className="px-2 py-1.5 text-left w-24">{level1.name}</th>
                   <th className="px-2 py-1.5 text-center w-14">{t("sourceList.progressHeader")}</th>
                   <th className="px-2 py-1.5 text-center w-16">{t("sourceList.imageHeader")}</th>
                   <th className="px-1 py-1.5 w-24 text-center">{t("sourceList.actionsHeader")}</th>
@@ -373,34 +350,18 @@ export function SourceList() {
                         />
                       </td>
 
-                      {/* Folio */}
-                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          defaultValue={source.metadata.folio}
-                          onBlur={(e) => handleFieldBlur(source, "folio", e.target.value)}
-                          onFocus={() => setSelectedId(source.id)}
-                          placeholder={t("sourceList.folioPlaceholder")}
-                          className="w-full bg-transparent border-b border-transparent hover:border-rule focus:border-rubric outline-none py-0.5 text-xs"
-                        />
-                      </td>
-
-                      {/* Notation */}
+                      {/* Classification level 1 */}
                       <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                         <select
-                          value={source.metadata.notation}
-                          onChange={(e) =>
-                            handleNotationChange(
-                              source,
-                              e.target.value as ManuscriptSource["metadata"]["notation"]
-                            )
-                          }
+                          value={source.metadata.classes[0] ?? ""}
+                          onChange={(e) => handleLevel1Change(source, e.target.value)}
                           onFocus={() => setSelectedId(source.id)}
-                          className={`text-xs rounded px-1 py-0.5 border-0 ${NOTATION_BADGE[source.metadata.notation]} cursor-pointer focus:outline-none focus:ring-1 focus:ring-focus`}
+                          className="text-xs rounded px-1 py-0.5 border-0 bg-parchment-deep text-ink cursor-pointer focus:outline-none focus:ring-1 focus:ring-focus"
                         >
-                          {NOTATION_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {t(NOTATION_LABELS[opt])}
+                          <option value="">—</option>
+                          {level1.values.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name}
                             </option>
                           ))}
                         </select>

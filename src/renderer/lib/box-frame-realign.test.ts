@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { SUGGESTED_CLASSIFICATION } from "@shared/classification";
 import type { BoxFrame } from "@shared/project-schema";
 import type { ImageAdjustments, ManuscriptLine, MocquereauProject } from "./models";
 import { blobs, boxesIn, page } from "./box-frame-detect.fixtures";
@@ -38,11 +39,12 @@ function project(lines: ManuscriptLine[]): MocquereauProject {
     meta: { title: "T", author: "", createdAt: "x", updatedAt: "x" },
     text: { raw: "", words: [], hyphenationMode: "sung" },
     sections: [],
+    classification: SUGGESTED_CLASSIFICATION,
     sources: [
       {
         id: "S",
         order: 1,
-        metadata: { siglum: "X", library: "", city: "", century: "", folio: "", notation: "square" },
+        metadata: { siglum: "X", library: "", city: "", century: "", classes: [null, null, null] },
         lines,
         syllableCuts: {},
       },

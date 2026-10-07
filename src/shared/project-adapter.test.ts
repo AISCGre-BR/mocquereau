@@ -48,6 +48,22 @@ describe("dehydrateProject", () => {
     expect(file).toEqual(makeV2Project());
   });
 
+  it("round-trips classification and source classes", async () => {
+    const file = makeV2Project();
+    file.classification = [
+      { id: "lv1", name: "Mine", values: [{ id: "v1", name: "One" }] },
+      file.classification[1],
+      file.classification[2],
+    ];
+    file.sources[0].metadata.classes = ["v1", null, "gru.sg"];
+    const session = hydrateProject(file, url);
+    expect(session.classification).toEqual(file.classification);
+    expect(session.sources[0].metadata.classes).toEqual(["v1", null, "gru.sg"]);
+    const out = await dehydrateProject(session, resolveAsA, "0.0.8-alpha");
+    expect(out.file.classification).toEqual(file.classification);
+    expect(out.file.sources[0].metadata.classes).toEqual(["v1", null, "gru.sg"]);
+  });
+
   it("always writes boxFrame for a line with boxes (absent -> current adjustments)", async () => {
     const session = hydrateProject(makeV2Project(), url);
     delete session.sources[0].lines[0].boxFrame;

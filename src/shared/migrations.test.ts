@@ -6,7 +6,8 @@ import {
   migrateToCurrent,
 } from "@shared/migrations";
 import { MISSING_IMAGE_ID, sha256Hex } from "@shared/image-id";
-import { JPEG_BYTES, PNG_BYTES, makeLegacyProject, makeV2Project, toDataUrl } from "./__fixtures__/projects";
+import { SUGGESTED_CLASSIFICATION } from "@shared/classification";
+import { JPEG_BYTES, PNG_BYTES, makeLegacyProject, makeV2Project, makeV2ProjectJson, toDataUrl } from "./__fixtures__/projects";
 
 type AnyObj = Record<string, any>;
 
@@ -37,7 +38,7 @@ describe("migrateLegacyProject", () => {
     const r = await migrateLegacyProject(makeLegacyProject());
     expect(r.project.sources[0].lines[0].imageAdjustments?.rotation).toBe(270);
     expect(r.project.text.hyphenationMode).toBe("liturgical-typographic");
-    expect(r.project.schemaVersion).toBe(2);
+    expect(r.project.schemaVersion).toBe(3);
   });
 
   it("stores boxFrame and reports ambiguous lines under the default policy", async () => {
@@ -100,14 +101,14 @@ describe("migrateLegacyProject", () => {
 });
 
 describe("assertSupportedSchema / migrateToCurrent", () => {
-  it("accepts a valid v2 project", () => {
+  it("accepts a valid v3 project", () => {
     const r = migrateToCurrent(makeV2Project());
     expect(r.project).toEqual(makeV2Project());
     expect(r.warnings).toEqual([]);
   });
 
   it("refuses newer schema versions, reporting the creating app version", () => {
-    const p = { ...makeV2Project(), schemaVersion: 3, app: { name: "mocquereau", version: "9.9.9" } };
+    const p = { ...makeV2Project(), schemaVersion: 4, app: { name: "mocquereau", version: "9.9.9" } };
     expect(() => assertSupportedSchema(p)).toThrow(MigrationError);
     try {
       migrateToCurrent(p);
@@ -131,5 +132,39 @@ describe("assertSupportedSchema / migrateToCurrent", () => {
       expect(e).toMatchObject({ code: "invalid" });
       expect((e as MigrationError).details.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("schema 2 -> 3", () => {
+  it("maps notation to the level-1 class and drops invalid notation silently", () => {
+    const { project } = migrateToCurrent(makeV2ProjectJson());
+    expect(project.schemaVersion).toBe(3);
+    expect(project.classification).toEqual(SUGGESTED_CLASSIFICATION);
+    expect(project.sources[0].metadata.classes).toEqual(["tipo.quadrada", null, null]);
+    expect(project.sources[1].metadata.classes).toEqual([null, null, null]);
+    expect("notation" in project.sources[0].metadata).toBe(false);
+  });
+  it("moves the source folio to the first page without one, never overwriting", () => {
+    const { project } = migrateToCurrent(makeV2ProjectJson());
+    expect(project.sources[0].lines[0].folio).toBe("12r");
+    expect(project.sources[1].lines[0].folio).toBe("4r");
+    expect("folio" in project.sources[0].metadata).toBe(false);
+  });
+  it("keeps the folio of a source without pages as folioHint", () => {
+    const { project } = migrateToCurrent(makeV2ProjectJson());
+    expect(project.sources[2].metadata.folioHint).toBe("9r");
+  });
+  it("removes tiny pages without boxes and keeps tiny pages with boxes", () => {
+    const { project } = migrateToCurrent(makeV2ProjectJson());
+    expect(project.sources[0].lines.map((l) => l.id)).toEqual(["l-big", "l-tiny-boxed"]);
+  });
+});
+
+describe("legacy -> 3", () => {
+  it("applies the same upgrade to legacy files", async () => {
+    const { project } = await migrateLegacyProject(makeLegacyProject());
+    expect(project.schemaVersion).toBe(3);
+    expect(project.sources[0].metadata.classes[0]).toBe("tipo.adiastematica");
+    expect(project.sources[0].lines[0].folio).toBe("1r");
   });
 });

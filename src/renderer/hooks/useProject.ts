@@ -12,7 +12,8 @@ import type {
 import type { HyphenationMode } from "../lib/syllabify";
 import { normalizeRotation } from "../lib/image-adjustments";
 import { frameOf, framesEqual, hasAnyBox } from "@shared/box-frame";
-import type { BoxFrame } from "@shared/project-schema";
+import type { BoxFrame, Classification } from "@shared/project-schema";
+import { SUGGESTED_CLASSIFICATION, cloneClassification } from "@shared/classification";
 import type { PendingEdits } from "./pendingEdits";
 import {
   canRedo,
@@ -34,6 +35,7 @@ export type ProjectAction =
   | { type: "LOAD_PROJECT"; payload: { project: MocquereauProject | null; dirty?: boolean } }
   | { type: "RESET" }
   | { type: "SET_META"; payload: Partial<MocquereauProject["meta"]> }
+  | { type: "SET_CLASSIFICATION"; payload: Classification }
   | {
       type: "SET_TEXT";
       payload: { raw: string; words: SyllabifiedWord[]; hyphenationMode: HyphenationMode };
@@ -172,6 +174,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           ...state.project,
           meta: { ...state.project.meta, ...action.payload },
         },
+        isDirty: true,
+      };
+    }
+
+    case "SET_CLASSIFICATION": {
+      if (!state.project) return state;
+      return {
+        ...state,
+        project: { ...state.project, classification: action.payload },
         isDirty: true,
       };
     }
@@ -473,6 +484,8 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
   switch (action.type) {
     case "SET_META":
       return { coalesceKey: `SET_META:${sortedKeys(action.payload)}` };
+    case "SET_CLASSIFICATION":
+      return { coalesceKey: "classification" };
     case "UPDATE_SYLLABLE_TEXT":
       return { coalesceKey: `UPDATE_SYLLABLE_TEXT:${action.payload.wordIdx}:${action.payload.sylIdx}` };
     case "UPDATE_LINE_METADATA":
@@ -577,12 +590,17 @@ export function useProjectReducer(): [ProjectState, React.Dispatch<DocumentActio
 /**
  * Create a new empty MocquereauProject with default field values.
  */
-export function createNewProject(title: string, author: string): MocquereauProject {
+export function createNewProject(
+  title: string,
+  author: string,
+  classification: Classification = cloneClassification(SUGGESTED_CLASSIFICATION),
+): MocquereauProject {
   const now = new Date().toISOString();
   return {
     meta: { title, author, createdAt: now, updatedAt: now },
     text: { raw: "", words: [], hyphenationMode: "sung" },
     sections: [],
+    classification,
     sources: [],
   };
 }

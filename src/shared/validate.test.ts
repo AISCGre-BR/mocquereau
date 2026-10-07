@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { validateProject } from "@shared/validate";
+import { SUGGESTED_CLASSIFICATION } from "@shared/classification";
 import { IMG_A, makeV2Project } from "./__fixtures__/projects";
 
 type AnyObj = Record<string, any>;
+const makeV3Json = (): AnyObj => structuredClone(makeV2Project()) as AnyObj;
 const clone = (): AnyObj => structuredClone(makeV2Project()) as AnyObj;
 
 describe("validateProject", () => {
-  it("accepts a valid v2 project unchanged and without warnings", () => {
+  it("accepts a valid v3 project unchanged and without warnings", () => {
     const r = validateProject(makeV2Project());
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -100,5 +102,31 @@ describe("validateProject", () => {
     p.sources[0].lines[0].image.missing = true;
     const r = validateProject(p);
     expect(r.ok && r.project.sources[0].lines[0].image.missing).toBe(true);
+  });
+});
+
+describe("classification validation", () => {
+  it("nulls class ids that do not exist in the classification, with a warning", () => {
+    const json = makeV3Json();
+    json.sources[0].metadata.classes = ["ghost-id", null, null];
+    const r = validateProject(json);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.project.sources[0].metadata.classes).toEqual([null, null, null]);
+      expect(r.warnings.some((w) => w.includes("classes"))).toBe(true);
+    }
+  });
+  it("falls back to the suggested classification when missing", () => {
+    const json = makeV3Json();
+    delete json.classification;
+    const r = validateProject(json);
+    expect(r.ok && r.project.classification).toEqual(SUGGESTED_CLASSIFICATION);
+  });
+  it("falls back to the suggested classification, warning, when invalid", () => {
+    const json = makeV3Json();
+    json.classification = [{ id: "x" }];
+    const r = validateProject(json);
+    expect(r.ok && r.project.classification).toEqual(SUGGESTED_CLASSIFICATION);
+    expect(r.ok && r.warnings.some((w) => w.includes("classification"))).toBe(true);
   });
 });

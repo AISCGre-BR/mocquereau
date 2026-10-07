@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { createNewProject, useProject } from "./useProject";
+import { SUGGESTED_CLASSIFICATION, cloneClassification, mergeClassification } from "../../shared/classification";
+import type { Classification } from "../../shared/classification";
 import { useToast } from "../ui/Toast";
 import { syllabifyText } from "../lib/syllabify";
 import type { MocquereauProject } from "../lib/models";
@@ -13,8 +15,17 @@ import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/
 
 export const AUTOSAVE_DELAY_MS = 3000;
 
+/** Biblioteca de classificação do usuário (prefs do main); sem ela, a lista sugerida. */
+async function loadLibrary(): Promise<Classification> {
+  try {
+    return await window.mocquereau.getClassification();
+  } catch {
+    return cloneClassification(SUGGESTED_CLASSIFICATION);
+  }
+}
+
 export interface ProjectFileActions {
-  newProject: () => void;
+  newProject: () => Promise<void>;
   open: () => Promise<void>;
   openRecent: (filePath: string) => Promise<void>;
   save: () => Promise<boolean>;
@@ -123,6 +134,12 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
       const ready =
         filePath === null ? await realignLegacy(project, () => seq !== openSeq.current) : project;
       if (seq !== openSeq.current) return; // a newer open superseded this one
+      // Valores do projeto entram na biblioteca em segundo plano: sem dispatch, o projeto não suja.
+      // Leitura própria, sem fallback sugerido: se falhar, não grava (não sobrescreve a biblioteca real).
+      void Promise.resolve()
+        .then(() => window.mocquereau.getClassification())
+        .then((lib) => window.mocquereau.setClassification(mergeClassification(lib, ready.classification)))
+        .catch(() => {});
       adopt(ready, filePath);
     },
     [adopt, realignLegacy],
@@ -173,9 +190,10 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
   const save = useCallback(() => writeProject("save", false), [writeProject]);
   const saveAs = useCallback(() => writeProject("saveAs", false), [writeProject]);
 
-  const newProject = useCallback(() => {
+  const newProject = useCallback(async () => {
     if (!confirmDiscard()) return;
-    adopt(createNewProject(t("file.untitled"), ""), null);
+    const library = await loadLibrary();
+    adopt(createNewProject(t("file.untitled"), "", library), null);
   }, [adopt, confirmDiscard, t]);
 
   const open = useCallback(async () => {

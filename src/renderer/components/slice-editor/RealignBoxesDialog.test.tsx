@@ -35,7 +35,7 @@ function project(): MocquereauProject {
     {
       id: "S",
       order: 1,
-      metadata: { siglum: "X", library: "", city: "", century: "", folio: "", notation: "square" },
+      metadata: { siglum: "X", library: "", city: "", century: "", classes: [null, null, null] },
       lines: [line],
       syllableCuts: {},
     },

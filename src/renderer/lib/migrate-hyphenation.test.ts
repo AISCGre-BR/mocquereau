@@ -1,6 +1,7 @@
 // src/renderer/lib/migrate-hyphenation.test.ts
 
 import { describe, it, expect } from 'vitest';
+import { SUGGESTED_CLASSIFICATION } from '@shared/classification';
 import { migrateHyphenation, previewMigration } from './migrate-hyphenation';
 import type { MocquereauProject } from './models';
 
@@ -20,12 +21,13 @@ function makeProject(overrides: Partial<MocquereauProject> = {}): MocquereauProj
       hyphenationMode: 'liturgical-typographic',
     },
     sections: [],
+    classification: SUGGESTED_CLASSIFICATION,
     sources: [
       {
         id: 's1',
         order: 0,
         metadata: {
-          siglum: 'X', library: '', city: '', century: '', folio: '', notation: 'square',
+          siglum: 'X', library: '', city: '', century: '', classes: [null, null, null],
         },
         lines: [
           {
