@@ -7,6 +7,8 @@ import { registerDocxExportHandler } from './docx-export';
 import { registerAppStateHandlers } from './app-state';
 import { SessionStore } from './session-store';
 import { registerSessionImageHandlers } from './session-ipc';
+import { initMainI18n, setMainLanguage, t } from './i18n';
+import { SaveThenClose, closeChoiceFromResponse } from './close-coordinator';
 
 interface UserPrefs {
   language: string;
@@ -32,6 +34,23 @@ function getSession(): SessionStore {
   return session;
 }
 
+let mainWindow: BrowserWindow | null = null;
+let closePromptOpen = false;
+
+// "Save" in the close dialog: close once the renderer-driven save succeeds.
+const saveThenClose = new SaveThenClose(() => {
+  bypassCloseConfirm = true;
+  mainWindow?.close();
+});
+
+// Wave A2: the renderer does not listen to main-process commands yet, so we
+// reuse the Ctrl+S shortcut App.tsx already handles. Its project:save call
+// reports back through onSaveStarted/onSaveFinished.
+function requestRendererSave(win: BrowserWindow): void {
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: ['control'] });
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: ['control'] });
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1600,
@@ -45,6 +64,11 @@ function createWindow(): void {
     },
   });
 
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+
   // LPUI-01 fix: lock page zoom so Ctrl+wheel / trackpad pinch never zoom
   // the whole app (the TablePreview has its own discrete zoom controls).
   win.webContents.setVisualZoomLevelLimits(1, 1);
@@ -53,24 +77,34 @@ function createWindow(): void {
     win.webContents.setZoomFactor(1);
   });
 
-  // Intercept close to prompt when there are unsaved changes
+  // Intercept close to prompt when there are unsaved changes (spec 6, wave A2 form).
   win.on('close', (e) => {
-    if (projectIsDirty && !bypassCloseConfirm) {
-      e.preventDefault();
-      const choice = dialog.showMessageBoxSync(win, {
+    if (!projectIsDirty || bypassCloseConfirm) return;
+    e.preventDefault();
+    if (closePromptOpen || saveThenClose.isArmed) return;
+    closePromptOpen = true;
+    void dialog
+      .showMessageBox(win, {
         type: 'warning',
-        buttons: ['Cancelar', 'Descartar e sair'],
+        buttons: [t('main.unsaved.save'), t('main.unsaved.discard'), t('main.unsaved.cancel')],
         defaultId: 0,
-        cancelId: 0,
-        title: 'Alterações não salvas',
-        message: 'Há alterações não salvas no projeto.',
-        detail: 'Se sair agora, as alterações não salvas serão perdidas. Use Ctrl+S para salvar antes.',
+        cancelId: 2,
+        noLink: true,
+        title: t('main.unsaved.title'),
+        message: t('main.unsaved.message'),
+        detail: t('main.unsaved.detail'),
+      })
+      .then(({ response }) => {
+        closePromptOpen = false;
+        const choice = closeChoiceFromResponse(response);
+        if (choice === 'discard') {
+          bypassCloseConfirm = true;
+          win.close();
+        } else if (choice === 'save') {
+          saveThenClose.arm();
+          requestRendererSave(win);
+        }
       });
-      if (choice === 1) {
-        bypassCloseConfirm = true;
-        win.close();
-      }
-    }
   });
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -103,6 +137,7 @@ function registerSystemHandlers(): void {
   ipcMain.handle("settings:get-language", async () => userPrefs.get('language'));
   ipcMain.handle("settings:set-language", async (_event, lang: string) => {
     userPrefs.set('language', lang);
+    setMainLanguage(lang);
     return lang;
   });
   ipcMain.handle("settings:get-theme", async () => userPrefs.get('theme'));
@@ -113,14 +148,15 @@ function registerSystemHandlers(): void {
 }
 
 app.whenReady().then(async () => {
+  initMainI18n(userPrefs.get('language'));
   const sessionsRoot = join(app.getPath('userData'), 'sessions');
   await SessionStore.sweepStale(sessionsRoot, SESSION_MAX_AGE_MS);
   session = await SessionStore.create(sessionsRoot);
 
   registerProjectHandlers({
     getStore: getSession,
-    onSaveStarted: () => undefined,
-    onSaveFinished: () => undefined,
+    onSaveStarted: () => saveThenClose.onSaveStarted(),
+    onSaveFinished: (ok) => saveThenClose.onSaveFinished(ok),
   });
   registerDocxExportHandler();
   registerImageHandlers();
