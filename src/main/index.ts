@@ -8,7 +8,8 @@ import { registerAppStateHandlers } from './app-state';
 import { SessionStore } from './session-store';
 import { registerSessionImageHandlers } from './session-ipc';
 import { initMainI18n, setMainLanguage, t } from './i18n';
-import { SaveThenClose, closeChoiceFromResponse } from './close-coordinator';
+import { SaveThenClose, closeChoiceFromResponse, createQuitGuard } from './close-coordinator';
+import { SaveQueue } from './save-queue';
 
 interface UserPrefs {
   language: string;
@@ -33,6 +34,9 @@ function getSession(): SessionStore {
   if (!session) throw new Error('working session not initialised');
   return session;
 }
+
+// B3: per-target save serialisation; will-quit waits for it before deleting the session.
+const saveQueue = new SaveQueue();
 
 let mainWindow: BrowserWindow | null = null;
 let closePromptOpen = false;
@@ -155,8 +159,9 @@ app.whenReady().then(async () => {
 
   registerProjectHandlers({
     getStore: getSession,
-    onSaveStarted: () => saveThenClose.onSaveStarted(),
-    onSaveFinished: (ok) => saveThenClose.onSaveFinished(ok),
+    saveQueue,
+    onSaveStarted: (token) => saveThenClose.onSaveStarted(token),
+    onSaveFinished: (token, ok) => saveThenClose.onSaveFinished(token, ok),
   });
   registerDocxExportHandler();
   registerImageHandlers();
@@ -166,10 +171,20 @@ app.whenReady().then(async () => {
   createWindow();
 });
 
-app.on('will-quit', () => {
-  session?.disposeSync();
-  session = null;
-});
+// B3: an in-flight save still reads images from the session; delete it only
+// after every save has finished (preventDefault, await, then quit again).
+app.on(
+  'will-quit',
+  createQuitGuard({
+    isBusy: () => saveQueue.busy,
+    idle: () => saveQueue.idle(),
+    dispose: () => {
+      session?.disposeSync();
+      session = null;
+    },
+    quit: () => app.quit(),
+  }),
+);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

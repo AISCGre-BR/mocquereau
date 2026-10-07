@@ -21,15 +21,24 @@ const realTimers: TimerApi = {
   clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
 
+/**
+ * "Save" in the close prompt: close the window once the save requested by the
+ * prompt succeeds. Every save carries a token (SaveQueue.nextToken); the first
+ * save that STARTS after arm() is the one the prompt requested, and only its
+ * outcome counts. A save already in flight when the prompt was answered (an
+ * autosave) is ignored, and so is any other save finishing in between.
+ */
 export class SaveThenClose {
   private armed = false;
-  private started = false;
+  private claimed: number | null = null;
   private timer: unknown = null;
 
   constructor(
     private readonly closeWindow: () => void,
     private readonly startTimeoutMs: number = 5000,
     private readonly timers: TimerApi = realTimers,
+    /** Called when an armed close gives up (save failed, cancelled, never started). */
+    private readonly onAbort: () => void = () => {},
   ) {}
 
   get isArmed(): boolean {
@@ -38,29 +47,33 @@ export class SaveThenClose {
 
   arm(): void {
     this.armed = true;
-    this.started = false;
+    this.claimed = null;
     this.clearTimer();
     this.timer = this.timers.set(() => {
       this.timer = null;
-      if (this.armed && !this.started) this.disarm();
+      if (this.armed && this.claimed === null) {
+        this.disarm();
+        this.onAbort();
+      }
     }, this.startTimeoutMs);
   }
 
-  onSaveStarted(): void {
-    if (!this.armed) return;
-    this.started = true;
+  onSaveStarted(token: number): void {
+    if (!this.armed || this.claimed !== null) return;
+    this.claimed = token;
     this.clearTimer();
   }
 
-  onSaveFinished(ok: boolean): void {
-    if (!this.armed || !this.started) return;
+  onSaveFinished(token: number, ok: boolean): void {
+    if (!this.armed || this.claimed === null || token !== this.claimed) return;
     this.disarm();
     if (ok) this.closeWindow();
+    else this.onAbort();
   }
 
   private disarm(): void {
     this.armed = false;
-    this.started = false;
+    this.claimed = null;
     this.clearTimer();
   }
 
@@ -70,4 +83,37 @@ export class SaveThenClose {
       this.timer = null;
     }
   }
+}
+
+/**
+ * will-quit handler (B3): never delete the working session while a save is
+ * still reading its images. If saves are in flight, hold the quit, wait for
+ * them, then quit again (which re-emits will-quit, now idle).
+ */
+export function createQuitGuard(deps: {
+  isBusy: () => boolean;
+  idle: () => Promise<void>;
+  dispose: () => void;
+  quit: () => void;
+}): (event: { preventDefault(): void }) => void {
+  let waiting = false;
+  return (event) => {
+    if (waiting) {
+      event.preventDefault();
+      return;
+    }
+    if (deps.isBusy()) {
+      event.preventDefault();
+      waiting = true;
+      void deps
+        .idle()
+        .catch(() => undefined)
+        .then(() => {
+          waiting = false;
+          deps.quit();
+        });
+      return;
+    }
+    deps.dispose();
+  };
 }

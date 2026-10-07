@@ -24,11 +24,14 @@ import {
 import { addRecentFile, replaceRecentFile } from './app-state';
 import { t } from './i18n';
 import type { SessionStore } from './session-store';
+import type { SaveQueue } from './save-queue';
 
 export interface ProjectIoHooks {
   getStore(): SessionStore;
-  onSaveStarted(): void;
-  onSaveFinished(ok: boolean): void;
+  /** Serialises writes per target; also what the quit path waits on (B3). */
+  saveQueue: SaveQueue;
+  onSaveStarted(token: number): void;
+  onSaveFinished(token: number, ok: boolean): void;
 }
 
 type OpenResult = { project: SessionProject; filePath: string | null };
@@ -101,7 +104,8 @@ async function save(
   forceDialog: boolean,
   hooks: ProjectIoHooks,
 ): Promise<{ filePath: string } | null> {
-  hooks.onSaveStarted();
+  const token = hooks.saveQueue.nextToken();
+  hooks.onSaveStarted(token);
   let ok = false;
   let target = existingPath ?? '';
   try {
@@ -125,13 +129,16 @@ async function save(
       target = ensurePackageExtension(filePath);
       if (needsOverwriteConfirm(filePath, target, existsSync) && !(await confirmOverwrite(target))) return null;
     }
-    await saveDocument(project, target, hooks.getStore(), app.getVersion());
-    if (decision.kind === 'dialog' && decision.legacyPath) {
-      await replaceRecentFile(decision.legacyPath, target);
-      legacyOrigin = null;
-    } else {
-      await addRecentFile(target);
-    }
+    const finalTarget = target;
+    await hooks.saveQueue.run(finalTarget, async () => {
+      await saveDocument(project, finalTarget, hooks.getStore(), app.getVersion());
+      if (decision.kind === 'dialog' && decision.legacyPath) {
+        await replaceRecentFile(decision.legacyPath, finalTarget);
+        legacyOrigin = null;
+      } else {
+        await addRecentFile(finalTarget);
+      }
+    });
     ok = true;
     return { filePath: target };
   } catch (err) {
@@ -139,7 +146,7 @@ async function save(
     await showError(saveErrorMessage(err, target));
     return null;
   } finally {
-    hooks.onSaveFinished(ok);
+    hooks.onSaveFinished(token, ok);
   }
 }
 
