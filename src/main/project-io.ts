@@ -10,10 +10,17 @@
 // so autosave stays off and the next save becomes Save As (spec D8).
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { SessionProject } from '@shared/project-schema';
 import { DocumentError, openDocument, saveDocument } from './document-io';
-import { decideSave, ensurePackageExtension, type LegacyOrigin } from './save-target';
+import {
+  decideSave,
+  ensurePackageExtension,
+  needsOverwriteConfirm,
+  saveDialogOptions,
+  type LegacyOrigin,
+} from './save-target';
 import { addRecentFile, replaceRecentFile } from './app-state';
 import { t } from './i18n';
 import type { SessionStore } from './session-store';
@@ -34,6 +41,23 @@ async function showError(message: string): Promise<void> {
   const options = { type: 'error' as const, title: 'Mocquereau', message };
   if (win) await dialog.showMessageBox(win, options);
   else await dialog.showMessageBox(options);
+}
+
+/** B1: the OS never confirmed this path (we changed its extension). */
+async function confirmOverwrite(target: string): Promise<boolean> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const options = {
+    type: 'warning' as const,
+    buttons: [t('main.overwrite.replace'), t('main.overwrite.cancel')],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+    title: 'Mocquereau',
+    message: t('main.overwrite.message', { name: basename(target) }),
+    detail: t('main.overwrite.detail'),
+  };
+  const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+  return response === 0;
 }
 
 function openErrorMessage(err: unknown): string {
@@ -91,13 +115,15 @@ async function save(
     if (decision.kind === 'direct') {
       target = decision.path;
     } else {
-      const { canceled, filePath } = await dialog.showSaveDialog({
-        title: t('main.dialog.saveProject'),
-        defaultPath: decision.suggested,
-        filters: [{ name: t('main.filter.project'), extensions: ['mocquereau'] }],
-      });
+      const { canceled, filePath } = await dialog.showSaveDialog(
+        saveDialogOptions(decision.suggested, {
+          title: t('main.dialog.saveProject'),
+          filterName: t('main.filter.project'),
+        }),
+      );
       if (canceled || !filePath) return null;
       target = ensurePackageExtension(filePath);
+      if (needsOverwriteConfirm(filePath, target, existsSync) && !(await confirmOverwrite(target))) return null;
     }
     await saveDocument(project, target, hooks.getStore(), app.getVersion());
     if (decision.kind === 'dialog' && decision.legacyPath) {

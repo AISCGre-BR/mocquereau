@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
-import { decideSave, ensurePackageExtension, isPackagePath, sanitizeFileName } from "./save-target";
+import {
+  decideSave,
+  ensurePackageExtension,
+  isPackagePath,
+  needsOverwriteConfirm,
+  sanitizeFileName,
+  saveDialogOptions,
+} from "./save-target";
 
 const project = { meta: { title: "Puer natus", createdAt: "2026-01-01T00:00:00.000Z" } };
 const DOCS = join("home", "user", "Documents");
@@ -56,5 +63,25 @@ describe("decideSave", () => {
     const untitled = { meta: { title: "  ", createdAt: "x" } };
     expect(decideSave({ existingPath: null, legacy: null, project: untitled, defaultDir: DOCS }))
       .toEqual({ kind: "dialog", suggested: join(DOCS, "projeto.mocquereau"), legacyPath: null });
+  });
+});
+
+describe("Save As overwrite protection (B1)", () => {
+  it("asks the OS dialog to confirm overwrites and allow new folders", () => {
+    const opts = saveDialogOptions("/a/p.mocquereau", { title: "Salvar", filterName: "Projeto" });
+    expect(opts.properties).toEqual(expect.arrayContaining(["showOverwriteConfirmation", "createDirectory"]));
+    expect(opts.defaultPath).toBe("/a/p.mocquereau");
+    expect(opts.filters).toEqual([{ name: "Projeto", extensions: ["mocquereau"] }]);
+  });
+
+  it("needs our own confirm only when the extension was changed AND the new target exists", () => {
+    const exists = (p: string) => p === "/a/Puer.mocquereau";
+    // The OS dialog already confirmed /a/Puer.mocquereau itself.
+    expect(needsOverwriteConfirm("/a/Puer.mocquereau", "/a/Puer.mocquereau", exists)).toBe(false);
+    // User typed "Puer" (or picked the legacy .json): we write somewhere the OS never asked about.
+    expect(needsOverwriteConfirm("/a/Puer", "/a/Puer.mocquereau", exists)).toBe(true);
+    expect(needsOverwriteConfirm("/a/Puer.mocquereau.json", "/a/Puer.mocquereau", exists)).toBe(true);
+    // Changed, but nothing there to overwrite.
+    expect(needsOverwriteConfirm("/a/Novo", "/a/Novo.mocquereau", exists)).toBe(false);
   });
 });

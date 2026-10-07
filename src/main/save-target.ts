@@ -52,3 +52,30 @@ export function decideSave(opts: {
   const name = sanitizeFileName(project.meta.title) || "projeto";
   return { kind: "dialog", suggested: join(defaultDir, `${name}${PACKAGE_EXT}`), legacyPath: null };
 }
+
+/** Options for the Save As dialog; the OS confirms overwriting the file it shows. */
+export function saveDialogOptions(
+  suggested: string,
+  labels: { title: string; filterName: string },
+): {
+  title: string;
+  defaultPath: string;
+  filters: { name: string; extensions: string[] }[];
+  properties: Array<"showOverwriteConfirmation" | "createDirectory">;
+} {
+  return {
+    title: labels.title,
+    defaultPath: suggested,
+    filters: [{ name: labels.filterName, extensions: ["mocquereau"] }],
+    properties: ["showOverwriteConfirmation", "createDirectory"],
+  };
+}
+
+/**
+ * B1: the OS dialog only confirmed the name the user picked. When
+ * ensurePackageExtension changes it, the real target was never confirmed, so
+ * we must ask ourselves if it already exists.
+ */
+export function needsOverwriteConfirm(chosen: string, target: string, exists: (p: string) => boolean): boolean {
+  return chosen !== target && exists(target);
+}

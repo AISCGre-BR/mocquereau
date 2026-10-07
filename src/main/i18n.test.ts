@@ -36,7 +36,7 @@ describe("main i18n", () => {
   it("every locale has every main.* key of pt-BR, non-empty, with the same placeholders", () => {
     const base = load("pt-BR");
     const mainKeys = Object.keys(base).filter((k) => k.startsWith("main."));
-    expect(mainKeys).toHaveLength(19);
+    expect(mainKeys).toHaveLength(23);
     for (const lang of MAIN_LANGS) {
       const dict = load(lang);
       for (const key of mainKeys) {
