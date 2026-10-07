@@ -3,6 +3,7 @@
 // ficam o fluxo da interface, o autosave e os toasts. Recuperação e registro de
 // comandos são da onda B.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { createNewProject, useProject } from "./useProject";
 import { useToast } from "../ui/Toast";
@@ -24,7 +25,7 @@ export interface ProjectFileActions {
 }
 
 export function useProjectFile(options: { onOpened?: () => void } = {}): ProjectFileActions {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, pending } = useProject();
   const { t } = useTranslation();
   const toast = useToast();
   const [projectEpoch, setProjectEpoch] = useState(0);
@@ -35,25 +36,44 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
   onOpenedRef.current = options.onOpened;
   const lastAutosaveError = useRef<string | null>(null);
 
+  /**
+   * Grava as edições pendentes das vistas (debounces de 300 ms) e re-renderiza na
+   * hora, para stateRef refletir o projeto com elas.
+   */
+  const flushPending = useCallback(() => {
+    if (!pending) return;
+    flushSync(() => {
+      pending.flushAll();
+    });
+  }, [pending]);
+
+  /** O documento sob as vistas vai ser trocado: remonta e descarta flushes de desmontagem. */
+  const replaceDocument = useCallback(() => {
+    pending?.bump();
+    setProjectEpoch((n) => n + 1);
+  }, [pending]);
+
   const confirmDiscard = useCallback((): boolean => {
+    flushPending();
     const s = stateRef.current;
     if (!s.project || !s.isDirty) return true;
     return window.confirm(t("file.confirmDiscard"));
-  }, [t]);
+  }, [flushPending, t]);
 
   const adopt = useCallback(
     (project: MocquereauProject, filePath: string | null) => {
       dispatch({ type: "SET_PROJECT", payload: project });
       dispatch({ type: "SET_FILE_PATH", payload: filePath });
-      setProjectEpoch((n) => n + 1);
+      replaceDocument();
       onOpenedRef.current?.();
       // O main registra os arquivos abertos (inclusive legados) na lista de recentes.
     },
-    [dispatch],
+    [dispatch, replaceDocument],
   );
 
   const writeProject = useCallback(
     async (mode: "save" | "saveAs", silent: boolean): Promise<boolean> => {
+      if (!silent) flushPending();
       const s = stateRef.current;
       if (!s.project) return false;
       // B2 (onda A2): o ponto salvo é este snapshot, não o que existir quando o main responder.
@@ -85,7 +105,7 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
         return false;
       }
     },
-    [dispatch, t, toast],
+    [dispatch, flushPending, t, toast],
   );
 
   const save = useCallback(() => writeProject("save", false), [writeProject]);
@@ -118,11 +138,12 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
   const close = useCallback(() => {
     if (!confirmDiscard()) return;
     dispatch({ type: "RESET" });
-    setProjectEpoch((n) => n + 1);
-  }, [confirmDiscard, dispatch]);
+    replaceDocument();
+  }, [confirmDiscard, dispatch, replaceDocument]);
 
   const importGueranger = useCallback(async () => {
     if (!stateRef.current.project) return;
+    flushPending(); // texto digitado agora conta para "o texto já está preenchido"
     const result = await window.mocquereau.importGueranger();
     const incipit = result?.manuscripts[0]?.incipit;
     const project = stateRef.current.project;
@@ -133,9 +154,9 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
     }
     const mode = project.text.hyphenationMode;
     dispatch({ type: "SET_TEXT", payload: { raw: incipit, words: syllabifyText(incipit, mode), hyphenationMode: mode } });
-    setProjectEpoch((n) => n + 1);
+    replaceDocument();
     onOpenedRef.current?.();
-  }, [dispatch, t, toast]);
+  }, [dispatch, flushPending, replaceDocument, t, toast]);
 
   // Autosave silencioso (antes na StatusBar): só quando já existe arquivo.
   useEffect(() => {

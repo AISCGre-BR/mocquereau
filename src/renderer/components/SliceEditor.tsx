@@ -12,6 +12,7 @@ import { SlidersHorizontal } from 'lucide-react';
 // SlicePreview import removed per UX feedback 2026-04-20
 import { flattenSyllables, computeSyllableCuts } from '../lib/sliceUtils';
 import { boxesInView } from '@shared/box-frame';
+import { usePendingFlush } from '../hooks/pendingEdits';
 import type { ManuscriptSource, ManuscriptLine, StoredImage, ImageAdjustments } from '../lib/models';
 import { useTranslation } from 'react-i18next';
 
@@ -185,6 +186,8 @@ export function SliceEditor() {
     if (currentJson === newJson) return;
 
     const sync = () => {
+      // Já gravado por um flush (Salvar, Desfazer…): o timer não repete o dispatch.
+      if (pendingBoxSync.current !== sync) return;
       pendingBoxSync.current = null;
       // Auto-confirm the line when at least one box has been drawn.
       const hasAnyBox = Object.values(editorState.syllableBoxes).some(b => b != null);
@@ -206,12 +209,14 @@ export function SliceEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorState.syllableBoxes, editorState.syllableRange, editorState.gaps, editorState.activeLineId]);
 
-  // Flush do sync pendente ao sair da vista Recortes (antes de 300 ms).
-  useEffect(() => {
-    return () => {
-      pendingBoxSync.current?.();
-    };
-  }, []);
+  // Flush do sync pendente ao sair da vista Recortes (antes de 300 ms) e antes de
+  // Novo/Abrir/Fechar/Salvar/Desfazer (registro de pendências do projeto).
+  usePendingFlush(() => {
+    const sync = pendingBoxSync.current;
+    if (!sync) return false;
+    sync();
+    return true;
+  });
 
   // ── Paste handler ─────────────────────────────────────────────────────────
 

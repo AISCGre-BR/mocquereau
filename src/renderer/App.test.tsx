@@ -4,7 +4,31 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
 import { createNewProject } from "./hooks/useProject";
-import type { MocquereauAPI } from "./lib/models";
+import { syllabifyText } from "./lib/syllabify";
+import type { ManuscriptSource, MocquereauAPI, MocquereauProject } from "./lib/models";
+
+function projectWithBox(): MocquereauProject {
+  const base = createNewProject("Introito", "");
+  const raw = "Puer natus est";
+  const source: ManuscriptSource = {
+    id: "src-1",
+    order: 0,
+    metadata: { siglum: "A", library: "", city: "", century: "", folio: "", notation: "adiastematic" },
+    lines: [
+      {
+        id: "line-1",
+        image: { dataUrl: "data:image/png;base64,iVBORw0KGgo=", width: 100, height: 50, mimeType: "image/png" },
+        syllableRange: { start: 0, end: 3 },
+        dividers: [],
+        gaps: [],
+        syllableBoxes: { 0: { x: 0.1, y: 0.1, w: 0.2, h: 0.5 } },
+        confirmed: true,
+      },
+    ],
+    syllableCuts: {},
+  };
+  return { ...base, text: { raw, words: syllabifyText(raw, "sung"), hyphenationMode: "sung" }, sources: [source] };
+}
 
 beforeEach(() => {
   window.mocquereau = {
@@ -28,6 +52,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   document.documentElement.removeAttribute("data-theme");
 });
 
@@ -104,6 +129,45 @@ describe("App", () => {
     expect(screen.queryByText("— Editado")).toBeNull();
     fireEvent.keyDown(window, { key: "y", ctrlKey: true });
     expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Puer natus est");
+  });
+
+  it("título digitado e Ctrl+N antes de 300 ms: pergunta antes de descartar; Cancelar mantém o título", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await wait(350);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
+    ctrl("n");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Puer natus est");
+    expect(screen.getByText("— Editado")).toBeTruthy();
+  });
+
+  it("título digitado e Ctrl+N confirmado: o título não vaza para o projeto novo", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await wait(350);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
+    ctrl("n");
+    await wait(350);
+    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Sem título");
+    expect(screen.queryByText("— Editado")).toBeNull();
+  });
+
+  it("caixa movida no Recortes e Ctrl+N antes de 300 ms: pergunta antes de descartar", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("3");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    ctrl("n");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("— Editado")).toBeTruthy();
   });
 });
 

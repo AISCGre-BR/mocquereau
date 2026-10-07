@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { syllabifyText, type HyphenationMode } from '../lib/syllabify';
 import { useProject } from '../hooks/useProject';
+import { usePendingFlush } from '../hooks/pendingEdits';
 import { SectionPanel } from './SectionPanel';
 import { migrateHyphenation, previewMigration } from '../lib/migrate-hyphenation';
 import type { SyllabifiedWord } from '../lib/models';
@@ -108,6 +109,10 @@ export function ProjectSetup() {
     () => wordsToHyphenated(state.project?.text.words ?? [])
   );
 
+  // Projeto da última renderização (lido pelos flushes e timers).
+  const savedProject = useRef(state.project);
+  savedProject.current = state.project;
+
   // Só grava no projeto depois de uma edição nesta vista: montar (trocar de vista,
   // abrir projeto) não pode marcar o projeto como editado.
   const userEdited = useRef(false);
@@ -145,6 +150,15 @@ export function ProjectSetup() {
     const words = hasManualEdits
       ? hyphenatedToWords(syllabifiedText)
       : autoSyllabified;
+    // Já gravado (ex.: por um flush antes de salvar): não marca de novo como editado.
+    const current = state.project.text;
+    if (
+      current.raw === rawText &&
+      current.hyphenationMode === hyphenationMode &&
+      JSON.stringify(current.words) === JSON.stringify(words)
+    ) {
+      return;
+    }
     dispatch({
       type: 'SET_TEXT',
       payload: { raw: rawText, words, hyphenationMode },
@@ -166,6 +180,8 @@ export function ProjectSetup() {
       return; // nada mudou — evita re-dispatch em loop
     }
     const timer = setTimeout(() => {
+      const meta = savedProject.current?.meta;
+      if (meta && meta.title === title && meta.author === author) return; // já gravado por um flush
       dispatch({ type: 'SET_META', payload: { title, author } });
     }, 300);
     return () => clearTimeout(timer);
@@ -173,42 +189,42 @@ export function ProjectSetup() {
   }, [title, author]);
 
   // Ao sair da vista os debounces de 300 ms acima são cancelados; grava o que
-  // ficou pendente (título/autor, texto litúrgico e sílabas) antes de desmontar.
+  // ficou pendente (título/autor, texto litúrgico e sílabas). O mesmo flush roda
+  // antes de Novo/Abrir/Fechar/Salvar/Desfazer (registro de pendências).
   const latest = useRef({ title, author, rawText, syllabifiedText, hasManualEdits, hyphenationMode });
   latest.current = { title, author, rawText, syllabifiedText, hasManualEdits, hyphenationMode };
-  const savedProject = useRef(state.project);
-  savedProject.current = state.project;
-  useEffect(() => {
-    return () => {
-      const saved = savedProject.current;
-      if (!saved) return;
-      const pending = latest.current;
-      if (
-        pending.title.trim() !== '' &&
-        (saved.meta.title !== pending.title || saved.meta.author !== pending.author)
-      ) {
-        dispatch({ type: 'SET_META', payload: { title: pending.title, author: pending.author } });
-      }
-      if (!userEdited.current) return;
-      // Texto novo descarta as sílabas manuais (mesma regra do efeito de debounce).
-      const textChanged = pending.rawText !== saved.text.raw;
-      const words =
-        pending.hasManualEdits && !textChanged
-          ? hyphenatedToWords(pending.syllabifiedText)
-          : syllabifyText(pending.rawText, pending.hyphenationMode);
-      if (
-        textChanged ||
-        pending.hyphenationMode !== saved.text.hyphenationMode ||
-        JSON.stringify(words) !== JSON.stringify(saved.text.words)
-      ) {
-        dispatch({
-          type: 'SET_TEXT',
-          payload: { raw: pending.rawText, words, hyphenationMode: pending.hyphenationMode },
-        });
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePendingFlush(() => {
+    const saved = savedProject.current;
+    if (!saved) return false;
+    const pending = latest.current;
+    let flushed = false;
+    if (
+      pending.title.trim() !== '' &&
+      (saved.meta.title !== pending.title || saved.meta.author !== pending.author)
+    ) {
+      dispatch({ type: 'SET_META', payload: { title: pending.title, author: pending.author } });
+      flushed = true;
+    }
+    if (!userEdited.current) return flushed;
+    // Texto novo descarta as sílabas manuais (mesma regra do efeito de debounce).
+    const textChanged = pending.rawText !== saved.text.raw;
+    const words =
+      pending.hasManualEdits && !textChanged
+        ? hyphenatedToWords(pending.syllabifiedText)
+        : syllabifyText(pending.rawText, pending.hyphenationMode);
+    if (
+      textChanged ||
+      pending.hyphenationMode !== saved.text.hyphenationMode ||
+      JSON.stringify(words) !== JSON.stringify(saved.text.words)
+    ) {
+      dispatch({
+        type: 'SET_TEXT',
+        payload: { raw: pending.rawText, words, hyphenationMode: pending.hyphenationMode },
+      });
+      flushed = true;
+    }
+    return flushed;
+  });
 
   // ── Syllabified text editing ──────────────────────────────────────────────
   function handleSyllabifiedChange(value: string) {

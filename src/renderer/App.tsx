@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { FileDown } from "lucide-react";
 import { ProjectContext, useProject, useProjectReducer } from "./hooks/useProject";
 import { useProjectFile } from "./hooks/useProjectFile";
+import { createPendingEdits } from "./hooks/pendingEdits";
 import { Toaster } from "./ui/Toast";
 import { Button } from "./ui/Button";
 import { AppShell } from "./shell/AppShell";
@@ -23,9 +25,10 @@ const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
 
 export function App() {
   const [state, dispatch, history] = useProjectReducer();
+  const [pending] = useState(createPendingEdits);
   const { t } = useTranslation();
   return (
-    <ProjectContext.Provider value={{ state, dispatch, history }}>
+    <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
       <Toaster dismissLabel={t("toast.dismiss")}>
         <Workbench />
       </Toaster>
@@ -34,7 +37,7 @@ export function App() {
 }
 
 function Workbench() {
-  const { state, history } = useProject();
+  const { state, history, pending } = useProject();
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [view, setView] = useState<ViewId>("texto");
@@ -42,6 +45,17 @@ function Workbench() {
   // Desfazer/Refazer troca o projeto por baixo das vistas, que guardam cópias locais
   // (campos do Texto, caixas do editor) até a onda B: remontá-las relê o projeto.
   const [historyEpoch, setHistoryEpoch] = useState(0);
+  function stepHistory(direction: "undo" | "redo") {
+    if (!history) return;
+    // Edições ainda no debounce entram no histórico antes, para Desfazer desfazê-las.
+    flushSync(() => {
+      pending?.flushAll();
+    });
+    if (direction === "undo") history.undo();
+    else history.redo();
+    pending?.bump();
+    setHistoryEpoch((n) => n + 1);
+  }
   const file = useProjectFile({ onOpened: () => setView("texto") });
 
   const project = state.project;
@@ -71,14 +85,8 @@ function Workbench() {
       importGueranger: () => void file.importGueranger(),
       exportDocx: () => setExportOpen(true),
       closeProject: file.close,
-      undo: () => {
-        history?.undo();
-        setHistoryEpoch((n) => n + 1);
-      },
-      redo: () => {
-        history?.redo();
-        setHistoryEpoch((n) => n + 1);
-      },
+      undo: () => stepHistory("undo"),
+      redo: () => stepHistory("redo"),
       setView,
       setTheme,
       setLanguage: (lng) => void i18n.changeLanguage(lng),

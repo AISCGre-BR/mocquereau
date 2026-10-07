@@ -12,6 +12,7 @@ import type {
 import type { HyphenationMode } from "../lib/syllabify";
 import { normalizeRotation } from "../lib/image-adjustments";
 import { frameOf, hasAnyBox } from "@shared/box-frame";
+import type { PendingEdits } from "./pendingEdits";
 import {
   canRedo,
   canUndo,
@@ -503,6 +504,8 @@ interface ProjectContextValue {
   dispatch: React.Dispatch<DocumentAction>;
   /** Undo/redo API. Optional in wave A2: App.tsx does not pass it yet. */
   history?: HistoryApi;
+  /** Pending view edits (wave A1 shell). Optional: isolated view tests omit it. */
+  pending?: PendingEdits;
 }
 
 export const ProjectContext = createContext<ProjectContextValue | null>(null);
