@@ -128,10 +128,42 @@ async function openFixtureProject(page) {
   await settle(page, 3000);
 }
 
+const GUIDE_TEXT = [
+  "Glória in excélsis Deo",
+  "Et in terra pax homínibus bonae voluntátis",
+  "Laudámus te",
+  "Benedícimus te",
+  "Adorámus te",
+  "Glorificámus te",
+  "Grátias ágimus tibi propter magnam glóriam tuam",
+  "Dómine Deus, Rex caeléstis Deus Pater omnípotens",
+].join("\n");
+
+/** Abre o guia de criação e avança até o passo `upTo` (1 = Peça … 4 = Conferir). */
+async function openGuide(page, upTo) {
+  await page.keyboard.press("Control+n");
+  await settle(page, 400);
+  if (upTo === 1) return;
+  await page.getByPlaceholder("Título da peça").fill("Gloria VIII");
+  await page.getByPlaceholder("Autor").fill("André Gaby");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByPlaceholder("Cole ou digite o texto litúrgico").fill(GUIDE_TEXT);
+  if (upTo === 2) return settle(page, 400);
+  await page.getByRole("button", { name: "Continuar" }).click();
+  if (upTo === 3) return settle(page, 400);
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByTestId("word-22").click({ position: { x: 2, y: 12 } });
+  await settle(page, 400);
+}
+
 /** Telas: cada uma leva a página ao estado a capturar. Ctrl+1..4 trocam as vistas. */
 const SCREENS = {
   welcome: async () => {},
   "welcome-empty": async () => {},
+  "novo-peca": async (page) => { await openGuide(page, 1); },
+  "novo-texto": async (page) => { await openGuide(page, 2); },
+  "novo-divisao": async (page) => { await openGuide(page, 3); },
+  "novo-conferir": async (page) => { await openGuide(page, 4); },
   texto: async (page) => { await openFixtureProject(page); },
   fontes: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+2"); await settle(page); },
   recortes: async (page) => {
