@@ -1,5 +1,6 @@
 // src/renderer/lib/docx-collect.ts
 
+import { boxesInView } from '@shared/box-frame';
 import type { MocquereauProject, DocxExportPayload, DocxCellData } from './models';
 import { flattenSyllables, computeSyllableCuts } from './sliceUtils';
 import { isWordBoundary } from './tableUtils';
@@ -55,7 +56,7 @@ export async function collectDocxCrops(
         // — the DOCX export reflects what the user sees in SliceEditor & TablePreview.
         const lineCuts = await computeSyllableCuts(
           line.image,
-          line.syllableBoxes,
+          boxesInView(line), // spec R1: boxes in the frame the crop is rendered in
           line.syllableRange,
           line.imageAdjustments,
         );

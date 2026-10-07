@@ -196,7 +196,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
         const confirmed = window.confirm(msg);
         if (!confirmed) return;
         const { project: migrated } = migrateHyphenation(state.project, newMode);
-        dispatch({ type: 'SET_PROJECT', payload: migrated });
+        dispatch({ type: 'REPLACE_PROJECT', payload: migrated });
         setHyphenationMode(newMode);
         setSyllabifiedText(wordsToHyphenated(migrated.text.words));
         return;
@@ -231,6 +231,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
   // Otherwise, open the save dialog.
   async function handleSave() {
     if (!state.project) return;
+    const snapshot = state.project; // B2: save point = what was sent
     const updated = {
       ...state.project,
       meta: { ...state.project.meta, updatedAt: new Date().toISOString() },
@@ -240,7 +241,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
       state.currentFilePath ?? undefined,
     );
     if (result) {
-      dispatch({ type: 'SAVE_SUCCESS' });
+      dispatch({ type: 'SAVE_SUCCESS', payload: { project: snapshot } });
       dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
       await window.mocquereau.addRecentFile(result.filePath);
       refreshRecents();
@@ -254,7 +255,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     applyOpenedProject(result);
   }
 
-  function applyOpenedProject(result: { project: typeof state.project extends null ? never : NonNullable<typeof state.project>; filePath: string }) {
+  function applyOpenedProject(result: { project: typeof state.project extends null ? never : NonNullable<typeof state.project>; filePath: string | null }) {
     if (!result.project) return;
     dispatch({ type: 'SET_PROJECT', payload: result.project });
     dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
@@ -264,7 +265,8 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     setTitle(result.project.meta.title);
     setAuthor(result.project.meta.author);
     setHasManualEdits(false);
-    window.mocquereau.addRecentFile(result.filePath).then(refreshRecents);
+    // The main process records opened files (legacy ones included) in the recent list.
+    refreshRecents();
   }
 
   async function handleOpenRecent(filePath: string) {

@@ -37,6 +37,8 @@ function StatusBar() {
     const s = stateRef.current;
     if (!s.project) return;
     setSaving(true);
+    // B2: the save point is this snapshot, not whatever is present when main answers.
+    const snapshot = s.project;
     try {
       const updated = {
         ...s.project,
@@ -47,7 +49,7 @@ function StatusBar() {
         s.currentFilePath ?? undefined,
       );
       if (result) {
-        dispatch({ type: "SAVE_SUCCESS" });
+        dispatch({ type: "SAVE_SUCCESS", payload: { project: snapshot } });
         dispatch({ type: "SET_FILE_PATH", payload: result.filePath });
         setLastSavedAt(Date.now());
       } else if (!silent) {

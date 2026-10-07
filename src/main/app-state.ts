@@ -1,11 +1,13 @@
 // src/main/app-state.ts
 // Persistent app state (recent files, first-run tutorial flag) stored as
-// JSON in the Electron userData directory.
+// JSON in the Electron userData directory, written atomically.
 
 import { app, ipcMain } from 'electron';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
+import { writeFileAtomic } from './atomic-write';
+import { replaceRecent, withRecent } from './recent-files';
 
 interface AppState {
   recentFiles: string[];
@@ -16,8 +18,6 @@ const DEFAULT_STATE: AppState = {
   recentFiles: [],
   tutorialSeen: false,
 };
-
-const MAX_RECENT = 8;
 
 function getStatePath(): string {
   return join(app.getPath('userData'), 'app-state.json');
@@ -38,7 +38,23 @@ async function readState(): Promise<AppState> {
 async function writeState(state: AppState): Promise<void> {
   const path = getStatePath();
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(state, null, 2), 'utf-8');
+  await writeFileAtomic(path, JSON.stringify(state, null, 2));
+}
+
+/** Adds a path to the top of the recent list; ignores null/empty (legacy opens). */
+export async function addRecentFile(filePath: unknown): Promise<void> {
+  const state = await readState();
+  const next = withRecent(state.recentFiles, filePath);
+  if (next === state.recentFiles) return;
+  state.recentFiles = next;
+  await writeState(state);
+}
+
+/** Legacy -> package migration: the new file takes the legacy file's place. */
+export async function replaceRecentFile(oldPath: string, newPath: string): Promise<void> {
+  const state = await readState();
+  state.recentFiles = replaceRecent(state.recentFiles, oldPath, newPath);
+  await writeState(state);
 }
 
 export function registerAppStateHandlers(): void {
@@ -48,11 +64,8 @@ export function registerAppStateHandlers(): void {
     return state.recentFiles.filter((p) => existsSync(p));
   });
 
-  ipcMain.handle('app:add-recent-file', async (_event, filePath: string) => {
-    const state = await readState();
-    const filtered = state.recentFiles.filter((p) => p !== filePath);
-    state.recentFiles = [filePath, ...filtered].slice(0, MAX_RECENT);
-    await writeState(state);
+  ipcMain.handle('app:add-recent-file', async (_event, filePath: unknown) => {
+    await addRecentFile(filePath);
   });
 
   ipcMain.handle('app:clear-recent-files', async () => {

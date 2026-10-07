@@ -254,3 +254,25 @@ describe('SET_RANGE invariant', () => {
     expect(result.dividers).toHaveLength(4);
   });
 });
+
+describe('REPLACE_BOXES', () => {
+  it('replaces the boxes and keeps zoom, pan and the active syllable', () => {
+    const s: EditorState = {
+      ...stateWithLine(),
+      zoom: 2,
+      panOffset: { x: 5, y: 6 },
+      activeSyllableIdx: 3,
+      syllableBoxes: { 0: { x: 0, y: 0, w: 0.1, h: 0.1 } },
+      isDirty: true,
+    };
+    const next = editorReducer(s, {
+      type: 'REPLACE_BOXES',
+      payload: { 0: { x: 0.5, y: 0, w: 0.1, h: 0.1 }, 1: null },
+    });
+    expect(next.syllableBoxes).toEqual({ 0: { x: 0.5, y: 0, w: 0.1, h: 0.1 }, 1: null });
+    expect(next.zoom).toBe(2);
+    expect(next.panOffset).toEqual({ x: 5, y: 6 });
+    expect(next.activeSyllableIdx).toBe(3);
+    expect(next.isDirty).toBe(false);
+  });
+});

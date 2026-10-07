@@ -5,6 +5,11 @@ import { registerProjectHandlers } from './project-io';
 import { registerImageHandlers } from './iiif-fetch';
 import { registerDocxExportHandler } from './docx-export';
 import { registerAppStateHandlers } from './app-state';
+import { SessionStore } from './session-store';
+import { registerSessionImageHandlers } from './session-ipc';
+import { initMainI18n, setMainLanguage, t } from './i18n';
+import { CloseFlow, SaveThenClose, closeChoiceFromResponse, createQuitGuard } from './close-coordinator';
+import { SaveQueue } from './save-queue';
 
 interface UserPrefs {
   language: string;
@@ -18,8 +23,42 @@ const userPrefs = new Conf<UserPrefs>({
 
 // Track dirty state for close confirmation. Set via IPC from renderer.
 let projectIsDirty = false;
-// User already confirmed discard? Skip the next close prompt to avoid loops.
-let bypassCloseConfirm = false;
+// Close/quit bookkeeping for the unsaved-changes prompt (N2).
+const closeFlow = new CloseFlow();
+
+// Working session (spec D2): images of the open document live on disk here.
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+let session: SessionStore | null = null;
+
+function getSession(): SessionStore {
+  if (!session) throw new Error('working session not initialised');
+  return session;
+}
+
+// B3: per-target save serialisation; will-quit waits for it before deleting the session.
+const saveQueue = new SaveQueue();
+
+let mainWindow: BrowserWindow | null = null;
+let closePromptOpen = false;
+
+// "Save" in the close dialog: close once the renderer-driven save succeeds.
+const saveThenClose = new SaveThenClose(
+  () => {
+    closeFlow.allowNextClose();
+    mainWindow?.close();
+  },
+  5000,
+  undefined,
+  () => closeFlow.onCloseAborted(),
+);
+
+// Wave A2: the renderer does not listen to main-process commands yet, so we
+// reuse the Ctrl+S shortcut App.tsx already handles. Its project:save call
+// reports back through onSaveStarted/onSaveFinished.
+function requestRendererSave(win: BrowserWindow): void {
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: ['control'] });
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: ['control'] });
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -34,6 +73,13 @@ function createWindow(): void {
     },
   });
 
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+    // N2: reset the one-shot bypass; finish a Cmd+Q the prompt was holding.
+    if (closeFlow.onClosed() === 'quit') app.quit();
+  });
+
   // LPUI-01 fix: lock page zoom so Ctrl+wheel / trackpad pinch never zoom
   // the whole app (the TablePreview has its own discrete zoom controls).
   win.webContents.setVisualZoomLevelLimits(1, 1);
@@ -42,24 +88,36 @@ function createWindow(): void {
     win.webContents.setZoomFactor(1);
   });
 
-  // Intercept close to prompt when there are unsaved changes
+  // Intercept close to prompt when there are unsaved changes (spec 6, wave A2 form).
   win.on('close', (e) => {
-    if (projectIsDirty && !bypassCloseConfirm) {
-      e.preventDefault();
-      const choice = dialog.showMessageBoxSync(win, {
+    if (!closeFlow.shouldPrompt(projectIsDirty)) return;
+    e.preventDefault();
+    if (closePromptOpen || saveThenClose.isArmed) return;
+    closePromptOpen = true;
+    void dialog
+      .showMessageBox(win, {
         type: 'warning',
-        buttons: ['Cancelar', 'Descartar e sair'],
+        buttons: [t('main.unsaved.save'), t('main.unsaved.discard'), t('main.unsaved.cancel')],
         defaultId: 0,
-        cancelId: 0,
-        title: 'Alterações não salvas',
-        message: 'Há alterações não salvas no projeto.',
-        detail: 'Se sair agora, as alterações não salvas serão perdidas. Use Ctrl+S para salvar antes.',
+        cancelId: 2,
+        noLink: true,
+        title: t('main.unsaved.title'),
+        message: t('main.unsaved.message'),
+        detail: t('main.unsaved.detail'),
+      })
+      .then(({ response }) => {
+        closePromptOpen = false;
+        const choice = closeChoiceFromResponse(response);
+        if (choice === 'discard') {
+          closeFlow.allowNextClose();
+          win.close();
+        } else if (choice === 'save') {
+          saveThenClose.arm();
+          requestRendererSave(win);
+        } else {
+          closeFlow.onCloseAborted();
+        }
       });
-      if (choice === 1) {
-        bypassCloseConfirm = true;
-        win.close();
-      }
-    }
   });
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -92,6 +150,7 @@ function registerSystemHandlers(): void {
   ipcMain.handle("settings:get-language", async () => userPrefs.get('language'));
   ipcMain.handle("settings:set-language", async (_event, lang: string) => {
     userPrefs.set('language', lang);
+    setMainLanguage(lang);
     return lang;
   });
   ipcMain.handle("settings:get-theme", async () => userPrefs.get('theme'));
@@ -101,14 +160,43 @@ function registerSystemHandlers(): void {
   });
 }
 
-app.whenReady().then(() => {
-  registerProjectHandlers();
+app.whenReady().then(async () => {
+  initMainI18n(userPrefs.get('language'));
+  const sessionsRoot = join(app.getPath('userData'), 'sessions');
+  await SessionStore.sweepStale(sessionsRoot, SESSION_MAX_AGE_MS);
+  session = await SessionStore.create(sessionsRoot);
+
+  registerProjectHandlers({
+    getStore: getSession,
+    saveQueue,
+    onSaveStarted: (token) => saveThenClose.onSaveStarted(token),
+    onSaveFinished: (token, ok) => saveThenClose.onSaveFinished(token, ok),
+  });
   registerDocxExportHandler();
   registerImageHandlers();
+  registerSessionImageHandlers(getSession);
   registerSystemHandlers();
   registerAppStateHandlers();
   createWindow();
 });
+
+// B3: an in-flight save still reads images from the session; delete it only
+// after every save has finished (preventDefault, await, then quit again).
+app.on(
+  'will-quit',
+  createQuitGuard({
+    isBusy: () => saveQueue.busy,
+    idle: () => saveQueue.idle(),
+    dispose: () => {
+      session?.disposeSync();
+      session = null;
+    },
+    quit: () => app.quit(),
+  }),
+);
+
+// N2: remember that the user asked to quit (Cmd+Q) while the close prompt holds it.
+app.on('before-quit', () => closeFlow.onBeforeQuit());
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

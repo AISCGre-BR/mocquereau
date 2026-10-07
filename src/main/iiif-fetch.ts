@@ -1,6 +1,7 @@
 import { ipcMain, clipboard, dialog, nativeImage } from "electron";
 import { net } from "electron";
 import { readFile } from "node:fs/promises";
+import { t } from "./i18n";
 
 const MIME_MAP: Record<string, string> = {
   png: "image/png",
@@ -102,10 +103,10 @@ export function registerImageHandlers(): void {
   ipcMain.handle("image:open-file", async () => {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
-        title: "Carregar imagem",
+        title: t("main.dialog.loadImage"),
         filters: [
           {
-            name: "Imagens",
+            name: t("main.filter.images"),
             extensions: ["png", "jpg", "jpeg", "webp", "tiff", "tif"],
           },
         ],

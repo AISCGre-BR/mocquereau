@@ -87,6 +87,11 @@ export type EditorAction =
   | {
       type: 'SET_ACTIVE_SYLLABLE';
       payload: number | null;
+    }
+  | {
+      /** Boxes changed in the project (R2 remap after rotation/flip). */
+      type: 'REPLACE_BOXES';
+      payload: Record<number, SyllableBox | null>;
     };
 
 // ── Private helpers ──────────────────────────────────────────────────────────
@@ -258,6 +263,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const { syllableIdx } = action.payload;
       const updated = { ...state.syllableBoxes, [syllableIdx]: null };
       return { ...state, syllableBoxes: updated, isDirty: true };
+    }
+
+    case 'REPLACE_BOXES': {
+      return { ...state, syllableBoxes: action.payload, isDirty: false };
     }
 
     case 'SET_ACTIVE_SYLLABLE': {

@@ -1,5 +1,7 @@
 // src/renderer/lib/models.ts
 
+import type { BoxFrame, ImageBytesPayload, ImageRef } from "@shared/project-schema";
+
 /** Imagem armazenada localmente */
 export interface StoredImage {
   /** Data URL (base64) da imagem — blob URLs são session-scoped e não serializáveis */
@@ -10,6 +12,12 @@ export interface StoredImage {
   height: number;
   /** Tipo MIME (ex.: "image/png", "image/jpeg") */
   mimeType: string;
+  /**
+   * SHA-256 of the bytes stored in the main-process session (wave A2).
+   * Informative only: dataUrl stays the renderer's source of truth until wave B.
+   * Never trust it when dataUrl is present (spreads may keep a stale id).
+   */
+  imageId?: string;
 }
 
 export interface SyllabifiedWord {
@@ -117,6 +125,15 @@ export interface ManuscriptLine {
    *  Phase 10 / IMG-06. Opcional — ausência = todos default (sem ajuste). */
   imageAdjustments?: ImageAdjustments;
 
+  /**
+   * Frame the syllableBoxes are expressed in (spec R1): the rotation/flips
+   * that were current when they were drawn. Absent means "same as
+   * imageAdjustments". Rotating never rewrites the boxes; read them through
+   * boxesInView (@shared/box-frame). Editing boxes stores them in the current
+   * frame and updates this field (UPDATE_LINE_BOXES).
+   */
+  boxFrame?: BoxFrame;
+
   /** Se os recortes desta linha já foram confirmados */
   confirmed: boolean;
 }
@@ -209,8 +226,11 @@ export interface GuerangerExport {
 export interface MocquereauAPI {
   // Projeto
   saveProject: (project: MocquereauProject, existingPath?: string) => Promise<{ filePath: string } | null>;
+  /** Always shows the Save As dialog; the chosen name gets the .mocquereau extension. */
+  saveProjectAs: (project: MocquereauProject, currentPath?: string) => Promise<{ filePath: string } | null>;
   setDirty: (isDirty: boolean) => Promise<void>;
-  openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string } | null>;
+  /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
+  openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   // App state
   getRecentFiles: () => Promise<string[]>;
   addRecentFile: (filePath: string) => Promise<void>;
@@ -218,13 +238,18 @@ export interface MocquereauAPI {
   getTutorialSeen: () => Promise<boolean>;
   setTutorialSeen: (seen: boolean) => Promise<void>;
   getAppVersion: () => Promise<string>;
-  openProject: () => Promise<{ project: MocquereauProject; filePath: string } | null>;
+  /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
+  openProject: () => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   importGueranger: () => Promise<GuerangerExport | null>;
 
   // Exportação
   exportDocx: (project: MocquereauProject) => Promise<{ filePath: string } | null>;
 
   // Imagens
+  /** Stores bytes in the main-process session (wave A2: no UI consumer yet). */
+  putImage: (bytes: ArrayBuffer, mimeType: string) => Promise<ImageRef>;
+  /** Reads session images by id (wave A2: used only by ImageStore). */
+  getImages: (imageIds: string[]) => Promise<ImageBytesPayload[]>;
   fetchIiifImage: (url: string) => Promise<{ dataUrl: string; width: number; height: number } | null>;
   readClipboardImage: () => Promise<{ dataUrl: string; width: number; height: number } | null>;
   openImageFile: () => Promise<{ dataUrl: string; width: number; height: number } | null>;
