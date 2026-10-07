@@ -5,6 +5,7 @@ import {
   MENUBAR_HEIGHT,
   normalizeTheme,
   overlayFor,
+  shouldUseNativeFrame,
   windowChromeOptions,
 } from "./window-chrome";
 
@@ -65,5 +66,28 @@ describe("windowChromeOptions", () => {
 
   it("moldura nativa forçada só define o fundo", () => {
     expect(windowChromeOptions("linux", false, true)).toEqual({ backgroundColor: CHROME_COLORS.light.color });
+  });
+});
+
+describe("shouldUseNativeFrame", () => {
+  it("variável de ambiente força nos dois sentidos, em qualquer plataforma", () => {
+    expect(shouldUseNativeFrame("win32", { MOCQUEREAU_NATIVE_FRAME: "1" })).toBe(true);
+    expect(shouldUseNativeFrame("linux", { MOCQUEREAU_NATIVE_FRAME: "0" })).toBe(false);
+  });
+
+  it("Windows e macOS usam o overlay", () => {
+    expect(shouldUseNativeFrame("win32", {})).toBe(false);
+    expect(shouldUseNativeFrame("darwin", {})).toBe(false);
+  });
+
+  it("Linux com sessão x11/wayland usa o overlay", () => {
+    expect(shouldUseNativeFrame("linux", { XDG_SESSION_TYPE: "wayland" })).toBe(false);
+    expect(shouldUseNativeFrame("linux", { XDG_SESSION_TYPE: "X11" })).toBe(false);
+  });
+
+  it("Linux sem sessão reconhecida ou sob WSL cai para a moldura nativa", () => {
+    expect(shouldUseNativeFrame("linux", {})).toBe(true);
+    expect(shouldUseNativeFrame("linux", { XDG_SESSION_TYPE: "tty" })).toBe(true);
+    expect(shouldUseNativeFrame("linux", { XDG_SESSION_TYPE: "wayland", WSL_DISTRO_NAME: "Ubuntu" })).toBe(true);
   });
 });

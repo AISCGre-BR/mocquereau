@@ -33,3 +33,27 @@ export function windowChromeOptions(
   }
   return { titleBarStyle: "hidden", titleBarOverlay: overlayFor(dark), backgroundColor };
 }
+
+/**
+ * Decide se a janela usa a moldura nativa em vez da barra escondida com overlay.
+ *
+ * - MOCQUEREAU_NATIVE_FRAME=1 força a moldura nativa; =0 força o overlay.
+ * - macOS e Windows: overlay (sempre suportado).
+ * - Linux: o titleBarOverlay depende da sessão gráfica. Sem XDG_SESSION_TYPE
+ *   reconhecido ("x11" ou "wayland") não há como saber se o ambiente compõe a
+ *   janela sem moldura direito (startx sem gerenciador de sessão, WSLg, alguns
+ *   WMs mínimos): nesses casos, ou sob WSL, cai para a moldura nativa, que sempre
+ *   funciona. A menubar React continua abaixo da barra nativa.
+ */
+export function shouldUseNativeFrame(
+  platform: NodeJS.Platform,
+  env: Record<string, string | undefined>,
+): boolean {
+  const override = env.MOCQUEREAU_NATIVE_FRAME;
+  if (override === "1") return true;
+  if (override === "0") return false;
+  if (platform !== "linux") return false;
+  if (env.WSL_DISTRO_NAME) return true;
+  const session = (env.XDG_SESSION_TYPE ?? "").trim().toLowerCase();
+  return session !== "x11" && session !== "wayland";
+}

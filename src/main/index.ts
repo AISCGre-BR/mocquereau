@@ -5,7 +5,7 @@ import { registerProjectHandlers } from './project-io';
 import { registerImageHandlers } from './iiif-fetch';
 import { registerDocxExportHandler } from './docx-export';
 import { registerAppStateHandlers } from './app-state';
-import { normalizeTheme, overlayFor, windowChromeOptions, type ThemePreference } from './window-chrome';
+import { normalizeTheme, overlayFor, shouldUseNativeFrame, windowChromeOptions, type ThemePreference } from './window-chrome';
 import { SessionStore } from './session-store';
 import { registerSessionImageHandlers } from './session-ipc';
 import { initMainI18n, setMainLanguage, t } from './i18n';
@@ -22,9 +22,9 @@ const userPrefs = new Conf<UserPrefs>({
   defaults: { language: 'pt-BR', theme: 'system' },
 });
 
-// MOCQUEREAU_NATIVE_FRAME=1 volta à barra de título nativa (gerenciadores de
-// janela Linux que não desenham o titleBarOverlay).
-const useNativeFrame = process.env.MOCQUEREAU_NATIVE_FRAME === '1';
+// Barra de título nativa quando o overlay não é confiável (heurística do Linux
+// em shouldUseNativeFrame) ou por MOCQUEREAU_NATIVE_FRAME=1 (=0 força o overlay).
+const useNativeFrame = shouldUseNativeFrame(process.platform, process.env);
 
 // Track dirty state for close confirmation. Set via IPC from renderer.
 let projectIsDirty = false;
