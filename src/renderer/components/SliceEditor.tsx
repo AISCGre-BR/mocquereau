@@ -146,6 +146,28 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     });
   }
 
+  // ── R2: reload boxes after the reducer remapped them (rotation/flip) ──────
+  // Until wave B (spec D6) the editor keeps a local copy of the boxes. When
+  // UPDATE_LINE_ADJUSTMENTS moves the line's boxes into the new frame, pull
+  // them back in so the overlay and the 300 ms auto-save below stay in sync.
+  const activeFrameKey = activeLine
+    ? `${activeLine.id}|${
+        activeLine.boxFrame
+          ? `${activeLine.boxFrame.rotation}|${activeLine.boxFrame.flipH}|${activeLine.boxFrame.flipV}`
+          : 'none'
+      }`
+    : '';
+  const prevFrameKeyRef = useRef(activeFrameKey);
+  useEffect(() => {
+    const prev = prevFrameKeyRef.current;
+    prevFrameKeyRef.current = activeFrameKey;
+    if (!activeLine || prev === activeFrameKey) return;
+    // Line switch: SWITCH_LINE / LOAD_SOURCE already loaded this line's boxes.
+    if (!prev.startsWith(`${activeLine.id}|`)) return;
+    editorDispatch({ type: 'REPLACE_BOXES', payload: activeLine.syllableBoxes ?? {} });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFrameKey]);
+
   // ── Auto-save boxes to the active line (so TablePreview sees them immediately) ──
   // Debounced to avoid excessive dispatches during drag (drag updates are in
   // editorState only; on pointerup we get a final SET_BOX that fires this save).

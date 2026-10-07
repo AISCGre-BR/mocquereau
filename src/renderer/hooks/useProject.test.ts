@@ -447,3 +447,107 @@ describe("projectReducer — UPDATE_LINE_ADJUSTMENTS", () => {
     expect(next).toBe(state);
   });
 });
+
+// ── Wave A2 additions ────────────────────────────────────────────────────────
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const v of Object.values(value as object)) deepFreeze(v);
+  }
+  return value;
+}
+
+describe("projectReducer — REORDER_SOURCE immutability", () => {
+  it("does not mutate source objects shared with the previous state", () => {
+    const state = deepFreeze(makeStateWithSources([makeSource("a", 1), makeSource("b", 2), makeSource("c", 3)]));
+    const next = projectReducer(state, { type: "REORDER_SOURCE", payload: { id: "b", direction: "up" } });
+    expect(next.project!.sources.map((s) => [s.id, s.order])).toEqual([["b", 1], ["a", 2], ["c", 3]]);
+    expect(state.project!.sources.map((s) => [s.id, s.order])).toEqual([["a", 1], ["b", 2], ["c", 3]]);
+    expect(next.project!.sources[2]).toBe(state.project!.sources[2]);
+  });
+});
+
+describe("projectReducer — REPLACE_PROJECT / LOAD_PROJECT", () => {
+  it("REPLACE_PROJECT swaps the project and marks it dirty", () => {
+    const state = makeStateWithSources([makeSource("a", 1)]);
+    const replacement = { ...state.project!, meta: { ...state.project!.meta, title: "New" } };
+    const next = projectReducer(state, { type: "REPLACE_PROJECT", payload: replacement });
+    expect(next.project).toBe(replacement);
+    expect(next.isDirty).toBe(true);
+  });
+
+  it("LOAD_PROJECT is clean unless dirty is requested", () => {
+    const state = makeStateWithSources([]);
+    const p = state.project!;
+    expect(projectReducer(state, { type: "LOAD_PROJECT", payload: { project: p } }).isDirty).toBe(false);
+    expect(projectReducer(state, { type: "LOAD_PROJECT", payload: { project: p, dirty: true } }).isDirty).toBe(true);
+    expect(projectReducer(state, { type: "LOAD_PROJECT", payload: { project: null } }).project).toBeNull();
+  });
+});
+
+describe("projectReducer — R2 box remap on rotation/flip", () => {
+  const BOX = { x: 0, y: 0, w: 0.25, h: 0.5 };
+  const img = { dataUrl: "data:,", width: 200, height: 100, mimeType: "image/png" };
+  const stateWithLine = (overrides: Partial<ManuscriptLine>) => {
+    const source = { ...makeSource("S1", 1), lines: [mkLine("L1", { image: img, ...overrides })] };
+    return makeStateWithSources([source]);
+  };
+  const adjust = (adjustments: Partial<ImageAdjustments>) => ({
+    type: "UPDATE_LINE_ADJUSTMENTS" as const,
+    payload: { sourceId: "S1", lineId: "L1", adjustments },
+  });
+  const lineOf = (s: { project: { sources: ManuscriptSource[] } | null }) => s.project!.sources[0].lines[0];
+
+  it("rotating 90 degrees remaps the boxes and records boxFrame", () => {
+    const next = projectReducer(stateWithLine({ syllableBoxes: { 0: BOX, 1: null } }), adjust({ rotation: 90 }));
+    const l = lineOf(next);
+    expect(l.boxFrame).toEqual({ rotation: 90, flipH: false, flipV: false });
+    expect(l.syllableBoxes![1]).toBeNull();
+    expect(l.syllableBoxes![0]!.x).toBeCloseTo(0.5, 9);
+    expect(l.syllableBoxes![0]!.y).toBeCloseTo(0, 9);
+    expect(l.syllableBoxes![0]!.w).toBeCloseTo(0.5, 9);
+    expect(l.syllableBoxes![0]!.h).toBeCloseTo(0.25, 9);
+  });
+
+  it("rotating back restores the original boxes", () => {
+    const s1 = projectReducer(stateWithLine({ syllableBoxes: { 0: BOX } }), adjust({ rotation: 90 }));
+    const s2 = projectReducer(s1, adjust({ rotation: 0 }));
+    const b = lineOf(s2).syllableBoxes![0]!;
+    expect(b.x).toBeCloseTo(BOX.x, 9);
+    expect(b.w).toBeCloseTo(BOX.w, 9);
+    expect(lineOf(s2).boxFrame).toEqual({ rotation: 0, flipH: false, flipV: false });
+    expect(lineOf(s2).imageAdjustments).toBeUndefined();
+  });
+
+  it("colour-only changes keep the very same boxes object", () => {
+    const state = stateWithLine({ syllableBoxes: { 0: BOX } });
+    const next = projectReducer(state, adjust({ brightness: 150 }));
+    expect(lineOf(next).syllableBoxes).toBe(lineOf(state).syllableBoxes);
+    expect(lineOf(next).boxFrame).toBeUndefined();
+  });
+
+  it("lines without boxes get no boxFrame, and a stale one is dropped", () => {
+    expect("boxFrame" in lineOf(projectReducer(stateWithLine({}), adjust({ rotation: 90 })))).toBe(false);
+    const stale = stateWithLine({ syllableBoxes: { 0: null }, boxFrame: { rotation: 90, flipH: false, flipV: false } });
+    expect("boxFrame" in lineOf(projectReducer(stale, adjust({ rotation: 180 })))).toBe(false);
+  });
+
+  it("uses an existing boxFrame as the source frame", () => {
+    const state = stateWithLine({
+      syllableBoxes: { 0: { x: 0.5, y: 0, w: 0.5, h: 0.25 } },
+      imageAdjustments: { brightness: 100, contrast: 100, saturation: 100, grayscale: 0, invert: false, rotation: 90, flipH: false, flipV: false },
+      boxFrame: { rotation: 90, flipH: false, flipV: false },
+    });
+    const b = lineOf(projectReducer(state, adjust({ rotation: 0 }))).syllableBoxes![0]!;
+    expect(b.x).toBeCloseTo(0, 9);
+    expect(b.h).toBeCloseTo(0.5, 9);
+  });
+
+  it("keeps boxes and their frame when the image size is unusable", () => {
+    const state = stateWithLine({ image: { ...img, width: 0 }, syllableBoxes: { 0: BOX } });
+    const l = lineOf(projectReducer(state, adjust({ rotation: 90 })));
+    expect(l.syllableBoxes![0]).toEqual(BOX);
+    expect(l.boxFrame).toEqual({ rotation: 0, flipH: false, flipV: false });
+  });
+});
