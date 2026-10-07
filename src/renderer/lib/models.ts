@@ -205,6 +205,9 @@ export interface GuerangerExport {
 
 // ── IPC bridge type ──────────────────────────────────────────────────────────
 
+/** Preferência de tema: Sistema, Pergaminho (light) ou Vigília (dark). */
+export type ThemePreference = "system" | "light" | "dark";
+
 /** API exposta como window.mocquereau pelo preload bridge */
 export interface MocquereauAPI {
   // Projeto
@@ -233,8 +236,9 @@ export interface MocquereauAPI {
   openExternal: (url: string) => Promise<void>;
   getLanguage: () => Promise<string>;
   setLanguage: (lang: string) => Promise<string>;
-  getTheme: () => Promise<string>;
-  setTheme: (theme: string) => Promise<boolean>;
+  getTheme: () => Promise<ThemePreference>;
+  setTheme: (theme: ThemePreference) => Promise<boolean>;
+  platform: string;
 }
 
 // ── DOCX Export Payload ──────────────────────────────────────────────────────

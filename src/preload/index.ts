@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from "electron";
 const ALLOWED_PROTOCOLS = ["https:", "http:"];
 
 contextBridge.exposeInMainWorld("mocquereau", {
+  // Plataforma (win32 | darwin | linux): a menubar React se ajusta à moldura.
+  platform: process.platform,
+
   // Projeto
   saveProject: (project: unknown, existingPath?: string) =>
     ipcRenderer.invoke("project:save", project, existingPath),
