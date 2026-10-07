@@ -20,8 +20,8 @@ export function SourceSidebar({
   onSelectSource,
 }: SourceSidebarProps) {
   return (
-    <div className="w-56 flex-shrink-0 flex flex-col border-r border-gray-200 bg-gray-50">
-      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
+    <div className="w-56 flex-shrink-0 flex flex-col border-r border-rule-soft bg-parchment">
+      <div className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide border-b border-rule-soft">
         Fontes
       </div>
       <ul className="flex-1 overflow-y-auto">
@@ -41,8 +41,8 @@ export function SourceSidebar({
                   'w-full px-3 py-2 flex flex-row items-center text-left',
                   'border-l-2',
                   isActive
-                    ? 'bg-blue-50 border-blue-500'
-                    : 'hover:bg-gray-100 border-transparent',
+                    ? 'bg-rubric-wash border-rubric'
+                    : 'hover:bg-ink-wash border-transparent',
                 ].join(' ')}
                 onClick={() => onSelectSource(source.id)}
               >
@@ -54,22 +54,22 @@ export function SourceSidebar({
                     className="w-8 h-8 object-cover rounded flex-shrink-0"
                   />
                 ) : (
-                  <div className="w-8 h-8 bg-gray-200 rounded flex-shrink-0 flex items-center justify-center">
-                    <span className="text-xs text-gray-400">?</span>
+                  <div className="w-8 h-8 bg-rule-soft rounded flex-shrink-0 flex items-center justify-center">
+                    <span className="text-xs text-ink-muted">?</span>
                   </div>
                 )}
 
                 {/* Text column */}
                 <div className="ml-2 flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">
+                  <div className="text-sm font-medium text-ink truncate">
                     {source.metadata.siglum || '—'}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-ink-muted">
                     {completedCount}/{totalSyllableCount}
                   </div>
-                  <div className="mt-1 h-1 bg-gray-200 rounded">
+                  <div className="mt-1 h-1 bg-rule-soft rounded">
                     <div
-                      className="h-1 bg-blue-400 rounded"
+                      className="h-1 bg-rubric-soft rounded"
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>

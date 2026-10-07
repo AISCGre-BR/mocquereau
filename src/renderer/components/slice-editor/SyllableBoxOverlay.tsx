@@ -6,6 +6,7 @@
 
 import React, { useRef } from 'react';
 import { SyllableBox } from '../../lib/models';
+import { pigmentOf } from '../../ui/pigment';
 
 // ── Handle types ─────────────────────────────────────────────────────────────
 
@@ -15,6 +16,8 @@ type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 interface SyllableBoxOverlayProps {
   box: SyllableBox;
+  syllableIdx: number;                                  // índice global da sílaba (pigmento)
+  label?: string;                                       // texto da sílaba na etiqueta
   containerRef: React.RefObject<HTMLDivElement | null>; // the image wrapper div
   onBoxChange: (newBox: SyllableBox) => void;           // called on every pointermove (live feedback)
   onBoxCommit: (newBox: SyllableBox) => void;           // called on pointerup (dispatch to reducer)
@@ -35,21 +38,33 @@ type DragState = {
 
 interface HandleConfig {
   id: HandleId;
-  left: string;
-  top: string;
   cursor: string;
 }
 
 const HANDLES: HandleConfig[] = [
-  { id: 'nw', left: '-4px',      top: '-4px',      cursor: 'nwse-resize' },
-  { id: 'n',  left: 'calc(50% - 4px)', top: '-4px', cursor: 'ns-resize'   },
-  { id: 'ne', left: 'calc(100% - 4px)', top: '-4px', cursor: 'nesw-resize' },
-  { id: 'e',  left: 'calc(100% - 4px)', top: 'calc(50% - 4px)', cursor: 'ew-resize'   },
-  { id: 'se', left: 'calc(100% - 4px)', top: 'calc(100% - 4px)', cursor: 'nwse-resize' },
-  { id: 's',  left: 'calc(50% - 4px)', top: 'calc(100% - 4px)', cursor: 'ns-resize'   },
-  { id: 'sw', left: '-4px',      top: 'calc(100% - 4px)', cursor: 'nesw-resize' },
-  { id: 'w',  left: '-4px',      top: 'calc(50% - 4px)', cursor: 'ew-resize'   },
+  { id: 'nw', cursor: 'nwse-resize' },
+  { id: 'n',  cursor: 'ns-resize'   },
+  { id: 'ne', cursor: 'nesw-resize' },
+  { id: 'e',  cursor: 'ew-resize'   },
+  { id: 'se', cursor: 'nwse-resize' },
+  { id: 's',  cursor: 'ns-resize'   },
+  { id: 'sw', cursor: 'nesw-resize' },
+  { id: 'w',  cursor: 'ew-resize'   },
 ];
+
+export type CropBoxState = 'confirmed' | 'active' | 'suggested';
+
+/** Classes da caixa de recorte: pigmento pela sílaba; ativa em rubrica; sugerida tracejada. */
+export function cropBoxClass(state: CropBoxState, syllableIdx: number): string {
+  return [
+    'sc-box',
+    pigmentOf(syllableIdx),
+    state === 'active' ? 'sc-box--active' : '',
+    state === 'suggested' ? 'sc-box--suggested' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
 
 // ── Clamp helper ──────────────────────────────────────────────────────────────
 
@@ -91,6 +106,8 @@ function applyHandleDelta(
 
 export function SyllableBoxOverlay({
   box,
+  syllableIdx,
+  label,
   containerRef,
   onBoxChange,
   onBoxCommit,
@@ -247,7 +264,7 @@ export function SyllableBoxOverlay({
   return (
     <div
       data-box-overlay
-      className="outline outline-2 outline-blue-500 bg-blue-400/15 select-none touch-none absolute"
+      className={`${cropBoxClass('active', syllableIdx)} select-none touch-none`}
       style={{
         left:   `${box.x * 100}%`,
         top:    `${box.y * 100}%`,
@@ -259,15 +276,13 @@ export function SyllableBoxOverlay({
       onPointerUp={onOuterPointerUp}
       onKeyDown={onKeyDown}
     >
+      {label && <span className="sc-box__tag pointer-events-none">{label}</span>}
       {HANDLES.map((h) => (
         <div
           key={h.id}
-          className="absolute w-2 h-2 bg-white border border-blue-500 shadow-sm"
-          style={{
-            left:   h.left,
-            top:    h.top,
-            cursor: h.cursor,
-          }}
+          data-handle={h.id}
+          className={`sc-box__h sc-box__h--${h.id}`}
+          style={{ cursor: h.cursor }}
           onPointerDown={(e) => onHandlePointerDown(e, h.id)}
         />
       ))}

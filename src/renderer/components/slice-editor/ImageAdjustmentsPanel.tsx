@@ -44,19 +44,19 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
 
   return (
     <div
-      className="absolute top-2 right-2 z-10 w-72 bg-white border border-gray-300 rounded shadow-lg p-3 space-y-3"
+      className="absolute top-2 right-2 z-10 w-72 bg-surface border border-rule rounded shadow-lg p-3 space-y-3"
       data-image-adjustments-panel
     >
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+        <h3 className="text-sm font-semibold text-ink flex items-center gap-1.5">
           <SlidersHorizontal size={14} />
           {t("imageAdjustmentsPanel.title")}
         </h3>
         <button
           type="button"
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-700"
+          className="text-ink-muted hover:text-ink-soft"
           aria-label={t("imageAdjustmentsPanel.close")}
         >
           <X size={14} />
@@ -65,11 +65,11 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
 
       {/* Cor section */}
       <section>
-        <h4 className="text-xs font-medium text-gray-500 uppercase mb-1">{t("imageAdjustmentsPanel.color")}</h4>
+        <h4 className="text-xs font-medium text-ink-muted uppercase mb-1">{t("imageAdjustmentsPanel.color")}</h4>
 
         {/* Brilho */}
         <div className="flex items-center gap-2 text-xs">
-          <label className="w-20 text-gray-700">{t("imageAdjustmentsPanel.brightness")}</label>
+          <label className="w-20 text-ink-soft">{t("imageAdjustmentsPanel.brightness")}</label>
           <input
             type="range"
             min={0}
@@ -80,9 +80,9 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
               const v = Number(e.target.value);
               if (!Number.isNaN(v)) onUpdate({ brightness: v });
             }}
-            className="flex-1 accent-blue-600"
+            className="flex-1 accent-rubric"
           />
-          <span className="w-10 text-right text-gray-600 tabular-nums">
+          <span className="w-10 text-right text-ink-soft tabular-nums">
             {adj.brightness}%
           </span>
           <button
@@ -90,7 +90,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
             onClick={() =>
               onUpdate({ brightness: IMAGE_ADJUSTMENTS_DEFAULT.brightness })
             }
-            className="text-gray-400 hover:text-gray-700"
+            className="text-ink-muted hover:text-ink-soft"
             aria-label={t("imageAdjustmentsPanel.resetBrightness")}
           >
             ×
@@ -99,7 +99,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
 
         {/* Contraste */}
         <div className="flex items-center gap-2 text-xs">
-          <label className="w-20 text-gray-700">{t("imageAdjustmentsPanel.contrast")}</label>
+          <label className="w-20 text-ink-soft">{t("imageAdjustmentsPanel.contrast")}</label>
           <input
             type="range"
             min={0}
@@ -110,9 +110,9 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
               const v = Number(e.target.value);
               if (!Number.isNaN(v)) onUpdate({ contrast: v });
             }}
-            className="flex-1 accent-blue-600"
+            className="flex-1 accent-rubric"
           />
-          <span className="w-10 text-right text-gray-600 tabular-nums">
+          <span className="w-10 text-right text-ink-soft tabular-nums">
             {adj.contrast}%
           </span>
           <button
@@ -120,7 +120,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
             onClick={() =>
               onUpdate({ contrast: IMAGE_ADJUSTMENTS_DEFAULT.contrast })
             }
-            className="text-gray-400 hover:text-gray-700"
+            className="text-ink-muted hover:text-ink-soft"
             aria-label={t("imageAdjustmentsPanel.resetContrast")}
           >
             ×
@@ -129,7 +129,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
 
         {/* Saturação */}
         <div className="flex items-center gap-2 text-xs">
-          <label className="w-20 text-gray-700">{t("imageAdjustmentsPanel.saturation")}</label>
+          <label className="w-20 text-ink-soft">{t("imageAdjustmentsPanel.saturation")}</label>
           <input
             type="range"
             min={0}
@@ -140,9 +140,9 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
               const v = Number(e.target.value);
               if (!Number.isNaN(v)) onUpdate({ saturation: v });
             }}
-            className="flex-1 accent-blue-600"
+            className="flex-1 accent-rubric"
           />
-          <span className="w-10 text-right text-gray-600 tabular-nums">
+          <span className="w-10 text-right text-ink-soft tabular-nums">
             {adj.saturation}%
           </span>
           <button
@@ -150,7 +150,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
             onClick={() =>
               onUpdate({ saturation: IMAGE_ADJUSTMENTS_DEFAULT.saturation })
             }
-            className="text-gray-400 hover:text-gray-700"
+            className="text-ink-muted hover:text-ink-soft"
             aria-label={t("imageAdjustmentsPanel.resetSaturation")}
           >
             ×
@@ -159,7 +159,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
 
         {/* Grayscale */}
         <div className="flex items-center gap-2 text-xs">
-          <label className="w-20 text-gray-700">{t("imageAdjustmentsPanel.grayscale")}</label>
+          <label className="w-20 text-ink-soft">{t("imageAdjustmentsPanel.grayscale")}</label>
           <input
             type="range"
             min={0}
@@ -170,9 +170,9 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
               const v = Number(e.target.value);
               if (!Number.isNaN(v)) onUpdate({ grayscale: v });
             }}
-            className="flex-1 accent-blue-600"
+            className="flex-1 accent-rubric"
           />
-          <span className="w-10 text-right text-gray-600 tabular-nums">
+          <span className="w-10 text-right text-ink-soft tabular-nums">
             {adj.grayscale}%
           </span>
           <button
@@ -180,7 +180,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
             onClick={() =>
               onUpdate({ grayscale: IMAGE_ADJUSTMENTS_DEFAULT.grayscale })
             }
-            className="text-gray-400 hover:text-gray-700"
+            className="text-ink-muted hover:text-ink-soft"
             aria-label={t("imageAdjustmentsPanel.resetGrayscale")}
           >
             ×
@@ -188,12 +188,12 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
         </div>
 
         {/* Negativo */}
-        <label className="flex items-center gap-2 text-xs text-gray-700 mt-1">
+        <label className="flex items-center gap-2 text-xs text-ink-soft mt-1">
           <input
             type="checkbox"
             checked={adj.invert}
             onChange={(e) => onUpdate({ invert: e.target.checked })}
-            className="w-4 h-4 accent-blue-600"
+            className="w-4 h-4 accent-rubric"
           />
           {t("imageAdjustmentsPanel.negative")}
         </label>
@@ -201,14 +201,14 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
 
       {/* Geometria section */}
       <section>
-        <h4 className="text-xs font-medium text-gray-500 uppercase mb-1">
+        <h4 className="text-xs font-medium text-ink-muted uppercase mb-1">
           {t("imageAdjustmentsPanel.geometry")}
         </h4>
 
         {/* Girar — slider signed [-180, 180]° (centro = 0) + input numérico
             + reset rotation (D-01). Display é signed; armazenamento é [0, 360). */}
         <div className="flex items-center gap-2 text-xs">
-          <label className="w-20 text-gray-700" htmlFor="rotation-slider">
+          <label className="w-20 text-ink-soft" htmlFor="rotation-slider">
             {t("imageAdjustmentsPanel.rotate")}
           </label>
           <input
@@ -222,7 +222,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
               const v = Number(e.target.value);
               if (!Number.isNaN(v)) onUpdate({ rotation: normalizeRotation(v) });
             }}
-            className="flex-1 accent-blue-600"
+            className="flex-1 accent-rubric"
           />
           <input
             type="number"
@@ -234,14 +234,14 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
               const v = Number(e.target.value);
               if (!Number.isNaN(v)) onUpdate({ rotation: normalizeRotation(v) });
             }}
-            className="w-14 px-1 py-0.5 text-right text-gray-700 border border-gray-300 rounded tabular-nums"
+            className="w-14 px-1 py-0.5 text-right text-ink-soft border border-rule rounded tabular-nums"
             aria-label={t("imageAdjustmentsPanel.angleInDegrees")}
           />
-          <span className="text-gray-600">°</span>
+          <span className="text-ink-soft">°</span>
           <button
             type="button"
             onClick={() => onUpdate({ rotation: 0 })}
-            className="text-gray-400 hover:text-gray-700"
+            className="text-ink-muted hover:text-ink-soft"
             aria-label={t("imageAdjustmentsPanel.resetRotation")}
             title={t("imageAdjustmentsPanel.resetRotationTitle")}
           >
@@ -251,13 +251,13 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
 
         {/* Presets ±90° — incrementam (D-06), não substituem */}
         <div className="flex items-center gap-2 text-xs mt-1">
-          <span className="w-20 text-gray-500 text-[10px] uppercase">
+          <span className="w-20 text-ink-muted text-[10px] uppercase">
             {t("imageAdjustmentsPanel.presets")}
           </span>
           <button
             type="button"
             onClick={() => rotate(-90)}
-            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
+            className="px-2 py-1 border border-rule rounded hover:bg-ink-wash flex items-center gap-1"
             aria-label={t("imageAdjustmentsPanel.rotateCounterclockwise")}
             title={t("imageAdjustmentsPanel.rotateCounterclockwiseTitle")}
           >
@@ -267,7 +267,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
           <button
             type="button"
             onClick={() => rotate(90)}
-            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
+            className="px-2 py-1 border border-rule rounded hover:bg-ink-wash flex items-center gap-1"
             aria-label={t("imageAdjustmentsPanel.rotateClockwise")}
             title={t("imageAdjustmentsPanel.rotateClockwiseTitle")}
           >
@@ -276,22 +276,22 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
           </button>
         </div>
 
-        <label className="flex items-center gap-2 text-xs text-gray-700 mt-1">
+        <label className="flex items-center gap-2 text-xs text-ink-soft mt-1">
           <input
             type="checkbox"
             checked={adj.flipH}
             onChange={(e) => onUpdate({ flipH: e.target.checked })}
-            className="w-4 h-4 accent-blue-600"
+            className="w-4 h-4 accent-rubric"
           />
           {t("imageAdjustmentsPanel.flipHorizontal")}
         </label>
 
-        <label className="flex items-center gap-2 text-xs text-gray-700">
+        <label className="flex items-center gap-2 text-xs text-ink-soft">
           <input
             type="checkbox"
             checked={adj.flipV}
             onChange={(e) => onUpdate({ flipV: e.target.checked })}
-            className="w-4 h-4 accent-blue-600"
+            className="w-4 h-4 accent-rubric"
           />
           {t("imageAdjustmentsPanel.flipVertical")}
         </label>
@@ -302,7 +302,7 @@ export function ImageAdjustmentsPanel({ adjustments, onUpdate, onClose }: Props)
         type="button"
         onClick={() => onUpdate({ ...IMAGE_ADJUSTMENTS_DEFAULT })}
         disabled={isDefault}
-        className="w-full px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full px-2 py-1.5 text-xs bg-parchment-deep hover:bg-ink-wash border border-rule rounded disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {t("imageAdjustmentsPanel.resetAdjustments")}
       </button>

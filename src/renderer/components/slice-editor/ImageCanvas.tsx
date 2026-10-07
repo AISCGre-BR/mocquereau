@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StoredImage, SyllabifiedWord, SyllableBox } from '../../lib/models';
 import type { ImageAdjustments } from '../../lib/models';
 import { EditorAction } from './editorReducer';
-import { SyllableBoxOverlay } from './SyllableBoxOverlay';
+import { SyllableBoxOverlay, cropBoxClass } from './SyllableBoxOverlay';
 import { ImageAdjustmentsPanel } from './ImageAdjustmentsPanel';
 import {
   buildImageFilter,
@@ -31,18 +31,6 @@ interface ImageCanvasProps {
   onUpdateAdjustments?: (partial: Partial<ImageAdjustments>) => void;
   onClosePanel?: () => void;
 }
-
-// Distinguishable color palette for "show all boxes" mode
-const BOX_COLORS = [
-  { bg: 'rgba(239, 68, 68, 0.15)',   border: 'rgb(239, 68, 68)',   text: 'rgb(153, 27, 27)',   label: 'rgba(254, 226, 226, 0.95)' },  // red
-  { bg: 'rgba(59, 130, 246, 0.15)',  border: 'rgb(59, 130, 246)',  text: 'rgb(30, 64, 175)',   label: 'rgba(219, 234, 254, 0.95)' },  // blue
-  { bg: 'rgba(34, 197, 94, 0.15)',   border: 'rgb(34, 197, 94)',   text: 'rgb(22, 101, 52)',   label: 'rgba(220, 252, 231, 0.95)' },  // green
-  { bg: 'rgba(234, 179, 8, 0.15)',   border: 'rgb(234, 179, 8)',   text: 'rgb(133, 77, 14)',   label: 'rgba(254, 249, 195, 0.95)' },  // yellow
-  { bg: 'rgba(168, 85, 247, 0.15)',  border: 'rgb(168, 85, 247)',  text: 'rgb(88, 28, 135)',   label: 'rgba(243, 232, 255, 0.95)' },  // purple
-  { bg: 'rgba(236, 72, 153, 0.15)',  border: 'rgb(236, 72, 153)',  text: 'rgb(157, 23, 77)',   label: 'rgba(252, 231, 243, 0.95)' },  // pink
-  { bg: 'rgba(20, 184, 166, 0.15)',  border: 'rgb(20, 184, 166)',  text: 'rgb(17, 94, 89)',    label: 'rgba(204, 251, 241, 0.95)' },  // teal
-  { bg: 'rgba(249, 115, 22, 0.15)',  border: 'rgb(249, 115, 22)',  text: 'rgb(154, 52, 18)',   label: 'rgba(255, 237, 213, 0.95)' },  // orange
-];
 
 export function ImageCanvas({
   image,
@@ -209,14 +197,14 @@ export function ImageCanvas({
 
   if (!image) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
+      <div className="flex items-center justify-center h-full text-ink-muted">
         {t('imageCanvas.noImageLoaded')}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-100" onWheel={handleWheel}>
+    <div className="flex flex-col h-full bg-parchment-deep" onWheel={handleWheel}>
       {/* Image + boxes area */}
       <div className="relative flex-1 min-h-0 overflow-auto">
         {/* Adjustments panel — sibling of the transformed wrapper so it stays
@@ -278,18 +266,19 @@ export function ImageCanvas({
           ).map((idx) => {
             const box = syllableBoxes[idx];
             if (!box || idx === activeSyllableIdx) return null;
-            const color = BOX_COLORS[idx % BOX_COLORS.length];
             return (
               <div
                 key={`all-${idx}`}
-                className="absolute cursor-pointer"
+                className={
+                  showAllBoxes
+                    ? `${cropBoxClass('confirmed', idx)} cursor-pointer`
+                    : 'absolute cursor-pointer border-2 border-transparent'
+                }
                 style={{
                   left: `${box.x * 100}%`,
                   top: `${box.y * 100}%`,
                   width: `${box.w * 100}%`,
                   height: `${box.h * 100}%`,
-                  backgroundColor: showAllBoxes ? color.bg : 'transparent',
-                  border: showAllBoxes ? `2px solid ${color.border}` : '2px solid transparent',
                 }}
                 onPointerDown={(e) => {
                   // Prevent image wrapper from starting a draw; just switch active syllable
@@ -302,18 +291,9 @@ export function ImageCanvas({
                 title={t('imageCanvas.clickToEdit', { syllable: syllableTextAt(idx) })}
               >
                 {showAllBoxes && (
-                  <div
-                    className="absolute -top-0 left-0 px-1.5 py-0.5 text-[10px] font-bold font-mono rounded-br whitespace-nowrap pointer-events-none"
-                    style={{
-                      backgroundColor: color.label,
-                      color: color.text,
-                      border: `1px solid ${color.border}`,
-                      borderTop: 'none',
-                      borderLeft: 'none',
-                    }}
-                  >
+                  <span className="pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded-br-sm bg-surface/90 px-1.5 py-0.5 font-serif text-caption italic text-ink">
                     {syllableTextAt(idx)}
-                  </div>
+                  </span>
                 )}
               </div>
             );
@@ -323,6 +303,8 @@ export function ImageCanvas({
           {activeSyllableIdx !== null && syllableBoxes[activeSyllableIdx] != null && (
             <SyllableBoxOverlay
               box={syllableBoxes[activeSyllableIdx] as SyllableBox}
+              syllableIdx={activeSyllableIdx}
+              label={syllableTextAt(activeSyllableIdx)}
               containerRef={imageWrapperRef}
               onBoxChange={(newBox) => {
                 dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box: newBox } });
@@ -337,9 +319,9 @@ export function ImageCanvas({
           )}
 
           {/* Live rubber-band preview while drawing */}
-          {liveDrawBox && (
+          {liveDrawBox && activeSyllableIdx !== null && (
             <div
-              className="absolute border-2 border-dashed border-blue-400 bg-blue-200/20 pointer-events-none"
+              className={`${cropBoxClass('suggested', activeSyllableIdx)} pointer-events-none`}
               style={{
                 left:   `${liveDrawBox.x * 100}%`,
                 top:    `${liveDrawBox.y * 100}%`,

@@ -58,17 +58,17 @@ export function SlicePreview({
             key={globalIdx}
             className={[
               'flex flex-col items-center flex-shrink-0',
-              isWordBoundaryRight ? 'border-r-2 border-gray-500' : 'border-r border-gray-300',
+              isWordBoundaryRight ? 'border-r-2 border-rule-strong' : 'border-r border-rule',
             ].join(' ')}
             style={{ minWidth: 40 }}
           >
             <div
-              className="text-xs px-1 py-0.5 font-mono text-gray-400 cursor-pointer hover:text-gray-600"
+              className="text-xs px-1 py-0.5 font-mono text-ink-muted cursor-pointer hover:text-ink-soft"
               onClick={() => onActivate(globalIdx)}
             >
               {syllableText}
             </div>
-            <div className="w-full h-14 bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs">
+            <div className="w-full h-14 bg-parchment border border-dashed border-rule-soft flex items-center justify-center text-ink-muted text-xs">
               {isGap ? '—' : '+'}
             </div>
           </div>
@@ -94,13 +94,13 @@ export function SlicePreview({
   }
 
   return (
-    <div className="flex flex-col border-t border-gray-200 bg-white">
-      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100">
+    <div className="flex flex-col border-t border-rule-soft bg-surface">
+      <div className="px-3 py-1 text-xs font-semibold text-ink-muted uppercase tracking-wide border-b border-rule-soft">
         {t('slicePreview.title')}
       </div>
       <div className="flex flex-row overflow-x-auto py-1 px-2 min-h-[5rem]">
         {cells.length > 0 ? cells : (
-          <div className="flex items-center text-xs text-gray-400 px-2">
+          <div className="flex items-center text-xs text-ink-muted px-2">
             {t('slicePreview.empty')}
           </div>
         )}

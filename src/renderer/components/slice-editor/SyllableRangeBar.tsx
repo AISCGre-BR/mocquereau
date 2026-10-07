@@ -77,21 +77,21 @@ function chipClassName(state: ChipState, isHovered: boolean): string {
   let stateClass = '';
 
   if (state === 'inactive') {
-    stateClass = 'bg-gray-100 text-gray-400 cursor-pointer hover:bg-gray-200';
+    stateClass = 'bg-parchment-deep text-ink-muted cursor-pointer hover:bg-ink-wash';
   } else if (state === 'active') {
     stateClass =
-      'bg-indigo-100 text-indigo-800 border border-indigo-300 cursor-pointer hover:bg-indigo-200';
+      'bg-lapis-wash text-lapis border border-lapis cursor-pointer hover:bg-lapis-wash';
   } else if (state === 'gap') {
     stateClass =
-      'bg-red-50 text-red-400 border border-dashed border-red-300 cursor-pointer';
+      'bg-rubric-wash text-danger border border-dashed border-danger cursor-pointer';
   } else {
     // covered
     stateClass =
-      'bg-green-100 text-green-700 border border-green-400 cursor-not-allowed opacity-80';
+      'bg-verdigris-wash text-success border border-success cursor-not-allowed opacity-80';
   }
 
   const hoverClass =
-    isHovered ? 'ring-2 ring-offset-1 ring-indigo-400' : '';
+    isHovered ? 'ring-2 ring-offset-1 ring-lapis' : '';
 
   return [base, stateClass, hoverClass].filter(Boolean).join(' ');
 }
@@ -211,10 +211,10 @@ export function SyllableRangeBar({
               {i < allSyllables.length - 1 && (
                 wordBoundarySet.has(i) ? (
                   // Thicker word boundary: 2px
-                  <span className="w-0.5 h-5 bg-gray-400 mx-0.5 self-center flex-shrink-0" />
+                  <span className="w-0.5 h-5 bg-rule-strong mx-0.5 self-center flex-shrink-0" />
                 ) : (
                   // Intra-word syllable boundary: 1px
-                  <span className="w-px h-4 bg-gray-200 mx-0.5 self-center flex-shrink-0" />
+                  <span className="w-px h-4 bg-rule-soft mx-0.5 self-center flex-shrink-0" />
                 )
               )}
             </span>

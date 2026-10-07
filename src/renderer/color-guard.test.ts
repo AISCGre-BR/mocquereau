@@ -10,19 +10,7 @@ const ROOT = fileURLToPath(new URL(".", import.meta.url));
  * Arquivos ainda não migrados para tokens. Cada tarefa de migração remove os seus;
  * a lista termina vazia. Um arquivo listado que já esteja limpo faz o teste falhar.
  */
-const PENDING: string[] = [
-  "components/SliceEditor.tsx",
-  "components/SyllableChip.tsx",
-  "components/slice-editor/ImageAdjustmentsPanel.tsx",
-  "components/slice-editor/ImageCanvas.tsx",
-  "components/slice-editor/ImageMetadataModal.tsx",
-  "components/slice-editor/LineSidebar.tsx",
-  "components/slice-editor/SlicePreview.tsx",
-  "components/slice-editor/SlicePreviewCell.tsx",
-  "components/slice-editor/SourceSidebar.tsx",
-  "components/slice-editor/SyllableBoxOverlay.tsx",
-  "components/slice-editor/SyllableRangeBar.tsx",
-];
+const PENDING: string[] = [];
 
 function listTsx(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
