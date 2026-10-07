@@ -50,19 +50,6 @@ function buildMigrationMessage(t: T, head: string, stats: MigrationStats): strin
 
 const syllableCount = (words: { syllables: string[] }[]) => words.reduce((n, w) => n + w.syllables.length, 0);
 
-/**
- * Texto novo aplicado sem perguntas (flush ao sair da vista): re-silabifica no modo
- * atual e, havendo caixas e mudando a contagem de sílabas, remapeia-as.
- */
-export function withRawText(project: MocquereauProject, raw: string): MocquereauProject {
-  const mode = project.text.hyphenationMode;
-  const words = syllabifyText(raw, mode);
-  if (hasAnyBoxes(project) && syllableCount(words) !== syllableCount(project.text.words)) {
-    return migrateHyphenation({ ...project, text: { ...project.text, raw } }, mode).project;
-  }
-  return { ...project, text: { raw, words, hyphenationMode: mode } };
-}
-
 export function useHyphenationMode() {
   const { state, dispatch } = useProject();
   const { t } = useTranslation();

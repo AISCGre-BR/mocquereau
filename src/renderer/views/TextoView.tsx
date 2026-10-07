@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { useProject } from "../hooks/useProject";
 import { usePendingFlush } from "../hooks/pendingEdits";
-import { useHyphenationMode, withRawText } from "../hooks/useHyphenationMode";
-import { SyllableText } from "../components/texto/SyllableText";
+import { useHyphenationMode } from "../hooks/useHyphenationMode";
+import { SyllableText, belowElement } from "../components/texto/SyllableText";
 import { RawTextEditor } from "../components/texto/RawTextEditor";
 import { SectionMargin } from "../components/texto/SectionMargin";
 import { MODE_ORDER, modeName } from "../components/new-project/ModeOptions";
@@ -15,7 +15,7 @@ import type { Section } from "../lib/models";
 import { formatAccelerator, matchAccelerator } from "../shell/accelerator";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
-import { Input, Select } from "../ui/Field";
+import { Input } from "../ui/Field";
 import { MenuItem, MenuSeparator, MenuSurface } from "../ui/Menu";
 
 const EDIT_TEXT_ACCEL = "Ctrl+Shift+E";
@@ -77,8 +77,9 @@ export function TextoView({ onAddSource, onImportGueranger }: TextoViewProps) {
 
   // Ao sair da vista o debounce acima é cancelado; grava o que ficou pendente
   // (título/autor e o texto ainda no editor). O mesmo flush roda antes de
-  // Novo/Abrir/Fechar/Salvar/Desfazer (registro de pendências). Sem perguntas:
-  // o texto é re-silabificado e as caixas, remapeadas.
+  // Novo/Abrir/Fechar/Salvar/Desfazer (registro de pendências). O texto passa
+  // pelas mesmas confirmações de sair do editor (descartar sílabas manuais,
+  // remapear caixas); recusada, o projeto fica como estava.
   const latest = useRef({ title, author, draft });
   latest.current = { title, author, draft };
   usePendingFlush(() => {
@@ -90,8 +91,7 @@ export function TextoView({ onAddSource, onImportGueranger }: TextoViewProps) {
       dispatch({ type: "SET_META", payload: { title: p.title, author: p.author } });
       flushed = true;
     }
-    if (p.draft !== null && p.draft !== saved.text.raw) {
-      dispatch({ type: "REPLACE_PROJECT", payload: withRawText(saved, p.draft) });
+    if (p.draft !== null && p.draft !== saved.text.raw && changeText(p.draft)) {
       flushed = true;
     }
     return flushed;
@@ -147,19 +147,27 @@ export function TextoView({ onAddSource, onImportGueranger }: TextoViewProps) {
       const start = sectionDialog.wordIdx;
       // Vai até antes da próxima seção (ou o fim); a seção em que começa termina antes dela.
       const nextStart = Math.min(...sections.map((s) => s.wordRange[0]).filter((s) => s > start), words.length);
+      const added: Section = { id: crypto.randomUUID(), name, wordRange: [start, nextStart - 1] };
       const containing = sections.find((s) => s.wordRange[0] < start && s.wordRange[1] >= start);
       if (containing) {
-        dispatch({ type: "UPDATE_SECTION", payload: { ...containing, wordRange: [containing.wordRange[0], start - 1] } });
+        // Encurtar a seção de fora e criar a nova é um passo só no histórico.
+        const shortened = sections.map((s): Section =>
+          s.id === containing.id ? { ...s, wordRange: [s.wordRange[0], start - 1] } : s,
+        );
+        dispatch({ type: "REPLACE_PROJECT", payload: { ...project!, sections: [...shortened, added] } });
+      } else {
+        dispatch({ type: "ADD_SECTION", payload: added });
       }
-      dispatch({
-        type: "ADD_SECTION",
-        payload: { id: crypto.randomUUID(), name, wordRange: [start, nextStart - 1] },
-      });
     }
     setSectionDialog(null);
   }
 
-  const at = (e: MouseEvent) => ({ x: e.clientX, y: e.clientY });
+  // Clique vindo do teclado (Enter/Espaço: detail 0) ou menu pedido pelo teclado
+  // (sem coordenadas): o menu abre sob o elemento, não no canto da janela.
+  const at = (e: MouseEvent<HTMLElement>) =>
+    (e.type === "click" && e.detail === 0) || (e.clientX === 0 && e.clientY === 0)
+      ? belowElement(e.currentTarget)
+      : { x: e.clientX, y: e.clientY };
   const shortcut = formatAccelerator(EDIT_TEXT_ACCEL, window.mocquereau?.platform ?? "");
 
   function renderMenu(m: ContextMenu) {
@@ -247,7 +255,7 @@ export function TextoView({ onAddSource, onImportGueranger }: TextoViewProps) {
             onContextMenu={(e) => {
               if (editorOpen || e.defaultPrevented) return;
               e.preventDefault();
-              setMenu({ kind: "body", ...at(e) });
+              setMenu({ kind: "body", x: e.clientX, y: e.clientY });
             }}
           >
             {editorOpen ? (
@@ -271,28 +279,31 @@ export function TextoView({ onAddSource, onImportGueranger }: TextoViewProps) {
                     payload: replaceWordSyllables(project, wordIdx, next[wordIdx].syllables),
                   })
                 }
-                onWordContextMenu={(wordIdx, e) => {
-                  e.preventDefault();
-                  setMenu({ kind: "word", wordIdx, ...at(e) });
-                }}
+                onWordContextMenu={(wordIdx, pos) => setMenu({ kind: "word", wordIdx, ...pos })}
               />
             )}
           </div>
 
           <div />
           <div className="mt-4 flex items-center border-t border-rule-soft pt-3">
-            <Select
-              label={t("texto.syllabification")}
-              value={mode}
-              onChange={(e) => changeMode(e.target.value as HyphenationMode)}
-              className="flex-row items-center gap-1 [&>span]:text-label [&>span]:font-normal [&>span]:text-ink-muted [&_select]:h-7 [&_select]:w-auto [&_select]:cursor-pointer [&_select]:border-transparent [&_select]:bg-transparent [&_select]:py-0 [&_select]:font-medium [&_select]:text-ink-soft [&_select]:shadow-none [&_select:hover]:bg-ink-wash"
-            >
-              {MODE_ORDER.map((m) => (
-                <option key={m} value={m}>
-                  {modeName(t, m)}
-                </option>
-              ))}
-            </Select>
+            {/* Compacto como um botão de texto com seta: a largura acompanha o modo escolhido. */}
+            <label className="flex items-center gap-1 text-label text-ink-muted">
+              <span>{t("texto.syllabification")}</span>
+              <span className="relative inline-flex items-center">
+                <select
+                  value={mode}
+                  onChange={(e) => changeMode(e.target.value as HyphenationMode)}
+                  className="h-7 cursor-pointer appearance-none rounded-sm bg-transparent py-0 pr-6 pl-1.5 font-medium text-ink-soft outline-none [field-sizing:content] hover:bg-ink-wash focus-visible:shadow-[0_0_0_3px_var(--rubric-wash)]"
+                >
+                  {MODE_ORDER.map((m) => (
+                    <option key={m} value={m}>
+                      {modeName(t, m)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-1.5 h-3.5 w-3.5 text-ink-muted" />
+              </span>
+            </label>
           </div>
         </div>
 

@@ -63,7 +63,9 @@ export function SectionMargin({ sections, textRef, layoutKey, onSectionMenu }: S
   return (
     <div className="relative h-full">
       {ordered.map((section, index) => {
-        const p = placements.get(section.id) ?? { top: 0, height: 0 };
+        // Sem medida (intervalo fora do texto, ou o editor aberto no lugar das sílabas): não mostra.
+        const p = placements.get(section.id);
+        if (!p) return null;
         return (
           <div
             key={section.id}

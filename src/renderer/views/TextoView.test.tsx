@@ -4,21 +4,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect } from "react";
 import { TextoView } from "./TextoView";
-import { ProjectContext, createNewProject, useProjectReducer } from "../hooks/useProject";
+import { ProjectContext, createNewProject, useProjectReducer, type HistoryApi } from "../hooks/useProject";
 import { syllabifyText } from "../lib/syllabify";
 import type { ManuscriptSource, MocquereauAPI, MocquereauProject, Section, SyllableBox } from "../lib/models";
 import ptBR from "../i18n/locales/pt-BR.json";
 
 let latest: { isDirty: boolean; project: MocquereauProject | null } = { isDirty: false, project: null };
+let latestHistory: HistoryApi | null = null;
 const onAddSource = vi.fn();
 const onImportGueranger = vi.fn();
 
 function Harness({ project, show }: { project: MocquereauProject; show: boolean }) {
-  const [state, dispatch] = useProjectReducer();
+  const [state, dispatch, history] = useProjectReducer();
   useEffect(() => {
     dispatch({ type: "SET_PROJECT", payload: project });
   }, [project]);
   latest = state;
+  latestHistory = history;
   return (
     <ProjectContext.Provider value={{ state, dispatch }}>
       {show && state.project ? <TextoView onAddSource={onAddSource} onImportGueranger={onImportGueranger} /> : null}
@@ -117,6 +119,35 @@ describe("TextoView: gravação das edições", () => {
     expect(latest.project?.text.words).toEqual(syllabifyText("Puer natus est nobis", "sung"));
   });
 
+  it("texto pendente com sílabas manuais pergunta ao sair da vista; recusado, o projeto fica como estava", () => {
+    const manual = [
+      { original: "Puer", syllables: ["Puer"] },
+      { original: "natus", syllables: ["natus"] },
+      { original: "est", syllables: ["est"] },
+    ];
+    const project = projectWith("Puer natus est", manual);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { rerender } = render(<Harness project={project} show />);
+    fireEvent.doubleClick(screen.getByTestId("texto-body"));
+    fireEvent.change(screen.getByPlaceholderText(textPlaceholder), { target: { value: "Puer natus" } });
+    rerender(<Harness project={project} show={false} />);
+    expect(confirm).toHaveBeenCalledWith(ptBR["texto.confirmDiscardManualEdits"]);
+    expect(latest.project?.text.raw).toBe("Puer natus est");
+    expect(latest.project?.text.words).toEqual(manual);
+    expect(latest.isDirty).toBe(false);
+  });
+
+  it("texto pendente que muda as caixas pede a confirmação da migração ao sair da vista", () => {
+    const project = withSource(projectWith("Puer natus est"));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { rerender } = render(<Harness project={project} show />);
+    fireEvent.keyDown(window, { key: "E", ctrlKey: true, shiftKey: true });
+    fireEvent.change(screen.getByPlaceholderText(textPlaceholder), { target: { value: "Puer natus est nobis" } });
+    rerender(<Harness project={project} show={false} />);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(latest.project?.text.raw).toBe("Puer natus est");
+  });
+
   it("sem edição, sair da vista não grava nada", () => {
     const project = projectWith("Puer natus est");
     const { rerender } = render(<Harness project={project} show />);
@@ -161,6 +192,19 @@ describe("TextoView: sílabas, texto e modo", () => {
     fireEvent.keyDown(editor, { key: "Escape" });
     expect(screen.queryByPlaceholderText(textPlaceholder)).toBeNull();
     expect(latest.isDirty).toBe(false);
+  });
+
+  it("the editor does not apply when the window loses focus, nor on Esc while composing", () => {
+    render(<Harness project={projectWith("Puer natus est")} show />);
+    fireEvent.doubleClick(screen.getByTestId("texto-body"));
+    const editor = screen.getByPlaceholderText(textPlaceholder);
+    fireEvent.change(editor, { target: { value: "Puer natus est nobis" } });
+    fireEvent.keyDown(editor, { key: "Escape", isComposing: true });
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    fireEvent.blur(editor);
+    hasFocus.mockRestore();
+    expect(screen.getByPlaceholderText(textPlaceholder)).toBeTruthy();
+    expect(latest.project?.text.raw).toBe("Puer natus est");
   });
 
   it("project without text opens in the editor", () => {
@@ -241,6 +285,39 @@ describe("TextoView: seções", () => {
     const sections = latest.project?.sections ?? [];
     expect(sections.find((s) => s.id === "a")?.wordRange).toEqual([0, 3]);
     expect(sections.find((s) => s.id !== "a")?.wordRange).toEqual([4, 8]);
+    // Uma só entrada no histórico: um Desfazer volta à seção original.
+    act(() => latestHistory?.undo());
+    expect(latest.project?.sections).toEqual([first]);
+  });
+
+  it("Shift+F10 on a focused merge dot opens the word menu under the word", () => {
+    render(<Harness project={projectWith(RAW)} show />);
+    const word = screen.getByTestId("word-0");
+    word.getBoundingClientRect = () => ({ left: 30, bottom: 60, top: 40, right: 90, width: 60, height: 20, x: 30, y: 40, toJSON: () => ({}) });
+    const dot = screen.getAllByRole("button", { name: ptBR["syllableText.merge"] })[0];
+    dot.focus();
+    fireEvent.keyDown(dot, { key: "F10", shiftKey: true });
+    const menu = screen.getByRole("menu");
+    expect(menu.style.left).toBe("30px");
+    expect(menu.style.top).toBe("60px");
+    expect(screen.getByRole("menuitem", { name: ptBR["texto.section.start"] })).toBeTruthy();
+  });
+
+  it("the section label opened from the keyboard shows its menu at the label", () => {
+    const first: Section = { id: "a", name: "Gloria", wordRange: [0, 8] };
+    render(<Harness project={{ ...projectWith(RAW), sections: [first] }} show />);
+    const label = screen.getByRole("button", { name: "Gloria" });
+    label.getBoundingClientRect = () => ({ left: 12, bottom: 48, top: 30, right: 80, width: 68, height: 18, x: 12, y: 30, toJSON: () => ({}) });
+    fireEvent.click(label, { detail: 0 });
+    const menu = screen.getByRole("menu");
+    expect(menu.style.left).toBe("12px");
+    expect(menu.style.top).toBe("48px");
+  });
+
+  it("hides a section whose words are out of the text", () => {
+    const stale: Section = { id: "z", name: "Antiga", wordRange: [20, 25] };
+    render(<Harness project={{ ...projectWith(RAW), sections: [stale] }} show />);
+    expect(screen.queryByRole("button", { name: "Antiga" })).toBeNull();
   });
 
   it("renames and removes a section from its label", () => {

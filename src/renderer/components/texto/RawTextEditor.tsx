@@ -20,9 +20,14 @@ export function RawTextEditor({ value, onChange, onDone }: RawTextEditorProps) {
       value={value}
       autoFocus
       onChange={(e) => onChange(e.target.value)}
-      onBlur={onDone}
+      onBlur={() => {
+        // A janela perdeu o foco (Alt+Tab): o editor continua aberto, nada é aplicado.
+        if (!document.hasFocus()) return;
+        onDone();
+      }}
       onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
+        // Esc durante a composição de um acento cancela a composição, não o editor.
+        if (e.key !== "Escape" || e.nativeEvent.isComposing) return;
         e.preventDefault();
         e.stopPropagation();
         onDone();
