@@ -280,5 +280,13 @@
   "imageCanvas.zoomIn": "拡大 (Ctrl+=)",
   "imageCanvas.zoomOut": "縮小 (Ctrl+-)",
   "imageCanvas.zoomFit": "幅に合わせる (Ctrl+0)",
-  "imageCanvas.zoomFitCurrent": "幅に合わせる（現在のズーム: {{zoom}}）"
+  "imageCanvas.zoomFitCurrent": "幅に合わせる（現在のズーム: {{zoom}}）",
+  "imageCanvas.rotateControls": "フォリオの回転操作",
+  "imageCanvas.rotateLeft": "90°左に回転 (Ctrl+[)",
+  "imageCanvas.rotateRight": "90°右に回転 (Ctrl+])",
+  "imageCanvas.straighten": "傾きを補正 (微調整)",
+  "imageCanvas.straightenTitle": "傾き補正",
+  "imageCanvas.straightenAngle": "微調整角度 (−10°〜+10°)",
+  "imageCanvas.straightenReadout": "微調整角度",
+  "imageCanvas.straightenReset": "微調整角度をリセット"
 }
