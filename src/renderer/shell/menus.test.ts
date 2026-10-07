@@ -21,6 +21,8 @@ function actions(): MenuActions {
     setLanguage: vi.fn(),
     openWebsite: vi.fn(),
     reportIssue: vi.fn(),
+    openExample: vi.fn(),
+    clearRecent: vi.fn(),
   };
 }
 
@@ -136,5 +138,19 @@ describe("buildMenus", () => {
   it("em inglês o submenu se chama só 'Language'", () => {
     const tl = (key: string) => (key === "shell.language" ? "Language" : key);
     expect(submenu(buildMenus(base, actions(), tl), "view.language").label).toBe("Language");
+  });
+
+  it("Ajuda tem o projeto de exemplo e o item chama a ação", () => {
+    const a = actions();
+    find(buildMenus(base, a, t), "help.openExample").onSelect();
+    expect(a.openExample).toHaveBeenCalledTimes(1);
+  });
+
+  it("Limpar recentes só aparece sem projeto aberto", () => {
+    const a = actions();
+    const sem = buildMenus({ ...base, hasProject: false }, a, t);
+    find(sem, "file.clearRecent").onSelect();
+    expect(a.clearRecent).toHaveBeenCalledTimes(1);
+    expect(() => find(buildMenus(base, a, t), "file.clearRecent")).toThrow();
   });
 });

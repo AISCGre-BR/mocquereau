@@ -68,6 +68,7 @@ function Workbench() {
     });
   }, []);
 
+  const [welcomeKey, setWelcomeKey] = useState(0);
   const project = state.project;
   const canExport = project !== null && project.sources.some((s) => s.lines.length > 0);
   const language: SupportedLang = toSupportedLang(i18n.language);
@@ -100,6 +101,11 @@ function Workbench() {
       setLanguage: (lng) => void i18n.changeLanguage(lng),
       openWebsite: () => void window.mocquereau.openExternal(HOMEPAGE),
       reportIssue: () => void window.mocquereau.openExternal(`${HOMEPAGE}/issues`),
+      openExample: () => void file.openExample(),
+      clearRecent: () => {
+        if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
+        void window.mocquereau.clearRecentFiles().then(() => setWelcomeKey((k) => k + 1));
+      },
     },
     (key) => t(key),
   );
@@ -139,6 +145,7 @@ function Workbench() {
     >
       {project === null ? (
         <Welcome
+          key={welcomeKey}
           onNew={file.newProject}
           onOpen={() => void file.open()}
           onOpenRecent={(p) => void file.openRecent(p)}
