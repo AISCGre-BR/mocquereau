@@ -9,6 +9,7 @@ export interface WorkerLike {
   terminate(): void;
   onmessage: ((e: { data: unknown }) => void) | null;
   onerror: ((e: unknown) => void) | null;
+  onmessageerror?: ((e: unknown) => void) | null;
 }
 
 export class NeumeDetectCancelledError extends Error {
@@ -83,6 +84,10 @@ export function createNeumeDetectClient(opts: NeumeDetectClientOptions = {}): Ne
       failAll(new Error('neume-detect worker failed'));
       shutdown();
     };
+    w.onmessageerror = () => {
+      failAll(new Error('neume-detect worker messageerror (deserialization failed)'));
+      shutdown();
+    };
     worker = w;
     return w;
   };
@@ -92,9 +97,16 @@ export function createNeumeDetectClient(opts: NeumeDetectClientOptions = {}): Ne
       stopIdle();
       const id = nextId++;
       const result = new Promise<SuggestResult>((resolve, reject) => pending.set(id, { resolve, reject }));
-      const buf = input.image.data.buffer;
-      const transfer = buf instanceof ArrayBuffer ? [buf] : [];
-      ensureWorker().postMessage({ protocol: PROTOCOL, type: 'suggest', id, input }, transfer);
+      try {
+        const buf = input.image.data.buffer;
+        const transfer = buf instanceof ArrayBuffer ? [buf] : [];
+        ensureWorker().postMessage({ protocol: PROTOCOL, type: 'suggest', id, input }, transfer);
+      } catch (err) {
+        const p = pending.get(id);
+        pending.delete(id);
+        armIdle();
+        p?.reject(err instanceof Error ? err : new Error(String(err)));
+      }
       return { id, result };
     },
     cancel(id) {

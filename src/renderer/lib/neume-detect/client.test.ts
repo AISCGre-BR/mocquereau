@@ -85,4 +85,46 @@ describe('createNeumeDetectClient', () => {
     await expect(a.result).rejects.toThrow(/worker failed/);
     expect(created[0].terminated).toBe(true);
   });
+
+  it('postMessage que lanca rejeita o pedido, limpa o pendente e rearma o idle', async () => {
+    let terminated = false;
+    let calls = 0;
+    const w: WorkerLike = {
+      onmessage: null,
+      onerror: null,
+      onmessageerror: null,
+      postMessage() {
+        calls++;
+        throw new Error('DataCloneError');
+      },
+      terminate() {
+        terminated = true;
+      },
+    };
+    const client = createNeumeDetectClient({ createWorker: () => w, idleMs: 20 });
+    const { result } = client.suggest(input());
+    await expect(result).rejects.toThrow(/DataCloneError/);
+    expect(calls).toBe(1);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(terminated).toBe(true);
+  });
+
+  it('falha ao construir o worker rejeita o pedido sem lancar sincronamente', async () => {
+    const client = createNeumeDetectClient({
+      createWorker: () => {
+        throw new Error('CSP');
+      },
+    });
+    const { result } = client.suggest(input());
+    await expect(result).rejects.toThrow(/CSP/);
+  });
+
+  it('messageerror rejeita os pendentes e encerra o worker', async () => {
+    const { factory, created } = fakeWorkerFactory();
+    const client = createNeumeDetectClient({ createWorker: factory });
+    const a = client.suggest(input());
+    created[0].worker.onmessageerror?.(new Error('bad'));
+    await expect(a.result).rejects.toThrow(/messageerror|deserial/i);
+    expect(created[0].terminated).toBe(true);
+  });
 });
