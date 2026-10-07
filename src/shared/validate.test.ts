@@ -71,6 +71,16 @@ describe("validateProject", () => {
     expect(r.warnings.length).toBe(2);
   });
 
+  it("normalizes an absent boxFrame on a line with boxes to the current adjustments", () => {
+    const p = clone();
+    delete p.sources[0].lines[0].boxFrame;
+    const r = validateProject(p);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.project.sources[0].lines[0].boxFrame).toEqual({ rotation: 90, flipH: false, flipV: false });
+    expect(r.warnings).toEqual([]);
+  });
+
   it("drops invalid boxes and non-numeric keys", () => {
     const p = clone();
     p.sources[0].lines[0].syllableBoxes = { 0: { x: 0, y: 0, w: -1, h: 1 }, foo: null, 2: null };

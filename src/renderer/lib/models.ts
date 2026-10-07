@@ -126,9 +126,11 @@ export interface ManuscriptLine {
   imageAdjustments?: ImageAdjustments;
 
   /**
-   * Frame the syllableBoxes are expressed in (spec R1). Absent means
-   * "same as imageAdjustments" (rotation/flip). The reducer keeps it in sync
-   * by remapping boxes whenever rotation or flips change (spec R2).
+   * Frame the syllableBoxes are expressed in (spec R1): the rotation/flips
+   * that were current when they were drawn. Absent means "same as
+   * imageAdjustments". Rotating never rewrites the boxes; read them through
+   * boxesInView (@shared/box-frame). Editing boxes stores them in the current
+   * frame and updates this field (UPDATE_LINE_BOXES).
    */
   boxFrame?: BoxFrame;
 

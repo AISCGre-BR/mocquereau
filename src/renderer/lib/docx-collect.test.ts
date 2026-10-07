@@ -436,4 +436,39 @@ describe('collectDocxCrops', () => {
       expect(payload.rows[0].cells[i].isWordBoundary).toBe(payload.wordBoundaries[i]);
     }
   });
+
+  it('crops boxes stored in another frame through boxesInView (S6/S7)', async () => {
+    const { collectDocxCrops } = await import('./docx-collect');
+    // Boxes drawn at rotation 0 (left half of the 100x50 original), then the
+    // image was rotated 90: the crop must cover the same ink, now the top half
+    // of the 50x100 rotated view.
+    const project = makeProject({ sources: [
+      {
+        id: 's1',
+        order: 0,
+        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+        lines: [{
+          id: 'l1',
+          image: makeImage(),
+          syllableRange: { start: 0, end: 0 },
+          dividers: [],
+          gaps: [],
+          confirmed: true,
+          syllableBoxes: { 0: makeBox() },
+          imageAdjustments: {
+            brightness: 100, contrast: 100, saturation: 100, grayscale: 0, invert: false,
+            rotation: 90, flipH: false, flipV: false,
+          },
+          boxFrame: { rotation: 0, flipH: false, flipV: false },
+        }],
+        syllableCuts: {},
+      },
+    ]});
+    const payload = await collectDocxCrops(project);
+    const crop = capturedCtxs.filter((c) => c.drawImage.mock.calls.length > 0).pop()!;
+    const [, sx, sy, sw, sh] = crop.drawImage.mock.calls[0];
+    expect([sx, sy, sw, sh]).toEqual([0, 0, 50, 50]);
+    expect(payload.rows[0].cells[0].cropWidth).toBe(50);
+    expect(payload.rows[0].cells[0].cropHeight).toBe(50);
+  });
 });

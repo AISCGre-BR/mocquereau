@@ -11,6 +11,7 @@ import { ImageAdjustmentsPanel } from './slice-editor/ImageAdjustmentsPanel';
 import { SlidersHorizontal } from 'lucide-react';
 // SlicePreview import removed per UX feedback 2026-04-20
 import { flattenSyllables, computeSyllableCuts } from '../lib/sliceUtils';
+import { boxesInView } from '@shared/box-frame';
 import type { ManuscriptSource, ManuscriptLine, StoredImage, ImageAdjustments } from '../lib/models';
 import { useTranslation } from 'react-i18next';
 
@@ -93,7 +94,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
               : { start: 0, end: Math.max(0, totalSyllableCount - 1) },
           gaps: firstLine?.gaps ?? [],
           coveredSyllables: covered,
-          syllableBoxes: firstLine?.syllableBoxes ?? {},
+          syllableBoxes: firstLine ? boxesInView(firstLine) : {},
         },
       });
     }
@@ -122,7 +123,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
             : { start: 0, end: Math.max(0, totalSyllableCount - 1) },
         gaps: line?.gaps ?? [],
         coveredSyllables: covered,
-        syllableBoxes: line?.syllableBoxes ?? {},
+        syllableBoxes: line ? boxesInView(line) : {},
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,16 +147,20 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     });
   }
 
-  // ── R2: reload boxes after the reducer remapped them (rotation/flip) ──────
-  // Until wave B (spec D6) the editor keeps a local copy of the boxes. When
-  // UPDATE_LINE_ADJUSTMENTS moves the line's boxes into the new frame, pull
-  // them back in so the overlay and the 300 ms auto-save below stay in sync.
+  // ── R1: reload boxes when the view frame changes (rotation/flip) ─────────
+  // Until wave B (spec D6) the editor keeps a local copy of the boxes, in the
+  // frame the user sees. Stored boxes never move (they stay in line.boxFrame);
+  // when the current frame or boxFrame changes, re-derive the view copy.
   const activeFrameKey = activeLine
-    ? `${activeLine.id}|${
+    ? [
+        activeLine.id,
+        activeLine.imageAdjustments?.rotation ?? 0,
+        !!activeLine.imageAdjustments?.flipH,
+        !!activeLine.imageAdjustments?.flipV,
         activeLine.boxFrame
           ? `${activeLine.boxFrame.rotation}|${activeLine.boxFrame.flipH}|${activeLine.boxFrame.flipV}`
-          : 'none'
-      }`
+          : 'none',
+      ].join('|')
     : '';
   const prevFrameKeyRef = useRef(activeFrameKey);
   useEffect(() => {
@@ -164,7 +169,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     if (!activeLine || prev === activeFrameKey) return;
     // Line switch: SWITCH_LINE / LOAD_SOURCE already loaded this line's boxes.
     if (!prev.startsWith(`${activeLine.id}|`)) return;
-    editorDispatch({ type: 'REPLACE_BOXES', payload: activeLine.syllableBoxes ?? {} });
+    editorDispatch({ type: 'REPLACE_BOXES', payload: boxesInView(activeLine) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFrameKey]);
 
@@ -178,25 +183,25 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
     const line = source.lines.find(l => l.id === editorState.activeLineId);
     if (!line) return;
 
-    // Skip if nothing actually changed (prevents infinite loop)
-    const currentJson = JSON.stringify(line.syllableBoxes ?? {});
+    // Skip if nothing actually changed (prevents infinite loop). The editor
+    // holds view-frame boxes, so compare against the line seen in that frame.
+    const currentJson = JSON.stringify(boxesInView(line));
     const newJson = JSON.stringify(editorState.syllableBoxes);
     if (currentJson === newJson) return;
 
     const timer = setTimeout(() => {
       // Auto-confirm the line when at least one box has been drawn.
       const hasAnyBox = Object.values(editorState.syllableBoxes).some(b => b != null);
-      const updatedLine: ManuscriptLine = {
-        ...line,
-        syllableBoxes: editorState.syllableBoxes,
-        syllableRange: editorState.syllableRange ?? line.syllableRange,
-        gaps: editorState.gaps,
-        confirmed: hasAnyBox,
-      };
-      const updatedLines = source.lines.map(l => (l.id === line.id ? updatedLine : l));
       globalDispatch({
-        type: 'UPDATE_SOURCE',
-        payload: { ...source, lines: updatedLines },
+        type: 'UPDATE_LINE_BOXES',
+        payload: {
+          sourceId: source.id,
+          lineId: line.id,
+          syllableBoxes: editorState.syllableBoxes,
+          syllableRange: editorState.syllableRange ?? line.syllableRange,
+          gaps: editorState.gaps,
+          confirmed: hasAnyBox,
+        },
       });
     }, 300);
     return () => clearTimeout(timer);
@@ -286,7 +291,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
         syllableRange: line.syllableRange,
         gaps: line.gaps,
         coveredSyllables: covered,
-        syllableBoxes: line.syllableBoxes ?? {},
+        syllableBoxes: boxesInView(line),
       },
     });
     setAwaitingNewLine(false);
@@ -334,7 +339,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           syllableRange: nextLine.syllableRange,
           gaps: nextLine.gaps,
           coveredSyllables: covered,
-          syllableBoxes: nextLine.syllableBoxes ?? {},
+          syllableBoxes: boxesInView(nextLine),
         },
       });
     }
@@ -352,32 +357,26 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
 
     setIsConfirming(true);
     try {
+      // editorState.syllableBoxes are in the current view frame: crop that view.
       const newCuts = await computeSyllableCuts(
         line.image,
         editorState.syllableBoxes,
         editorState.syllableRange,
+        line.imageAdjustments,
       );
 
-      const updatedLine: ManuscriptLine = {
-        ...line,
-        dividers: line.dividers,  // preserve (backward compat, not used)
-        syllableBoxes: editorState.syllableBoxes,  // save current boxes to line
-        syllableRange: editorState.syllableRange,
-        gaps: editorState.gaps,
-        confirmed: true,
-      };
-
-      // Only update the confirmed line; leave other lines unchanged
-      const updatedLines = source.lines.map(l =>
-        l.id === updatedLine.id ? updatedLine : l
-      );
-      const updatedSource: ManuscriptSource = {
-        ...source,
-        lines: updatedLines,
-        syllableCuts: { ...source.syllableCuts, ...newCuts },
-      };
-
-      globalDispatch({ type: 'UPDATE_SOURCE', payload: updatedSource });
+      globalDispatch({
+        type: 'UPDATE_LINE_BOXES',
+        payload: {
+          sourceId: source.id,
+          lineId: line.id,
+          syllableBoxes: editorState.syllableBoxes,  // save current boxes to line
+          syllableRange: editorState.syllableRange,
+          gaps: editorState.gaps,
+          confirmed: true,
+          syllableCuts: newCuts,
+        },
+      });
       editorDispatch({ type: 'CONFIRM_COMMITTED' });
     } finally {
       setIsConfirming(false);
@@ -423,7 +422,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           syllableRange: nextLine?.syllableRange ?? { start: 0, end: Math.max(0, totalSyllableCount - 1) },
           gaps: nextLine?.gaps ?? [],
           coveredSyllables: covered,
-          syllableBoxes: nextLine?.syllableBoxes ?? {},
+          syllableBoxes: nextLine ? boxesInView(nextLine) : {},
         },
       });
     }
@@ -450,7 +449,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
           syllableRange: nextLine.syllableRange,
           gaps: nextLine.gaps,
           coveredSyllables: covered,
-          syllableBoxes: nextLine.syllableBoxes ?? {},
+          syllableBoxes: boxesInView(nextLine),
         },
       });
     } else {
@@ -599,7 +598,7 @@ export function SliceEditor({ onNext, onPrev, canGoNext, canGoPrev }: ScreenProp
                 { start: 0, end: Math.max(0, totalSyllableCount - 1) },
               gaps: line?.gaps ?? [],
               coveredSyllables: covered,
-              syllableBoxes: line?.syllableBoxes ?? {},
+              syllableBoxes: line ? boxesInView(line) : {},
             },
           });
         }}

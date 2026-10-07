@@ -12,6 +12,7 @@ import {
   remapBoxes,
   viewSize,
   viewToOriginal,
+  boxesInView,
 } from "@shared/box-frame";
 
 const IMG = { width: 200, height: 100 };
@@ -138,10 +139,71 @@ describe("remapBox — free angles keep centre and pixel size", () => {
     expectBoxClose(cur, b);
   });
 
-  it("slider steps 0 -> 90 (1 degree each) match the direct 0 -> 90 remap", () => {
-    let cur = B;
-    for (let d = 0; d < 90; d++) cur = remapBox(cur, IMG, R(d), R(d + 1));
-    expectBoxClose(cur, remapBox(B, IMG, R(0), R(90)));
+  it("44 -> 46 keeps the pixel size: transpose follows the delta (2 degrees), not the absolute angle", () => {
+    const b: SyllableBox = { x: 0.4, y: 0.4, w: 0.1, h: 0.2 };
+    const from = viewSize(IMG, R(44));
+    const to = viewSize(IMG, R(46));
+    const out = remapBox(b, IMG, R(44), R(46));
+    expect(out.w * to.width).toBeCloseTo(b.w * from.width, 9);
+    expect(out.h * to.height).toBeCloseTo(b.h * from.height, 9);
+  });
+
+  it("a free delta near a quarter turn transposes (10 -> 95)", () => {
+    const b: SyllableBox = { x: 0.4, y: 0.4, w: 0.1, h: 0.2 };
+    const from = viewSize(IMG, R(10));
+    const to = viewSize(IMG, R(95));
+    const out = remapBox(b, IMG, R(10), R(95));
+    expect(out.w * to.width).toBeCloseTo(b.h * from.height, 9);
+    expect(out.h * to.height).toBeCloseTo(b.w * from.width, 9);
+  });
+
+  it("clamps the result to the view [0,1]", () => {
+    const edge: SyllableBox = { x: 0, y: 0, w: 1, h: 0.2 };
+    for (const deg of [10, 30, 45, 60, 135, 200, 300]) {
+      const out = remapBox(edge, IMG, R(0), R(deg));
+      expect(out.x).toBeGreaterThanOrEqual(0);
+      expect(out.y).toBeGreaterThanOrEqual(0);
+      expect(out.x + out.w).toBeLessThanOrEqual(1 + 1e-12);
+      expect(out.y + out.h).toBeLessThanOrEqual(1 + 1e-12);
+      expect(out.w).toBeGreaterThan(0);
+      expect(out.h).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("boxesInView (S6/S7 selector)", () => {
+  const line = (boxFrame: BoxFrame | undefined, rotation: number, flipH = false) => ({
+    image: { width: IMG.width, height: IMG.height },
+    syllableBoxes: { 0: B, 1: null } as Record<number, SyllableBox | null>,
+    imageAdjustments: { rotation, flipH, flipV: false },
+    boxFrame,
+  });
+
+  it("returns the stored boxes when they are already in the current frame", () => {
+    const l = line(R(90), 90);
+    expect(boxesInView(l)).toBe(l.syllableBoxes);
+  });
+
+  it("treats an absent boxFrame as the current frame", () => {
+    const l = line(undefined, 30);
+    expect(boxesInView(l)).toBe(l.syllableBoxes);
+  });
+
+  it("maps boxes stored in another frame into the current view", () => {
+    const l = line(R(0), 90);
+    const out = boxesInView(l);
+    expect(out[1]).toBeNull();
+    expectBoxClose(out[0]!, remapBox(B, IMG, R(0), R(90)));
+  });
+
+  it("is computed once per line object", () => {
+    const l = line(R(0), 37);
+    expect(boxesInView(l)).toBe(boxesInView(l));
+  });
+
+  it("accepts an explicit image size", () => {
+    const l = line(R(0), 90);
+    expectBoxClose(boxesInView(l, { width: 100, height: 100 })[0]!, remapBox(B, { width: 100, height: 100 }, R(0), R(90)));
   });
 });
 

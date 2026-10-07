@@ -63,6 +63,19 @@ describe("saveDocument + reopen", () => {
     expect(reopened.project).toEqual(doc.project);
   });
 
+  it("save/reopen keeps a boxFrame that differs from the current rotation", async () => {
+    const doc = await openDocument(await writeLegacy(), store);
+    const line = doc.project.sources[0].lines[0];
+    line.boxFrame = { rotation: 0, flipH: false, flipV: false }; // drawn at 0, then rotated
+    const target = join(dir, "frame.mocquereau");
+    await saveDocument(doc.project, target, store, "x");
+    const reopened = await openDocument(target, await SessionStore.create(join(dir, "sessions"), "s4"));
+    const again = reopened.project.sources[0].lines[0];
+    expect(again.boxFrame).toEqual({ rotation: 0, flipH: false, flipV: false });
+    expect(again.imageAdjustments?.rotation).toBe(270);
+    expect(again.syllableBoxes).toEqual(line.syllableBoxes);
+  });
+
   it("stores a newly imported image that has no imageId yet", async () => {
     const doc = await openDocument(await writeLegacy(), store);
     const newBytes = Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 7, 7, 7]);

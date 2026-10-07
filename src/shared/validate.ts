@@ -158,6 +158,9 @@ function line(v: unknown, path: string, ctx: Ctx): LineOf<ImageRef> | null {
       ctx.warnings.push(`${path}.boxFrame: invalid, derived from imageAdjustments`);
       if (hasAnyBox(sb)) out.boxFrame = frameOf(out.imageAdjustments);
     }
+  } else if (hasAnyBox(sb)) {
+    // Spec R1: boxes without a frame are in the current adjustments' frame.
+    out.boxFrame = frameOf(out.imageAdjustments);
   }
 
   if (typeof v.confirmed === "boolean") {

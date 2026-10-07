@@ -5,11 +5,13 @@ import type {
   ManuscriptSource,
   MocquereauProject,
   Section,
+  StoredImage,
+  SyllableBox,
   SyllabifiedWord,
 } from "../lib/models";
 import type { HyphenationMode } from "../lib/syllabify";
 import { normalizeRotation } from "../lib/image-adjustments";
-import { frameOf, framesEqual, hasAnyBox, remapBoxes } from "@shared/box-frame";
+import { frameOf, hasAnyBox } from "@shared/box-frame";
 import {
   canRedo,
   canUndo,
@@ -55,6 +57,24 @@ export type ProjectAction =
   | {
       type: "UPDATE_LINE_METADATA";
       payload: { sourceId: string; lineId: string; folio?: string; label?: string };
+    }
+  | {
+      /**
+       * Boxes edited in the SliceEditor (autosave, confirm). syllableBoxes is the
+       * line's COMPLETE map in the frame the user currently sees (boxesInView):
+       * the reducer stores it and sets boxFrame to the current adjustments.
+       */
+      type: "UPDATE_LINE_BOXES";
+      payload: {
+        sourceId: string;
+        lineId: string;
+        syllableBoxes: Record<number, SyllableBox | null>;
+        syllableRange?: { start: number; end: number };
+        gaps?: number[];
+        confirmed?: boolean;
+        /** Crops merged into source.syllableCuts (confirm). */
+        syllableCuts?: Record<number, StoredImage | null>;
+      };
     }
   | {
       type: "UPDATE_LINE_ADJUSTMENTS";
@@ -329,11 +349,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...mergedRaw,
         rotation: normalizeRotation(mergedRaw.rotation),
       };
-      // Spec R1/R2: boxes live in the rotated view; when rotation/flips change,
-      // move them into the new frame in this same (single, undoable) step.
-      const fromFrame = tgt.boxFrame ?? frameOf(current);
-      const toFrame = frameOf(merged);
-      const withBoxes = hasAnyBox(tgt.syllableBoxes);
+      // Spec R1 (S6/S7): boxes stay in the frame they were drawn in
+      // (line.boxFrame); consumers read them through boxesInView. A rotation
+      // is a plain adjustment update. A line with boxes but no boxFrame yet
+      // has them in the frame that was current until now: pin it.
+      const pinFrame = hasAnyBox(tgt.syllableBoxes) && !tgt.boxFrame ? frameOf(current) : undefined;
       const sources = state.project.sources.map((s) => {
         if (s.id !== sourceId) return s;
         const lines = s.lines.map((l) => {
@@ -345,17 +365,34 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           } else {
             next = { ...l, imageAdjustments: merged };
           }
-          if (withBoxes && !framesEqual(fromFrame, toFrame)) {
-            const boxes = l.syllableBoxes!;
-            const remapped = remapBoxes(boxes, { width: l.image.width, height: l.image.height }, fromFrame, toFrame);
-            next = { ...next, syllableBoxes: remapped, boxFrame: remapped === boxes ? fromFrame : toFrame };
-          } else if (!withBoxes && next.boxFrame !== undefined) {
-            const { boxFrame: _stale, ...rest } = next;
-            next = rest as ManuscriptLine;
-          }
-          return next;
+          return pinFrame ? { ...next, boxFrame: pinFrame } : next;
         });
         return { ...s, lines };
+      });
+      return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "UPDATE_LINE_BOXES": {
+      if (!state.project) return state;
+      const { sourceId, lineId, syllableBoxes, syllableRange, gaps, confirmed, syllableCuts } = action.payload;
+      const src = state.project.sources.find((s) => s.id === sourceId);
+      if (!src || !src.lines.some((l) => l.id === lineId)) return state;
+      const sources = state.project.sources.map((s) => {
+        if (s.id !== sourceId) return s;
+        const lines = s.lines.map((l) => {
+          if (l.id !== lineId) return l;
+          const next: ManuscriptLine = {
+            ...l,
+            syllableBoxes,
+            // The editor drew/kept every box in the current view frame.
+            boxFrame: frameOf(l.imageAdjustments),
+          };
+          if (syllableRange) next.syllableRange = syllableRange;
+          if (gaps) next.gaps = gaps;
+          if (confirmed !== undefined) next.confirmed = confirmed;
+          return next;
+        });
+        return syllableCuts ? { ...s, lines, syllableCuts: { ...s.syllableCuts, ...syllableCuts } } : { ...s, lines };
       });
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
@@ -403,6 +440,8 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
         coalesceKey: `UPDATE_LINE_METADATA:${action.payload.lineId}`,
         focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
       };
+    case "UPDATE_LINE_BOXES":
+      return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId } };
     case "UPDATE_LINE_ADJUSTMENTS":
       return {
         coalesceKey: `UPDATE_LINE_ADJUSTMENTS:${action.payload.lineId}:${sortedKeys(action.payload.adjustments)}`,

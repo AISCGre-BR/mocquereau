@@ -48,6 +48,20 @@ describe("dehydrateProject", () => {
     expect(file).toEqual(makeV2Project());
   });
 
+  it("always writes boxFrame for a line with boxes (absent -> current adjustments)", async () => {
+    const session = hydrateProject(makeV2Project(), url);
+    delete session.sources[0].lines[0].boxFrame;
+    const { file } = await dehydrateProject(session, resolveAsA, "x");
+    expect(file.sources[0].lines[0].boxFrame).toEqual({ rotation: 90, flipH: false, flipV: false });
+  });
+
+  it("keeps a boxFrame that differs from the current adjustments", async () => {
+    const session = hydrateProject(makeV2Project(), url);
+    session.sources[0].lines[0].boxFrame = { rotation: 0, flipH: true, flipV: false };
+    const { file } = await dehydrateProject(session, resolveAsA, "x");
+    expect(file.sources[0].lines[0].boxFrame).toEqual({ rotation: 0, flipH: true, flipV: false });
+  });
+
   it("lists an image shared by two lines once", async () => {
     const session = hydrateProject(makeV2Project(), url);
     session.sources[0].lines.push({ ...session.sources[0].lines[0], id: "line-b" });

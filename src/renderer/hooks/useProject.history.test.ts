@@ -7,6 +7,7 @@ import {
   type DocumentState,
 } from "./useProject";
 import type { ManuscriptLine, MocquereauProject } from "../lib/models";
+import { boxesInView } from "@shared/box-frame";
 
 const BOX = { x: 0, y: 0, w: 0.25, h: 0.5 };
 
@@ -179,16 +180,16 @@ describe("documentReducer", () => {
     expect(after).toBe(s);
   });
 
-  it("a rotation with box remap is one undoable step", () => {
+  it("a rotation is one undoable step and does not touch the stored boxes", () => {
     const h = harness();
     const original = makeProject();
     h.dispatch({ type: "SET_PROJECT", payload: original });
     h.dispatch(rotate(90));
-    expect(firstLine(h.view.project).boxFrame).toEqual({ rotation: 90, flipH: false, flipV: false });
+    expect(firstLine(h.view.project).syllableBoxes).toBe(firstLine(original).syllableBoxes);
+    expect(firstLine(h.view.project).boxFrame).toEqual({ rotation: 0, flipH: false, flipV: false });
+    expect(h.doc.history.past).toHaveLength(1);
     h.dispatch({ type: "UNDO" });
     expect(h.view.project).toBe(original);
-    expect(firstLine(h.view.project).syllableBoxes).toEqual({ 0: BOX });
-    expect(firstLine(h.view.project).boxFrame).toBeUndefined();
   });
 
   it("dragging the rotation slider 0 -> 30 -> 0 is one step and the boxes do not drift", () => {
@@ -203,10 +204,26 @@ describe("documentReducer", () => {
       h.tick(16);
     }
     expect(h.doc.history.past).toHaveLength(1);
-    const b = firstLine(h.view.project).syllableBoxes![0]!;
-    expect(b.x).toBeCloseTo(BOX.x, 9);
-    expect(b.y).toBeCloseTo(BOX.y, 9);
-    expect(b.w).toBeCloseTo(BOX.w, 9);
-    expect(b.h).toBeCloseTo(BOX.h, 9);
+    expect(firstLine(h.view.project).syllableBoxes![0]).toBe(BOX);
+    expect(boxesInView(firstLine(h.view.project))[0]).toBe(BOX);
+  });
+
+  it("slider 0 -> 90 in 1-degree steps shows exactly what a direct 90 shows (no accumulation)", () => {
+    const stepped = harness();
+    stepped.dispatch({ type: "SET_PROJECT", payload: makeProject() });
+    for (let d = 1; d <= 90; d++) {
+      stepped.dispatch(rotate(d));
+      stepped.tick(16);
+    }
+    const direct = harness();
+    direct.dispatch({ type: "SET_PROJECT", payload: makeProject() });
+    direct.dispatch(rotate(90));
+    expect(firstLine(stepped.view.project).syllableBoxes![0]).toBe(BOX);
+    expect(boxesInView(firstLine(stepped.view.project))).toEqual(boxesInView(firstLine(direct.view.project)));
+    const v = boxesInView(firstLine(stepped.view.project))[0]!;
+    expect(v.x).toBeCloseTo(0.5, 12);
+    expect(v.y).toBeCloseTo(0, 12);
+    expect(v.w).toBeCloseTo(0.5, 12);
+    expect(v.h).toBeCloseTo(0.25, 12);
   });
 });

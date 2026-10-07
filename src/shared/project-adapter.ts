@@ -14,6 +14,7 @@ import {
   type SourceOf,
 } from "./project-schema";
 import { IMAGE_ID_RE, MISSING_IMAGE_ID, imageEntryPath } from "./image-id";
+import { frameOf, hasAnyBox } from "./box-frame";
 
 export interface ResolvedImage {
   ref: ImageRef;
@@ -93,7 +94,12 @@ export async function dehydrateProject(
   const sources: SourceOf<ImageRef>[] = [];
   for (const s of project.sources) {
     const lines: LineOf<ImageRef>[] = [];
-    for (const l of s.lines) lines.push({ ...l, image: await toRef(l.image) });
+    for (const l of s.lines) {
+      const line: LineOf<ImageRef> = { ...l, image: await toRef(l.image) };
+      // Spec R1: a line with boxes always records the frame they are in.
+      if (hasAnyBox(l.syllableBoxes) && !l.boxFrame) line.boxFrame = frameOf(l.imageAdjustments);
+      lines.push(line);
+    }
     const cuts: Record<number, ImageRef | null> = {};
     for (const [key, c] of Object.entries(s.syllableCuts) as [string, InlineImage | null][]) {
       cuts[Number(key)] = c === null ? null : await toRef(c);
