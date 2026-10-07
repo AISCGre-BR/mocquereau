@@ -101,7 +101,7 @@ export function Welcome({ onNew, onOpen, onOpenRecent, onOpenExample }: WelcomeP
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         {latest ? (
-          <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-8 px-8 pt-14 pb-16">
+          <div className="mx-auto flex w-full max-w-[1080px] min-h-0 flex-1 flex-col gap-8 px-8 pt-14 pb-16">
             <div className="flex items-center gap-2.5">
               <h1 className="m-0 flex-1 font-serif text-wordmark font-semibold">Mocquereau</h1>
               <Button variant="elevated" icon={<FolderOpen aria-hidden="true" />} onClick={onOpen}>

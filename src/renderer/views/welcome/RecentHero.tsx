@@ -17,18 +17,18 @@ export function RecentHero({ entry, onContinue }: { entry: RecentEntry; onContin
   return (
     <section
       aria-label={title}
-      className="grid h-[380px] flex-none grid-cols-[minmax(0,1fr)_360px] overflow-hidden rounded-lg bg-surface shadow-[var(--elev-2),var(--highlight)]"
+      className="grid max-h-[380px] min-h-[240px] flex-1 grid-cols-[minmax(0,1fr)_360px] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-lg bg-surface shadow-[var(--elev-2),var(--highlight)]"
     >
       {meta?.thumb ? (
-        <img src={meta.thumb} alt="" className="block h-[380px] w-full object-cover" />
+        <img src={meta.thumb} alt="" className="block h-full w-full object-cover" />
       ) : (
-        <div className="h-[380px] bg-parchment-deep shadow-inset" />
+        <div className="h-full bg-parchment-deep shadow-inset" />
       )}
       <div className="flex min-w-0 flex-col gap-1.5 px-7 pt-7 pb-6">
         <h2 className="m-0 font-serif text-doc-title font-semibold">{title}</h2>
         {caption && <p className="m-0 text-caption text-ink-muted">{caption}</p>}
         {meta && meta.sources.length > 0 && (
-          <ul className="m-0 mt-6 flex list-none flex-col gap-3.5 p-0">
+          <ul className="m-0 mt-6 flex min-h-0 list-none flex-col gap-3.5 overflow-hidden p-0">
             {meta.sources.slice(0, MAX_SOURCES).map((s, i) => (
               <li key={i} className="flex flex-col gap-1.5">
                 <span className="truncate font-serif text-source font-medium">{s.siglum}</span>
