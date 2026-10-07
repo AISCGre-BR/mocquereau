@@ -8,7 +8,7 @@ import { registerAppStateHandlers } from './app-state';
 import { SessionStore } from './session-store';
 import { registerSessionImageHandlers } from './session-ipc';
 import { initMainI18n, setMainLanguage, t } from './i18n';
-import { SaveThenClose, closeChoiceFromResponse, createQuitGuard } from './close-coordinator';
+import { CloseFlow, SaveThenClose, closeChoiceFromResponse, createQuitGuard } from './close-coordinator';
 import { SaveQueue } from './save-queue';
 
 interface UserPrefs {
@@ -23,8 +23,8 @@ const userPrefs = new Conf<UserPrefs>({
 
 // Track dirty state for close confirmation. Set via IPC from renderer.
 let projectIsDirty = false;
-// User already confirmed discard? Skip the next close prompt to avoid loops.
-let bypassCloseConfirm = false;
+// Close/quit bookkeeping for the unsaved-changes prompt (N2).
+const closeFlow = new CloseFlow();
 
 // Working session (spec D2): images of the open document live on disk here.
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -42,10 +42,15 @@ let mainWindow: BrowserWindow | null = null;
 let closePromptOpen = false;
 
 // "Save" in the close dialog: close once the renderer-driven save succeeds.
-const saveThenClose = new SaveThenClose(() => {
-  bypassCloseConfirm = true;
-  mainWindow?.close();
-});
+const saveThenClose = new SaveThenClose(
+  () => {
+    closeFlow.allowNextClose();
+    mainWindow?.close();
+  },
+  5000,
+  undefined,
+  () => closeFlow.onCloseAborted(),
+);
 
 // Wave A2: the renderer does not listen to main-process commands yet, so we
 // reuse the Ctrl+S shortcut App.tsx already handles. Its project:save call
@@ -71,6 +76,8 @@ function createWindow(): void {
   mainWindow = win;
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
+    // N2: reset the one-shot bypass; finish a Cmd+Q the prompt was holding.
+    if (closeFlow.onClosed() === 'quit') app.quit();
   });
 
   // LPUI-01 fix: lock page zoom so Ctrl+wheel / trackpad pinch never zoom
@@ -83,7 +90,7 @@ function createWindow(): void {
 
   // Intercept close to prompt when there are unsaved changes (spec 6, wave A2 form).
   win.on('close', (e) => {
-    if (!projectIsDirty || bypassCloseConfirm) return;
+    if (!closeFlow.shouldPrompt(projectIsDirty)) return;
     e.preventDefault();
     if (closePromptOpen || saveThenClose.isArmed) return;
     closePromptOpen = true;
@@ -102,11 +109,13 @@ function createWindow(): void {
         closePromptOpen = false;
         const choice = closeChoiceFromResponse(response);
         if (choice === 'discard') {
-          bypassCloseConfirm = true;
+          closeFlow.allowNextClose();
           win.close();
         } else if (choice === 'save') {
           saveThenClose.arm();
           requestRendererSave(win);
+        } else {
+          closeFlow.onCloseAborted();
         }
       });
   });
@@ -185,6 +194,9 @@ app.on(
     quit: () => app.quit(),
   }),
 );
+
+// N2: remember that the user asked to quit (Cmd+Q) while the close prompt holds it.
+app.on('before-quit', () => closeFlow.onBeforeQuit());
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

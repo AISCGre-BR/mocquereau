@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SaveThenClose, closeChoiceFromResponse, createQuitGuard, type TimerApi } from "./close-coordinator";
+import { CloseFlow, SaveThenClose, closeChoiceFromResponse, createQuitGuard, type TimerApi } from "./close-coordinator";
 
 function manualTimers() {
   const pending = new Map<number, () => void>();
@@ -169,3 +169,50 @@ describe("createQuitGuard", () => {
   });
 });
 
+
+describe("CloseFlow (N2: macOS close/quit bookkeeping)", () => {
+  it("lets exactly one close through after Discard/Save, then prompts again", () => {
+    const f = new CloseFlow();
+    expect(f.shouldPrompt(true)).toBe(true);
+    f.allowNextClose();
+    expect(f.shouldPrompt(true)).toBe(false);
+    f.onClosed(); // window really closed (macOS keeps the app alive)
+    expect(f.shouldPrompt(true)).toBe(true);
+  });
+
+  it("resets the bypass when the close is cancelled or the save fails", () => {
+    const f = new CloseFlow();
+    f.allowNextClose();
+    f.onCloseAborted();
+    expect(f.shouldPrompt(true)).toBe(true);
+  });
+
+  it("never prompts for a clean project", () => {
+    expect(new CloseFlow().shouldPrompt(false)).toBe(false);
+  });
+
+  it("Cmd+Q -> prompt -> Save: quits once the window has closed after saving", () => {
+    const f = new CloseFlow();
+    f.onBeforeQuit();
+    expect(f.shouldPrompt(true)).toBe(true); // the quit is held by the prompt
+    f.allowNextClose(); // save succeeded
+    expect(f.shouldPrompt(true)).toBe(false);
+    expect(f.onClosed()).toBe("quit");
+  });
+
+  it("Cmd+Q -> prompt -> Cancel: a later window close does not quit", () => {
+    const f = new CloseFlow();
+    f.onBeforeQuit();
+    expect(f.shouldPrompt(true)).toBe(true);
+    f.onCloseAborted();
+    f.allowNextClose();
+    expect(f.onClosed()).toBe("stay");
+  });
+
+  it("a plain window close (no quit requested) keeps the app running", () => {
+    const f = new CloseFlow();
+    expect(f.shouldPrompt(true)).toBe(true);
+    f.allowNextClose();
+    expect(f.onClosed()).toBe("stay");
+  });
+});

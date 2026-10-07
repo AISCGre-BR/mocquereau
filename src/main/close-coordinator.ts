@@ -117,3 +117,50 @@ export function createQuitGuard(deps: {
     deps.dispose();
   };
 }
+
+/**
+ * N2: close/quit bookkeeping around the unsaved-changes prompt.
+ * - After Discard or a successful Save exactly one close goes through; the
+ *   bypass is reset when the window has closed (macOS keeps the app, and a
+ *   new window must prompt again) or when the close is cancelled/fails.
+ * - Cmd+Q (before-quit) on a dirty project is held by the prompt; if the
+ *   user then saves or discards, quit once the window has closed, instead of
+ *   leaving a windowless app running on macOS.
+ */
+export class CloseFlow {
+  private bypass = false;
+  private quitRequested = false;
+  private quitDeferred = false;
+
+  onBeforeQuit(): void {
+    this.quitRequested = true;
+  }
+
+  /** Called from the window "close" event: true means preventDefault and prompt. */
+  shouldPrompt(dirty: boolean): boolean {
+    if (!dirty || this.bypass) return false;
+    if (this.quitRequested) this.quitDeferred = true;
+    return true;
+  }
+
+  /** Discard chosen, or the prompt's save succeeded: let the next close through. */
+  allowNextClose(): void {
+    this.bypass = true;
+  }
+
+  /** Prompt cancelled, save failed/cancelled, or it never started. */
+  onCloseAborted(): void {
+    this.bypass = false;
+    this.quitRequested = false;
+    this.quitDeferred = false;
+  }
+
+  /** Window "closed": "quit" when a held Cmd+Q should now proceed. */
+  onClosed(): "quit" | "stay" {
+    const result = this.quitDeferred ? "quit" : "stay";
+    this.bypass = false;
+    this.quitRequested = false;
+    this.quitDeferred = false;
+    return result;
+  }
+}
