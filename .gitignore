@@ -14,3 +14,4 @@ complemento.md
 
 # Capturas do visual-check
 scripts/visual-check/out/
+scripts/.build-example.tmp.mjs
