@@ -1,6 +1,6 @@
 // src/renderer/lib/models.ts
 
-import type { BoxFrame } from "@shared/project-schema";
+import type { BoxFrame, ImageBytesPayload, ImageRef } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
 export interface StoredImage {
@@ -240,6 +240,10 @@ export interface MocquereauAPI {
   exportDocx: (project: MocquereauProject) => Promise<{ filePath: string } | null>;
 
   // Imagens
+  /** Stores bytes in the main-process session (wave A2: no UI consumer yet). */
+  putImage: (bytes: ArrayBuffer, mimeType: string) => Promise<ImageRef>;
+  /** Reads session images by id (wave A2: used only by ImageStore). */
+  getImages: (imageIds: string[]) => Promise<ImageBytesPayload[]>;
   fetchIiifImage: (url: string) => Promise<{ dataUrl: string; width: number; height: number } | null>;
   readClipboardImage: () => Promise<{ dataUrl: string; width: number; height: number } | null>;
   openImageFile: () => Promise<{ dataUrl: string; width: number; height: number } | null>;

@@ -5,6 +5,8 @@ import { registerProjectHandlers } from './project-io';
 import { registerImageHandlers } from './iiif-fetch';
 import { registerDocxExportHandler } from './docx-export';
 import { registerAppStateHandlers } from './app-state';
+import { SessionStore } from './session-store';
+import { registerSessionImageHandlers } from './session-ipc';
 
 interface UserPrefs {
   language: string;
@@ -20,6 +22,15 @@ const userPrefs = new Conf<UserPrefs>({
 let projectIsDirty = false;
 // User already confirmed discard? Skip the next close prompt to avoid loops.
 let bypassCloseConfirm = false;
+
+// Working session (spec D2): images of the open document live on disk here.
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+let session: SessionStore | null = null;
+
+function getSession(): SessionStore {
+  if (!session) throw new Error('working session not initialised');
+  return session;
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -101,13 +112,23 @@ function registerSystemHandlers(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const sessionsRoot = join(app.getPath('userData'), 'sessions');
+  await SessionStore.sweepStale(sessionsRoot, SESSION_MAX_AGE_MS);
+  session = await SessionStore.create(sessionsRoot);
+
   registerProjectHandlers();
   registerDocxExportHandler();
   registerImageHandlers();
+  registerSessionImageHandlers(getSession);
   registerSystemHandlers();
   registerAppStateHandlers();
   createWindow();
+});
+
+app.on('will-quit', () => {
+  session?.disposeSync();
+  session = null;
 });
 
 app.on("window-all-closed", () => {

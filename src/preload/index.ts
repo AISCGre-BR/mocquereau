@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld("mocquereau", {
     ipcRenderer.invoke("export:docx", project),
 
   // Imagens
+  putImage: (bytes: ArrayBuffer, mimeType: string) =>
+    ipcRenderer.invoke("images:put", { bytes, mimeType }),
+
+  getImages: (imageIds: string[]) =>
+    ipcRenderer.invoke("images:get", imageIds),
+
   fetchIiifImage: (url: string) =>
     ipcRenderer.invoke("image:fetch-iiif", url),
 
