@@ -79,7 +79,7 @@ function hyphenatedToWords(text: string): SyllabifiedWord[] {
 }
 
 export function ProjectSetup() {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, pending: pendingEdits } = useProject();
   const { t } = useTranslation();
 
   // ── Local state ────────────────────────────────────────────────────────────
@@ -297,7 +297,10 @@ export function ProjectSetup() {
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  pendingEdits?.markPending();
+                  setTitle(e.target.value);
+                }}
                 placeholder={t('projectSetup.projectTitlePlaceholder')}
                 className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               />
@@ -309,7 +312,10 @@ export function ProjectSetup() {
               <input
                 type="text"
                 value={author}
-                onChange={(e) => setAuthor(e.target.value)}
+                onChange={(e) => {
+                  pendingEdits?.markPending();
+                  setAuthor(e.target.value);
+                }}
                 placeholder={t('projectSetup.authorPlaceholder')}
                 className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
               />
@@ -334,6 +340,7 @@ export function ProjectSetup() {
             value={rawText}
             onChange={(e) => {
               userEdited.current = true;
+              pendingEdits?.markPending();
               setRawText(e.target.value);
             }}
             placeholder={t('projectSetup.liturgicalTextPlaceholder')}

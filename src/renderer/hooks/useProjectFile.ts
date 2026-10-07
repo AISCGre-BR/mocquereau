@@ -181,9 +181,11 @@ export function useProjectFile(options: { onOpened?: () => void } = {}): Project
   }, [state.isDirty, state.project, state.currentFilePath, writeProject]);
 
   // Estado sujo no main, para a confirmação ao fechar a janela.
+  // Encerra o ciclo de markPending: a partir daqui o estado do projeto manda.
   useEffect(() => {
+    pending?.settle();
     void window.mocquereau.setDirty(state.isDirty && state.project !== null);
-  }, [state.isDirty, state.project]);
+  }, [state.isDirty, state.project, pending]);
 
   return { newProject, open, openRecent, save, saveAs, close, importGueranger, projectEpoch };
 }

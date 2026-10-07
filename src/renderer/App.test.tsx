@@ -196,4 +196,41 @@ describe("App", () => {
     unmount();
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
+
+  it("título digitado: o main sabe que há alterações antes dos 300 ms do debounce", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    await wait(50);
+    const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
+    setDirty.mockClear();
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
+    expect(setDirty).toHaveBeenLastCalledWith(true);
+  });
+
+  it("texto litúrgico digitado: o main sabe que há alterações antes dos 300 ms", async () => {
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    const raw = await screen.findByDisplayValue("Puer natus est");
+    await wait(50);
+    const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
+    setDirty.mockClear();
+    fireEvent.change(raw, { target: { value: "Puer natus est nobis" } });
+    expect(setDirty).toHaveBeenLastCalledWith(true);
+  });
+
+  it("caixa movida no Recortes: o main sabe que há alterações antes dos 300 ms", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("3");
+    await wait(50);
+    const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
+    setDirty.mockClear();
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(setDirty).toHaveBeenLastCalledWith(true);
+  });
 });
+

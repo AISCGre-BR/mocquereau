@@ -49,4 +49,18 @@ describe("pendingEdits", () => {
     expect(flush).not.toHaveBeenCalled();
     expect(pending.flushAll()).toBe(false); // e saiu do registro
   });
+
+  it("markPending avisa o main (setDirty(true)) uma vez por ciclo; settle reabre o ciclo", () => {
+    const setDirty = vi.fn().mockResolvedValue(undefined);
+    window.mocquereau = { setDirty } as unknown as typeof window.mocquereau;
+    const pending = createPendingEdits();
+    pending.markPending();
+    pending.markPending();
+    expect(setDirty).toHaveBeenCalledOnce();
+    expect(setDirty).toHaveBeenCalledWith(true);
+    pending.settle();
+    pending.markPending();
+    expect(setDirty).toHaveBeenCalledTimes(2);
+  });
 });
+

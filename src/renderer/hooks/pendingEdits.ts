@@ -9,6 +9,9 @@
 //   pendente e devolve true se despachou algo.
 // - flushAll(): grava todas as pendências (chamar dentro de flushSync para ler o
 //   estado já atualizado em seguida).
+// - markPending(): a vista armou um debounce. Avisa o main (setDirty(true)) na
+//   hora, uma vez por ciclo, para fechar a janela nesses 300 ms ainda perguntar.
+//   settle() encerra o ciclo; quem chama é o efeito que reporta o estado sujo real.
 // - epoch()/bump(): muda sempre que o documento sob as vistas é trocado (novo,
 //   aberto, fechado, desfeito). O flush ao desmontar é ignorado se a época mudou.
 //
@@ -21,6 +24,8 @@ export type PendingFlush = () => boolean;
 export interface PendingEdits {
   register(flush: PendingFlush): () => void;
   flushAll(): boolean;
+  markPending(): void;
+  settle(): void;
   epoch(): number;
   bump(): void;
 }
@@ -28,6 +33,7 @@ export interface PendingEdits {
 export function createPendingEdits(): PendingEdits {
   const flushes = new Set<PendingFlush>();
   let epoch = 0;
+  let marked = false;
   return {
     register(flush) {
       flushes.add(flush);
@@ -39,6 +45,14 @@ export function createPendingEdits(): PendingEdits {
       let any = false;
       for (const flush of [...flushes]) any = flush() || any;
       return any;
+    },
+    markPending() {
+      if (marked) return;
+      marked = true;
+      void window.mocquereau?.setDirty?.(true);
+    },
+    settle() {
+      marked = false;
     },
     epoch: () => epoch,
     bump() {

@@ -45,7 +45,7 @@ export function isOutsideEditorKeys(target: Element): boolean {
 }
 
 export function SliceEditor() {
-  const { state: globalState, dispatch: globalDispatch } = useProject();
+  const { state: globalState, dispatch: globalDispatch, pending } = useProject();
   const { t } = useTranslation();
   const [editorState, editorDispatch] = useReducer(editorReducer, initialEditorState);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
@@ -212,6 +212,7 @@ export function SliceEditor() {
       });
     };
     pendingBoxSync.current = sync;
+    pending?.markPending();
     const timer = setTimeout(sync, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
