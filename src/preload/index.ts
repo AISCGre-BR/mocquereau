@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld("mocquereau", {
   saveProject: (project: unknown, existingPath?: string) =>
     ipcRenderer.invoke("project:save", project, existingPath),
 
+  saveProjectAs: (project: unknown, currentPath?: string) =>
+    ipcRenderer.invoke("project:save-as", project, currentPath),
+
   setDirty: (isDirty: boolean) =>
     ipcRenderer.invoke("project:set-dirty", isDirty),
 

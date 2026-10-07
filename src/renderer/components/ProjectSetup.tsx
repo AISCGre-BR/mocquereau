@@ -254,7 +254,7 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     applyOpenedProject(result);
   }
 
-  function applyOpenedProject(result: { project: typeof state.project extends null ? never : NonNullable<typeof state.project>; filePath: string }) {
+  function applyOpenedProject(result: { project: typeof state.project extends null ? never : NonNullable<typeof state.project>; filePath: string | null }) {
     if (!result.project) return;
     dispatch({ type: 'SET_PROJECT', payload: result.project });
     dispatch({ type: 'SET_FILE_PATH', payload: result.filePath });
@@ -264,7 +264,8 @@ export function ProjectSetup({ onNext, canGoNext }: ScreenProps) {
     setTitle(result.project.meta.title);
     setAuthor(result.project.meta.author);
     setHasManualEdits(false);
-    window.mocquereau.addRecentFile(result.filePath).then(refreshRecents);
+    // The main process records opened files (legacy ones included) in the recent list.
+    refreshRecents();
   }
 
   async function handleOpenRecent(filePath: string) {

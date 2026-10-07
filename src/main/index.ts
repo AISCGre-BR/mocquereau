@@ -117,7 +117,11 @@ app.whenReady().then(async () => {
   await SessionStore.sweepStale(sessionsRoot, SESSION_MAX_AGE_MS);
   session = await SessionStore.create(sessionsRoot);
 
-  registerProjectHandlers();
+  registerProjectHandlers({
+    getStore: getSession,
+    onSaveStarted: () => undefined,
+    onSaveFinished: () => undefined,
+  });
   registerDocxExportHandler();
   registerImageHandlers();
   registerSessionImageHandlers(getSession);

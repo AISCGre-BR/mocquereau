@@ -224,8 +224,11 @@ export interface GuerangerExport {
 export interface MocquereauAPI {
   // Projeto
   saveProject: (project: MocquereauProject, existingPath?: string) => Promise<{ filePath: string } | null>;
+  /** Always shows the Save As dialog; the chosen name gets the .mocquereau extension. */
+  saveProjectAs: (project: MocquereauProject, currentPath?: string) => Promise<{ filePath: string } | null>;
   setDirty: (isDirty: boolean) => Promise<void>;
-  openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string } | null>;
+  /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
+  openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   // App state
   getRecentFiles: () => Promise<string[]>;
   addRecentFile: (filePath: string) => Promise<void>;
@@ -233,7 +236,8 @@ export interface MocquereauAPI {
   getTutorialSeen: () => Promise<boolean>;
   setTutorialSeen: (seen: boolean) => Promise<void>;
   getAppVersion: () => Promise<string>;
-  openProject: () => Promise<{ project: MocquereauProject; filePath: string } | null>;
+  /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
+  openProject: () => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
   importGueranger: () => Promise<GuerangerExport | null>;
 
   // Exportação
