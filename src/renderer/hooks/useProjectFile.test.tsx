@@ -17,10 +17,10 @@ afterEach(() => {
 });
 
 function Providers({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useProjectReducer();
+  const [state, dispatch, history] = useProjectReducer();
   return (
     <Toaster dismissLabel="Dispensar">
-      <ProjectContext.Provider value={{ state, dispatch }}>{children}</ProjectContext.Provider>
+      <ProjectContext.Provider value={{ state, dispatch, history }}>{children}</ProjectContext.Provider>
     </Toaster>
   );
 }
@@ -353,22 +353,19 @@ describe("useProjectFile: realinhamento de caixas em arquivo legado", () => {
     return renderHook(() => ({ file: useProjectFile({ loadRaster }), ctx: useProject() }), { wrapper: Providers });
   }
 
-  it("corrige o referencial em um passo desfazível, avisa com toast e marca editado", async () => {
+  it("corrige o referencial ao carregar: limpo, sem passo de histórico e sem toast", async () => {
     mockApi({ openProjectByPath: vi.fn().mockResolvedValue({ project: legacyProject(), filePath: null }) });
     const { result } = setupWith(async () => RASTER);
     await act(async () => {
       await result.current.file.openRecent("/gloria.mocquereau.json");
     });
-    await waitFor(() => expect(result.current.ctx.state.isDirty).toBe(true));
     const [rot, plain] = result.current.ctx.state.project!.sources[0].lines;
     expect(rot.boxFrame).toEqual(R0);
     expect(rot.imageAdjustments).toEqual(ADJ5);
     expect(plain.boxFrame).toBeUndefined();
-    const toast = screen.getByRole("status");
-    expect(toast.textContent).toContain("Caixas de 1 imagem(ns) realinhadas à rotação da imagem.");
-    act(() => screen.getByRole("button", { name: "Desfazer" }).click());
-    expect(result.current.ctx.state.project!.sources[0].lines[0].boxFrame).toEqual(R5);
     expect(result.current.ctx.state.isDirty).toBe(false);
+    expect(result.current.ctx.history?.canUndo).toBe(false);
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("arquivo .mocquereau (com caminho) não é reanalisado", async () => {
