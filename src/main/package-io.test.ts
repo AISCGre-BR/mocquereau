@@ -201,7 +201,7 @@ describe("readPackage — hostile or broken input", () => {
 
   it("reports newer schema versions with the creating app version", async () => {
     const path = join(dir, "new.mocquereau");
-    const newer = { ...JSON.parse(projectJson()), schemaVersion: 3, app: { name: "mocquereau", version: "9.9.9" } };
+    const newer = { ...JSON.parse(projectJson()), schemaVersion: 4, app: { name: "mocquereau", version: "9.9.9" } };
     await writeZip(path, [MIMETYPE, { name: "project.json", data: JSON.stringify(newer) }]);
     const err = await readPackage(path).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PackageError);

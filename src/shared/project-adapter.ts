@@ -11,9 +11,11 @@ import {
   type PackagedImageMeta,
   type ProjectFileV2,
   type SessionProject,
+  type SourceClasses,
   type SourceOf,
 } from "./project-schema";
 import { IMAGE_ID_RE, MISSING_IMAGE_ID, imageEntryPath } from "./image-id";
+import { cloneClassification } from "./classification";
 import { frameOf, hasAnyBox } from "./box-frame";
 
 export interface ResolvedImage {
@@ -55,9 +57,10 @@ export function hydrateProject(
       words: file.text.words.map((w) => ({ original: w.original, syllables: [...w.syllables] })),
     },
     sections: file.sections.map((s) => ({ ...s, wordRange: [s.wordRange[0], s.wordRange[1]] })),
+    classification: cloneClassification(file.classification),
     sources: file.sources.map((s) => ({
       ...s,
-      metadata: { ...s.metadata },
+      metadata: { ...s.metadata, classes: [...s.metadata.classes] as SourceClasses },
       lines: s.lines.map((l) => ({ ...l, image: inline(l.image) })),
       syllableCuts: mapCuts(s.syllableCuts, inline),
     })),
@@ -115,6 +118,7 @@ export async function dehydrateProject(
       meta: { ...project.meta },
       text: project.text,
       sections: project.sections,
+      classification: project.classification,
       images,
       sources,
     },

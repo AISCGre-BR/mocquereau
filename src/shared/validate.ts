@@ -1,6 +1,6 @@
 // src/shared/validate.ts
 //
-// Hand-written validator for schemaVersion 2 project.json (no new dependency).
+// Hand-written validator for schemaVersion 3 project.json (no new dependency).
 // Structural problems are errors (the file is refused); recoverable problems
 // in optional fields become defaults plus a warning. Never mutates its input.
 import {
@@ -10,10 +10,12 @@ import {
   type ImageAdjustments,
   type ImageRef,
   type LineOf,
-  type Notation,
+  type Classification,
+  type ClassLevel,
   type PackagedImageMeta,
   type ProjectFileV2,
   type SectionData,
+  type SourceClasses,
   type SourceMetadata,
   type SourceOf,
   type SyllabifiedWordData,
@@ -21,6 +23,7 @@ import {
 } from "./project-schema";
 import { IMAGE_ENTRY_RE, IMAGE_ID_RE } from "./image-id";
 import { frameOf, hasAnyBox } from "./box-frame";
+import { SUGGESTED_CLASSIFICATION, cloneClassification } from "./classification";
 
 export type ValidationResult =
   | { ok: true; project: ProjectFileV2; warnings: string[] }
@@ -33,7 +36,6 @@ const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFin
 const isStr = (v: unknown): v is string => typeof v === "string";
 
 const HYPHENATION_MODES: readonly string[] = ["sung", "liturgical-typographic", "classical", "modern", "manual"];
-const NOTATIONS: readonly string[] = ["adiastematic", "diastematic", "square", "modern", "other"];
 const NUMERIC_KEY = /^\d+$/;
 
 interface Ctx {
@@ -172,7 +174,40 @@ function line(v: unknown, path: string, ctx: Ctx): LineOf<ImageRef> | null {
   return out;
 }
 
-function source(v: unknown, index: number, ctx: Ctx): SourceOf<ImageRef> | null {
+function readLevel(v: unknown): ClassLevel | null {
+  if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !Array.isArray(v.values)) return null;
+  const values: ClassLevel["values"] = [];
+  for (const x of v.values) {
+    if (!isObj(x) || !isStr(x.id) || !isStr(x.name)) return null;
+    values.push({ id: x.id, name: x.name });
+  }
+  return { id: v.id, name: v.name, values };
+}
+
+/** Strict reader for a Classification (three levels); null when invalid. */
+export function readClassification(v: unknown): Classification | null {
+  if (!Array.isArray(v) || v.length !== 3) return null;
+  const levels = v.map(readLevel);
+  if (levels.some((l) => l === null)) return null;
+  return levels as Classification;
+}
+
+function classes(v: unknown, known: Set<string>[], path: string, ctx: Ctx): SourceClasses {
+  const out: SourceClasses = [null, null, null];
+  if (!Array.isArray(v)) {
+    ctx.warnings.push(`${path}: missing, using none`);
+    return out;
+  }
+  for (let i = 0; i < 3; i++) {
+    const id = v[i];
+    if (id === null || id === undefined) continue;
+    if (isStr(id) && known[i].has(id)) out[i] = id;
+    else ctx.warnings.push(`${path}[${i}]: unknown class ${String(id)}, cleared`);
+  }
+  return out;
+}
+
+function source(v: unknown, index: number, known: Set<string>[], ctx: Ctx): SourceOf<ImageRef> | null {
   const path = `sources[${index}]`;
   if (!isObj(v) || !isStr(v.id)) {
     ctx.errors.push(`${path}: source without id`);
@@ -181,18 +216,14 @@ function source(v: unknown, index: number, ctx: Ctx): SourceOf<ImageRef> | null 
   let m: Obj = {};
   if (isObj(v.metadata)) m = v.metadata;
   else ctx.warnings.push(`${path}.metadata: missing`);
-  let notation: Notation = "other";
-  if (isStr(m.notation) && NOTATIONS.includes(m.notation)) notation = m.notation as Notation;
-  else ctx.warnings.push(`${path}.metadata.notation: invalid, using "other"`);
   const metadata: SourceMetadata = {
     siglum: text(m.siglum, `${path}.metadata.siglum`, ctx),
     library: text(m.library, `${path}.metadata.library`, ctx),
     city: text(m.city, `${path}.metadata.city`, ctx),
     century: text(m.century, `${path}.metadata.century`, ctx),
-    folio: text(m.folio, `${path}.metadata.folio`, ctx),
-    notation,
+    classes: classes(m.classes, known, `${path}.metadata.classes`, ctx),
   };
-  for (const key of ["cantusId", "sourceUrl", "iiifManifest"] as const) {
+  for (const key of ["cantusId", "sourceUrl", "iiifManifest", "folioHint"] as const) {
     const value = optText(m[key], `${path}.metadata.${key}`, ctx);
     if (value !== undefined) metadata[key] = value;
   }
@@ -296,12 +327,27 @@ export function validateProject(json: unknown): ValidationResult {
     ctx.warnings.push("images: expected object, using {}");
   }
 
+  let classification: Classification;
+  if (json.classification === undefined) {
+    ctx.warnings.push("classification: missing, using suggested");
+    classification = cloneClassification(SUGGESTED_CLASSIFICATION);
+  } else {
+    const read = readClassification(json.classification);
+    if (read) {
+      classification = read;
+    } else {
+      ctx.warnings.push("classification: invalid, using suggested");
+      classification = cloneClassification(SUGGESTED_CLASSIFICATION);
+    }
+  }
+  const known = classification.map((l) => new Set(l.values.map((x) => x.id)));
+
   const sources: SourceOf<ImageRef>[] = [];
   if (!Array.isArray(json.sources)) {
     ctx.errors.push("sources: missing");
   } else {
     json.sources.forEach((s, i) => {
-      const parsed = source(s, i, ctx);
+      const parsed = source(s, i, known, ctx);
       if (parsed) sources.push(parsed);
     });
   }
@@ -316,6 +362,7 @@ export function validateProject(json: unknown): ValidationResult {
       meta,
       text: { raw, words, hyphenationMode },
       sections,
+      classification,
       images,
       sources,
     },
