@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
-import "../i18n";
+import i18n from "../i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Welcome, displayName } from "./Welcome";
 import type { MocquereauAPI } from "../lib/models";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
+  await i18n.changeLanguage("pt-BR");
 });
 
 function mockApi(recent: string[]) {
@@ -66,5 +67,35 @@ describe("Welcome", () => {
     expect(displayName("/x/Puer natus est.mocquereau.json")).toBe("Puer natus est");
     expect(displayName("C:\\x\\Gloria IV.mocquereau")).toBe("Gloria IV");
     expect(displayName("outro.json")).toBe("outro.json");
+  });
+
+  it("seletor de idioma no canto: globo + endônimo atual, troca o idioma antes de abrir projeto", async () => {
+    mockApi([]);
+    render(<Welcome onNew={vi.fn()} onOpen={vi.fn()} onOpenRecent={vi.fn()} />);
+    const picker = await screen.findByRole("button", { name: "Idioma / Language: Português" });
+    expect(picker.textContent).toContain("Português");
+    expect(picker.getAttribute("aria-haspopup")).toBe("menu");
+    fireEvent.click(picker);
+    const menu = screen.getByRole("menu", { name: "Idioma / Language" });
+    const options = Array.from(menu.querySelectorAll('[role="menuitemcheckbox"]')).map((el) => el.textContent);
+    expect(options).toEqual(["Português", "English", "Italiano", "Español", "Deutsch", "Polski", "日本語"]);
+    expect(screen.getByRole("menuitemcheckbox", { name: "Português" }).getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "日本語" }));
+    });
+    expect(i18n.language).toBe("ja");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByRole("button", { name: "言語 / Language: 日本語" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "新規プロジェクト" })).toBeTruthy();
+  });
+
+  it("Esc fecha o seletor de idioma e devolve o foco ao botão", async () => {
+    mockApi([]);
+    render(<Welcome onNew={vi.fn()} onOpen={vi.fn()} onOpenRecent={vi.fn()} />);
+    const picker = await screen.findByRole("button", { name: /Language/ });
+    fireEvent.click(picker);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(picker);
   });
 });
