@@ -1,6 +1,6 @@
 // src/renderer/lib/tableUtils.ts
 
-import type { ManuscriptSource, SyllableBox, StoredImage, SyllabifiedWord } from './models';
+import type { ManuscriptLine, ManuscriptSource, SyllableBox, StoredImage, SyllabifiedWord } from './models';
 import { boxesInView } from '@shared/box-frame';
 
 // ── Cell state ───────────────────────────────────────────────────────────────
@@ -77,4 +77,22 @@ export function isWordBoundary(
     if (cursor > syllableIdx) break;
   }
   return false;
+}
+
+/** Fólio da primeira página que tenha um (ou "" se nenhuma tiver). */
+export function firstFolio(s: ManuscriptSource): string {
+  return s.lines.find((l) => l.folio?.trim())?.folio?.trim() ?? "";
+}
+
+/**
+ * Appends a new line to the source. A pending `folioHint` (carried from an
+ * import) becomes the folio of the new line when it has none, and is dropped
+ * from the metadata in the same update.
+ */
+export function appendLineConsumingFolioHint(source: ManuscriptSource, line: ManuscriptLine): ManuscriptSource {
+  const hint = source.metadata.folioHint;
+  if (!hint) return { ...source, lines: [...source.lines, line] };
+  const { folioHint: _consumed, ...metadata } = source.metadata;
+  const placed = line.folio?.trim() ? line : { ...line, folio: hint };
+  return { ...source, metadata, lines: [...source.lines, placed] };
 }

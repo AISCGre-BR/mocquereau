@@ -19,7 +19,7 @@ function exportable(): MocquereauProject {
       {
         id: "s",
         order: 1,
-        metadata: { siglum: "A", library: "", city: "", century: "", folio: "", notation: "adiastematic" },
+        metadata: { siglum: "A", library: "", city: "", century: "", classes: [null, null, null] },
         lines: [
           {
             id: "l",

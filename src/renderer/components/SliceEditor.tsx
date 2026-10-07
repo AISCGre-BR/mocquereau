@@ -16,6 +16,7 @@ import { RealignBoxesDialog } from './slice-editor/RealignBoxesDialog';
 import { usePendingFlush } from '../hooks/pendingEdits';
 import type { ManuscriptSource, ManuscriptLine, StoredImage, ImageAdjustments } from '../lib/models';
 import { useTranslation } from 'react-i18next';
+import { appendLineConsumingFolioHint } from '../lib/tableUtils';
 
 // ── Helper: computeCoveredSyllables ─────────────────────────────────────────
 
@@ -275,10 +276,7 @@ export function SliceEditor() {
     };
 
     // Append new line — do NOT replace lines[0]
-    const updatedSource: ManuscriptSource = {
-      ...source,
-      lines: [...source.lines, newLine],
-    };
+    const updatedSource = appendLineConsumingFolioHint(source, newLine);
     globalDispatch({ type: 'UPDATE_SOURCE', payload: updatedSource });
 
     const covered = computeCoveredSyllables(updatedSource, newLine.id);

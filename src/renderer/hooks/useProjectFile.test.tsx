@@ -338,7 +338,7 @@ describe("useProjectFile: realinhamento de caixas em arquivo legado", () => {
       {
         id: "S",
         order: 1,
-        metadata: { siglum: "X", library: "", city: "", century: "", folio: "", notation: "square" },
+        metadata: { siglum: "X", library: "", city: "", century: "", classes: [null, null, null] },
         lines: [
           line("rot", { imageAdjustments: ADJ5, boxFrame: R5, syllableBoxes: boxesIn(R0, RASTER, BLOBS) }),
           line("plain", { syllableBoxes: boxesIn(R0, RASTER, BLOBS) }),

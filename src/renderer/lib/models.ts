@@ -1,6 +1,6 @@
 // src/renderer/lib/models.ts
 
-import type { BoxFrame, ImageBytesPayload, ImageRef } from "@shared/project-schema";
+import type { BoxFrame, Classification, ImageBytesPayload, ImageRef, SourceMetadata } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
 export interface StoredImage {
@@ -115,7 +115,7 @@ export interface ManuscriptLine {
    */
   syllableBoxes?: Record<number, SyllableBox | null>;
 
-  /** Fólio específico desta imagem (ex: "12r", "15v"). Default: herda source.metadata.folio. */
+  /** Fólio desta página (ex.: 12r) */
   folio?: string;
 
   /** Label livre para identificação da imagem (ex: "início", "variante"). Opcional. */
@@ -145,17 +145,7 @@ export interface ManuscriptSource {
   order: number;
 
   /** Metadados do manuscrito */
-  metadata: {
-    siglum: string;
-    library: string;
-    city: string;
-    century: string;
-    folio: string;
-    cantusId?: string;
-    sourceUrl?: string;
-    iiifManifest?: string;
-    notation: "adiastematic" | "diastematic" | "square" | "modern" | "other";
-  };
+  metadata: SourceMetadata;
 
   /**
    * Lista de imagens/linhas carregadas para esta fonte.
@@ -190,6 +180,9 @@ export interface MocquereauProject {
 
   /** Seções da peça */
   sections: Section[];
+
+  /** Taxonomia de classificação das fontes (três níveis) */
+  classification: Classification;
 
   /** Lista de fontes/manuscritos (linhas da tabela) */
   sources: ManuscriptSource[];

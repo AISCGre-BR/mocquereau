@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ManuscriptSource } from "../lib/models";
 import { useTranslation } from "react-i18next";
+import { useProject } from "../hooks/useProject";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -10,20 +11,12 @@ interface SourceModalProps {
   onClose: () => void;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const NOTATION_OPTIONS: { value: ManuscriptSource["metadata"]["notation"]; label: string }[] = [
-  { value: "adiastematic", label: "sourceModal.notation.adiastematic" },
-  { value: "diastematic", label: "sourceModal.notation.diastematic" },
-  { value: "square", label: "sourceModal.notation.square" },
-  { value: "modern", label: "sourceModal.notation.modern" },
-  { value: "other", label: "sourceModal.notation.other" },
-];
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
   const { t } = useTranslation();
+  const { state } = useProject();
+  const level1 = state.project?.classification[0] ?? { name: "", values: [] };
   const [draft, setDraft] = useState<ManuscriptSource["metadata"]>(() => ({
     ...source.metadata,
   }));
@@ -105,20 +98,6 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
             />
           </div>
 
-          {/* Fólio */}
-          <div>
-            <label className="block text-sm font-medium text-ink-soft mb-1">
-              {t("sourceModal.folio")}
-            </label>
-            <input
-              type="text"
-              value={draft.folio}
-              onChange={(e) => update({ folio: e.target.value })}
-              className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none"
-              placeholder={t("sourceModal.folioPlaceholder")}
-            />
-          </div>
-
           {/* Cantus ID */}
           <div>
             <label className="block text-sm font-medium text-ink-soft mb-1">
@@ -170,23 +149,22 @@ export function SourceModal({ source, onSave, onClose }: SourceModalProps) {
             </p>
           </div>
 
-          {/* Notação */}
+          {/* Classification level 1 */}
           <div>
             <label className="block text-sm font-medium text-ink-soft mb-1">
-              {t("sourceModal.notationLabel")}
+              {level1.name}
             </label>
             <select
-              value={draft.notation}
+              value={draft.classes[0] ?? ""}
               onChange={(e) =>
-                update({
-                  notation: e.target.value as ManuscriptSource["metadata"]["notation"],
-                })
+                update({ classes: [e.target.value || null, draft.classes[1], draft.classes[2]] })
               }
               className="w-full px-3 py-2 border border-rule rounded-lg text-sm focus:ring-2 focus:ring-focus focus:border-transparent outline-none bg-surface"
             >
-              {NOTATION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {t(opt.label)}
+              <option value="">—</option>
+              {level1.values.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
                 </option>
               ))}
             </select>

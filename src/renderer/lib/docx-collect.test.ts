@@ -1,6 +1,7 @@
 // src/renderer/lib/docx-collect.test.ts
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SUGGESTED_CLASSIFICATION } from '@shared/classification';
 import type { MocquereauProject, StoredImage, SyllableBox } from './models';
 
 // ── DOM mocks ────────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ function makeProject(overrides: Partial<MocquereauProject> = {}): MocquereauProj
       hyphenationMode: 'sung',
     },
     sections: [],
+    classification: SUGGESTED_CLASSIFICATION,
     sources: [],
     ...overrides,
   };
@@ -139,14 +141,14 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
           lines: [],
           syllableCuts: {},
         },
         {
           id: 's2',
           order: 1,
-          metadata: { siglum: 'B', library: 'Lib', city: 'Lyon', century: 'XIII', folio: '2v', notation: 'adiastematic' },
+          metadata: { siglum: 'B', library: 'Lib', city: 'Lyon', century: 'XIII', classes: [null, null, null] },
           lines: [],
           syllableCuts: {},
         },
@@ -164,7 +166,7 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
           lines: [],
           syllableCuts: {},
         },
@@ -182,7 +184,7 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
           lines: [],
           syllableCuts: {},
         },
@@ -202,7 +204,7 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
           lines: [
             {
               id: 'l1',
@@ -238,7 +240,7 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
           lines: [
             {
               id: 'l1',
@@ -272,8 +274,16 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'Ln', library: 'BnF', city: 'Paris', century: 'XII', folio: '45r', notation: 'adiastematic' },
-          lines: [],
+          metadata: { siglum: 'Ln', library: 'BnF', city: 'Paris', century: 'XII', classes: [null, null, null] },
+          lines: [{
+            id: 'l1',
+            image: { dataUrl: 'data:,', width: 1, height: 1, mimeType: 'image/png' },
+            syllableRange: { start: 0, end: 0 },
+            dividers: [],
+            gaps: [],
+            confirmed: false,
+            folio: ' 45r ',
+          }],
           syllableCuts: {},
         },
       ],
@@ -285,7 +295,7 @@ describe('collectDocxCrops', () => {
       city: 'Paris',
       century: 'XII',
       folio: '45r',
-      folios: [], // Phase 09 / SRC-06: empty because source has no lines with folio set
+      folios: [' 45r '], // per-page folios; folio is the first page's, trimmed
     });
   });
 
@@ -297,7 +307,7 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
           lines: [],
           syllableCuts: {},
         },
@@ -318,7 +328,7 @@ describe('collectDocxCrops', () => {
         {
           id: 's1',
           order: 0,
-          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+          metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
           lines: [], // no lines
           syllableCuts: {
             0: makeImage(), // Phase 4/5 fallback: pre-computed cut at idx 0
@@ -348,7 +358,7 @@ describe('collectDocxCrops', () => {
       {
         id: 's1',
         order: 0,
-        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
         lines: [{
           id: 'l1',
           image: makeImage(),
@@ -395,7 +405,7 @@ describe('collectDocxCrops', () => {
       {
         id: 's1',
         order: 0,
-        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
         lines: [{
           id: 'l1',
           image: makeImage(),
@@ -425,7 +435,7 @@ describe('collectDocxCrops', () => {
       {
         id: 's1',
         order: 0,
-        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
         lines: [],
         syllableCuts: {},
       },
@@ -446,7 +456,7 @@ describe('collectDocxCrops', () => {
       {
         id: 's1',
         order: 0,
-        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', folio: '1r', notation: 'adiastematic' },
+        metadata: { siglum: 'A', library: 'Lib', city: 'Paris', century: 'XII', classes: [null, null, null] },
         lines: [{
           id: 'l1',
           image: makeImage(),

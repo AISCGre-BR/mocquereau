@@ -3,7 +3,7 @@
 import { boxesInView } from '@shared/box-frame';
 import type { MocquereauProject, DocxExportPayload, DocxCellData } from './models';
 import { flattenSyllables, computeSyllableCuts } from './sliceUtils';
-import { isWordBoundary } from './tableUtils';
+import { firstFolio, isWordBoundary } from './tableUtils';
 
 /**
  * Converts a data URL (base64 PNG/JPEG) to an ArrayBuffer.
@@ -114,7 +114,7 @@ export async function collectDocxCrops(
           siglum: source.metadata.siglum,
           city: source.metadata.city,
           century: source.metadata.century,
-          folio: source.metadata.folio,
+          folio: firstFolio(source),
           folios: perImageFolios,
         },
         cells,
