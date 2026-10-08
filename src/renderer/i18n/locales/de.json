@@ -212,6 +212,7 @@
   "resizeImage.resize": "Verkleinern",
   "resizeImage.keep": "Original behalten",
   "resizeImage.cancel": "Abbrechen",
+  "resizeImage.error": "Das Bild konnte nicht verkleinert werden.",
   "shell.file.classification": "Klassifikation…",
   "sourceDialog.title": "Quelle",
   "sourceDialog.siglum": "Sigel",

@@ -212,6 +212,7 @@
   "resizeImage.resize": "縮小",
   "resizeImage.keep": "元のまま",
   "resizeImage.cancel": "キャンセル",
+  "resizeImage.error": "画像のサイズを変更できませんでした。",
   "shell.file.classification": "分類…",
   "sourceDialog.title": "資料",
   "sourceDialog.siglum": "略号",

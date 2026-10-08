@@ -8,6 +8,7 @@ import {
   createNewProject,
   useProjectReducer,
   type DocumentAction,
+  type HistoryApi,
   type ProjectState,
 } from "../../hooks/useProject";
 import { RecortesProvider, useRecortesContext, type RecortesContextValue } from "../../hooks/RecortesContext";
@@ -54,14 +55,19 @@ function projectWith(sources: ManuscriptSource[]): MocquereauProject {
 }
 
 function mount(project: MocquereauProject, onEditSource = vi.fn()) {
-  const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; recortes?: RecortesContextValue } = {};
+  const ref: {
+    state?: ProjectState;
+    dispatch?: React.Dispatch<DocumentAction>;
+    history?: HistoryApi;
+    recortes?: RecortesContextValue;
+  } = {};
   function Probe() {
     ref.recortes = useRecortesContext();
     return null;
   }
   function Harness() {
     const [state, dispatch, history] = useProjectReducer();
-    Object.assign(ref, { state, dispatch });
+    Object.assign(ref, { state, dispatch, history });
     if (!state.project) return null;
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
@@ -292,6 +298,40 @@ describe("SourceTree: menus", () => {
     await flush();
     expect(sources().map((s) => s.metadata.siglum)).toEqual(["A", "G1"]);
     expect(sources()[1].metadata.folioHint).toBe("3r");
+  });
+
+  it("várias fontes importadas de uma vez são um passo de desfazer", async () => {
+    vi.mocked(window.mocquereau.importGueranger).mockResolvedValue({
+      manuscripts: [
+        { siglum: "G1", library: "", city: "", century: "" },
+        { siglum: "G2", library: "", city: "", century: "" },
+      ],
+    } as never);
+    const { sources, ref } = mount(projectWith([mkSource("A", 1, null)]));
+    fireEvent.click(screen.getByRole("button", { name: "Mais opções de fonte" }));
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Importar do Gueranger…" }));
+    await flush();
+    expect(sources().map((s) => s.metadata.siglum)).toEqual(["A", "G1", "G2"]);
+    act(() => ref.history!.undo());
+    expect(sources().map((s) => s.metadata.siglum)).toEqual(["A"]);
+    expect(ref.history!.canUndo).toBe(false);
+  });
+});
+
+describe("SourceTree: acessibilidade", () => {
+  it("página sem fólio tem nome acessível 'Página n'; com fólio, o fólio", () => {
+    mount(projectWith([mkSource("A", 1, null, [mkLine("a1", { folio: "12r" }), mkLine("a2")])]));
+    act(() => fireEvent.keyDown(sourceItem("A"), { key: "ArrowRight" }));
+    expect(screen.getByRole("treeitem", { name: "12r" }).getAttribute("data-line-id")).toBe("a1");
+    expect(screen.getByRole("treeitem", { name: "Página 2" }).getAttribute("data-line-id")).toBe("a2");
+  });
+
+  it("o grupo de páginas pertence ao item da fonte (aria-owns)", () => {
+    mount(projectWith([mkSource("A", 1, null, [mkLine("a1")])]));
+    act(() => fireEvent.keyDown(sourceItem("A"), { key: "ArrowRight" }));
+    const group = screen.getByRole("group");
+    expect(group.id).not.toBe("");
+    expect(sourceItem("A").getAttribute("aria-owns")).toBe(group.id);
   });
 });
 

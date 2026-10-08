@@ -212,6 +212,7 @@
   "resizeImage.resize": "Resize",
   "resizeImage.keep": "Keep original",
   "resizeImage.cancel": "Cancel",
+  "resizeImage.error": "Could not resize the image.",
   "shell.file.classification": "Classification…",
   "sourceDialog.title": "Source",
   "sourceDialog.siglum": "Siglum",

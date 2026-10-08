@@ -212,6 +212,7 @@
   "resizeImage.resize": "Redimensionar",
   "resizeImage.keep": "Manter original",
   "resizeImage.cancel": "Cancelar",
+  "resizeImage.error": "Não foi possível redimensionar a imagem.",
   "shell.file.classification": "Classificação…",
   "sourceDialog.title": "Fonte",
   "sourceDialog.siglum": "Sigla",

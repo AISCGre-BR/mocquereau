@@ -164,7 +164,12 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
     const result = await window.mocquereau.importGueranger();
     if (!result) return;
     const count = project!.sources.length;
-    result.manuscripts.forEach((gm, i) => dispatch({ type: "ADD_SOURCE", payload: guerangerToSource(gm, count + i + 1) }));
+    // Sources (not the text, which Arquivo > Importar do Gueranger brings):
+    // every manuscript of one import is one undo step.
+    const coalesceKey = `IMPORT_GUERANGER:${crypto.randomUUID()}`;
+    result.manuscripts.forEach((gm, i) =>
+      dispatch({ type: "ADD_SOURCE", payload: guerangerToSource(gm, count + i + 1), meta: { coalesceKey } }),
+    );
   }
 
   function saveFolio() {
@@ -252,6 +257,7 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
     const progress = sourceProgress(source, total);
     const done = Math.round(progress * total);
     const cap = caption(source);
+    const groupId = `source-pages-${source.id}`;
     return (
       <div
         key={source.id}
@@ -272,6 +278,8 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
           data-source-id={source.id}
           aria-level={1}
           aria-expanded={open}
+          // The pages group is a DOM sibling (the drop target wraps both): owned here.
+          aria-owns={open ? groupId : undefined}
           aria-selected={active}
           className="flex cursor-default items-start gap-1.5 rounded-md pt-1.5 pr-3 pb-2 pl-2 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
           onClick={() => select(item)}
@@ -300,8 +308,8 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
           </div>
         </div>
         {open && (
-          <div role="group">
-            {source.lines.map((line) => {
+          <div role="group" id={groupId}>
+            {source.lines.map((line, n) => {
               const pageItem: Item = { key: pageKey(line.id), kind: "page", sourceId: source.id, lineId: line.id };
               const current = active && line.id === recortes.activeLineId;
               return (
@@ -311,6 +319,7 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
                   data-line-id={line.id}
                   aria-level={2}
                   aria-selected={current}
+                  aria-label={line.folio?.trim() ? line.folio : `${t("sourceTree.page")} ${n + 1}`}
                   className={[
                     "mr-2 mb-0.5 ml-[30px] flex cursor-default items-center gap-2.5 rounded-md px-2 py-[5px] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
                     current ? "bg-rubric-wash" : "hover:bg-ink-wash",

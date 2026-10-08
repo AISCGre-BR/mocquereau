@@ -2,10 +2,12 @@
 //
 // One path for every way a page enters a source (button, Ctrl+V, dropped file):
 // images wider than 2000 px ask first whether to resize, the folio hint of an
-// import is consumed, and the range continues after the last confirmed page.
+// import is consumed, and the range starts after the source's highest boxed syllable.
 
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useProject } from "../../hooks/useProject";
+import { useOptionalToast } from "../../ui/Toast";
 import { fileToDataUrl, resizeImageIfNeeded } from "../../lib/image-utils";
 import { appendLineConsumingFolioHint } from "../../lib/tableUtils";
 import { suggestRangeForNewPage } from "../../lib/sources";
@@ -32,6 +34,8 @@ function mimeOf(raw: RawImage): string {
 
 export function useAddPage(onAdded: (sourceId: string, lineId: string) => void): AddPage {
   const { state, dispatch } = useProject();
+  const { t } = useTranslation();
+  const toast = useOptionalToast();
   // Reads after an await see the project as it is then, not as it was on click.
   const projectRef = useRef(state.project);
   projectRef.current = state.project;
@@ -78,7 +82,17 @@ export function useAddPage(onAdded: (sourceId: string, lineId: string) => void):
       if (!pending) return;
       setPending(null);
       if (answer === "cancel") return;
-      apply(pending.sourceId, answer === "resize" ? await resizeImageIfNeeded(pending.image, MAX_IMAGE_WIDTH) : pending.image);
+      let image = pending.image;
+      if (answer === "resize") {
+        try {
+          image = await resizeImageIfNeeded(pending.image, MAX_IMAGE_WIDTH);
+        } catch {
+          // No page is added; the candidate is already gone, so nothing is left pending.
+          toast?.show({ kind: "error", message: t("resizeImage.error") });
+          return;
+        }
+      }
+      apply(pending.sourceId, image);
     },
   };
 }
