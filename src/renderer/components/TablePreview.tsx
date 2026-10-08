@@ -45,7 +45,7 @@ function buildAccentedSet(words: SyllabifiedWord[]): Set<number> {
 
 // ── Props ────────────────────────────────────────────────────────────────────
 interface TablePreviewProps {
-  onNavigateToEditor?: (sourceId: string) => void;
+  onNavigateToEditor?: (sourceId: string, syllable: number) => void;
 }
 
 // ── Context menu state ────────────────────────────────────────────────────────
@@ -133,10 +133,15 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   const sources = [...project.sources].sort((a, b) => a.order - b.order);
 
   // ── Context menu handlers ────────────────────────────────────────────────────
-  const handleCellClick = useCallback((e: React.MouseEvent, sourceId: string, syllableIdx: number) => {
+  const handleCellClick = useCallback((e: React.MouseEvent, sourceId: string, syllableIdx: number, unfilled: boolean) => {
     e.stopPropagation();
+    // Célula vazia: nada a remover nem a marcar além de recortar; vai direto a Recortes.
+    if (unfilled) {
+      onNavigateToEditor?.(sourceId, syllableIdx);
+      return;
+    }
     setMenu({ x: e.clientX, y: e.clientY, sourceId, syllableIdx });
-  }, []);
+  }, [onNavigateToEditor]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -147,7 +152,7 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
 
   function handleEditInEditor() {
     if (!menu) return;
-    onNavigateToEditor?.(menu.sourceId);
+    onNavigateToEditor?.(menu.sourceId, menu.syllableIdx);
   }
 
   function handleRemoveCrop() {
@@ -374,7 +379,7 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                     isWordBoundary={wb}
                     colWidthPx={COL_WIDTH}
                     rowHeightPx={ROW_HEIGHT}
-                    onClick={e => handleCellClick(e, source.id, idx)}
+                    onClick={e => handleCellClick(e, source.id, idx, cellState.kind === 'unfilled')}
                     adjustments={adjustmentsForSyllable(idx)}
                   />
                 );

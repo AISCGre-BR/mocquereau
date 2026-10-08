@@ -53,7 +53,11 @@ export type ProjectAction =
   | { type: "SAVE_SUCCESS"; payload?: { project: MocquereauProject | null } }
   | { type: "ADD_SOURCE"; payload: ManuscriptSource }
   | { type: "REMOVE_SOURCE"; payload: string }          // source id
-  | { type: "UPDATE_SOURCE"; payload: ManuscriptSource }
+  /**
+   * Whole source. `field` names the field a live edit changed (Source dialog):
+   * typing in one field of one source coalesces into one undo step.
+   */
+  | { type: "UPDATE_SOURCE"; payload: ManuscriptSource; field?: string }
   | { type: "DUPLICATE_SOURCE"; payload: string }       // source id
   | { type: "REORDER_SOURCE"; payload: { id: string; direction: "up" | "down" } }
   | { type: "SET_FILE_PATH"; payload: string | null }
@@ -64,7 +68,8 @@ export type ProjectAction =
     }
   | {
       /**
-       * Boxes edited in the SliceEditor (autosave, confirm). syllableBoxes is the
+       * Boxes edited in Recortes, written at the end of each gesture (pointer up,
+       * Delete, arrow nudge). syllableBoxes is the
        * line's COMPLETE map in the frame the user currently sees (boxesInView):
        * the reducer stores it and sets boxFrame to the current adjustments.
        */
@@ -81,12 +86,30 @@ export type ProjectAction =
       };
     }
   | {
+      /**
+       * Syllable range of a page (range handles, Tab past the end). Normalized
+       * to start <= end inside the text; boxes and gaps outside the new range
+       * are kept and count again if the range grows back.
+       */
+      type: "SET_LINE_RANGE";
+      payload: { sourceId: string; lineId: string; range: { start: number; end: number } };
+    }
+  | { type: "SET_LINE_GAPS"; payload: { sourceId: string; lineId: string; gaps: number[] } }
+  | {
       type: "UPDATE_LINE_ADJUSTMENTS";
       payload: {
         sourceId: string;
         lineId: string;
         adjustments: Partial<ImageAdjustments>;
       };
+    }
+  | {
+      /**
+       * "Aplicar às outras páginas": every other page of the source takes the
+       * adjustments of `fromLineId`, as one undo step.
+       */
+      type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE";
+      payload: { sourceId: string; fromLineId: string };
     }
   | {
       /**
@@ -145,6 +168,73 @@ function isAllDefaultAdjustments(a: ImageAdjustments): boolean {
     a.flipH === false &&
     a.flipV === false
   );
+}
+
+/**
+ * The line with `partial` merged into its adjustments (rotation normalized;
+ * all-default drops the field). Spec R1 (S6/S7): boxes stay in the frame they
+ * were drawn in (line.boxFrame) and consumers read them through boxesInView, so
+ * a rotation is a plain adjustment update; a line with boxes but no boxFrame
+ * yet has them in the frame that was current until now: pin it.
+ */
+function withAdjustments(line: ManuscriptLine, partial: Partial<ImageAdjustments>): ManuscriptLine {
+  const current: ImageAdjustments = line.imageAdjustments ?? { ...ADJ_DEFAULT };
+  const mergedRaw: ImageAdjustments = { ...current, ...partial };
+  const merged: ImageAdjustments = { ...mergedRaw, rotation: normalizeRotation(mergedRaw.rotation) };
+  const pinFrame = hasAnyBox(line.syllableBoxes) && !line.boxFrame ? frameOf(current) : undefined;
+  let next: ManuscriptLine;
+  if (isAllDefaultAdjustments(merged)) {
+    const { imageAdjustments: _drop, ...rest } = line;
+    next = rest as ManuscriptLine;
+  } else {
+    next = { ...line, imageAdjustments: merged };
+  }
+  return pinFrame ? { ...next, boxFrame: pinFrame } : next;
+}
+
+/** Same effective adjustments (absent = all default; rotation normalized). */
+function sameAdjustments(a: ImageAdjustments | undefined, b: ImageAdjustments | undefined): boolean {
+  const x: ImageAdjustments = { ...ADJ_DEFAULT, ...a };
+  const y: ImageAdjustments = { ...ADJ_DEFAULT, ...b };
+  return (
+    x.brightness === y.brightness &&
+    x.contrast === y.contrast &&
+    x.saturation === y.saturation &&
+    x.grayscale === y.grayscale &&
+    x.invert === y.invert &&
+    normalizeRotation(x.rotation) === normalizeRotation(y.rotation) &&
+    x.flipH === y.flipH &&
+    x.flipV === y.flipV
+  );
+}
+
+// ── Line helpers ─────────────────────────────────────────────────────────────
+
+/** Replaces one line through `update`; returns the same state when nothing changed. */
+function updateLine(
+  state: ProjectState,
+  sourceId: string,
+  lineId: string,
+  update: (line: ManuscriptLine) => ManuscriptLine,
+): ProjectState {
+  if (!state.project) return state;
+  let changed = false;
+  const sources = state.project.sources.map((s) => {
+    if (s.id !== sourceId) return s;
+    const lines = s.lines.map((l) => {
+      if (l.id !== lineId) return l;
+      const next = update(l);
+      if (next !== l) changed = true;
+      return next;
+    });
+    return changed ? { ...s, lines } : s;
+  });
+  if (!changed) return state;
+  return { ...state, project: { ...state.project, sources }, isDirty: true };
+}
+
+function syllableCount(words: SyllabifiedWord[]): number {
+  return words.reduce((n, w) => n + w.syllables.length, 0);
 }
 
 // ── Reducer ──────────────────────────────────────────────────────────────────
@@ -367,36 +457,30 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (!state.project) return state;
       const { sourceId, lineId, adjustments } = action.payload;
       const src = state.project.sources.find((s) => s.id === sourceId);
-      if (!src) return state;
-      const tgt = src.lines.find((l) => l.id === lineId);
-      if (!tgt) return state;
-      const current: ImageAdjustments = tgt.imageAdjustments ?? { ...ADJ_DEFAULT };
-      const mergedRaw: ImageAdjustments = { ...current, ...adjustments };
-      // Phase 11 / IMG-07: normaliza rotation no merge (idempotente; barato).
-      const merged: ImageAdjustments = {
-        ...mergedRaw,
-        rotation: normalizeRotation(mergedRaw.rotation),
-      };
-      // Spec R1 (S6/S7): boxes stay in the frame they were drawn in
-      // (line.boxFrame); consumers read them through boxesInView. A rotation
-      // is a plain adjustment update. A line with boxes but no boxFrame yet
-      // has them in the frame that was current until now: pin it.
-      const pinFrame = hasAnyBox(tgt.syllableBoxes) && !tgt.boxFrame ? frameOf(current) : undefined;
-      const sources = state.project.sources.map((s) => {
-        if (s.id !== sourceId) return s;
-        const lines = s.lines.map((l) => {
-          if (l.id !== lineId) return l;
-          let next: ManuscriptLine;
-          if (isAllDefaultAdjustments(merged)) {
-            const { imageAdjustments: _drop, ...rest } = l;
-            next = rest as ManuscriptLine;
-          } else {
-            next = { ...l, imageAdjustments: merged };
-          }
-          return pinFrame ? { ...next, boxFrame: pinFrame } : next;
-        });
-        return { ...s, lines };
+      if (!src || !src.lines.some((l) => l.id === lineId)) return state;
+      const sources = state.project.sources.map((s) =>
+        s.id !== sourceId ? s : { ...s, lines: s.lines.map((l) => (l.id === lineId ? withAdjustments(l, adjustments) : l)) },
+      );
+      return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "COPY_LINE_ADJUSTMENTS_TO_SOURCE": {
+      if (!state.project) return state;
+      const { sourceId, fromLineId } = action.payload;
+      const src = state.project.sources.find((s) => s.id === sourceId);
+      const from = src?.lines.find((l) => l.id === fromLineId);
+      if (!src || !from || src.lines.length < 2) return state;
+      const adjustments: ImageAdjustments = { ...ADJ_DEFAULT, ...from.imageAdjustments };
+      // Pages that already have these adjustments stay as they are; when none
+      // changes, the same state (no undo entry for a no-op).
+      let changed = false;
+      const lines = src.lines.map((l) => {
+        if (l.id === fromLineId || sameAdjustments(l.imageAdjustments, adjustments)) return l;
+        changed = true;
+        return withAdjustments(l, adjustments);
       });
+      if (!changed) return state;
+      const sources = state.project.sources.map((s) => (s.id !== sourceId ? s : { ...s, lines }));
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
 
@@ -423,6 +507,28 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         return syllableCuts ? { ...s, lines, syllableCuts: { ...s.syllableCuts, ...syllableCuts } } : { ...s, lines };
       });
       return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "SET_LINE_RANGE": {
+      if (!state.project) return state;
+      const { sourceId, lineId, range } = action.payload;
+      const last = Math.max(0, syllableCount(state.project.text.words) - 1);
+      const clamp = (i: number) => Math.max(0, Math.min(last, Math.round(i)));
+      const start = clamp(Math.min(range.start, range.end));
+      const end = clamp(Math.max(range.start, range.end));
+      return updateLine(state, sourceId, lineId, (l) =>
+        l.syllableRange.start === start && l.syllableRange.end === end
+          ? l
+          : { ...l, syllableRange: { start, end } },
+      );
+    }
+
+    case "SET_LINE_GAPS": {
+      const { sourceId, lineId } = action.payload;
+      const gaps = Array.from(new Set(action.payload.gaps)).sort((a, b) => a - b);
+      return updateLine(state, sourceId, lineId, (l) =>
+        l.gaps.length === gaps.length && l.gaps.every((g, i) => g === gaps[i]) ? l : { ...l, gaps },
+      );
     }
 
     case "SET_LINE_BOX_FRAME": {
@@ -486,6 +592,8 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
       return { coalesceKey: `SET_META:${sortedKeys(action.payload)}` };
     case "SET_CLASSIFICATION":
       return { coalesceKey: "classification" };
+    case "UPDATE_SOURCE":
+      return action.field ? { coalesceKey: `UPDATE_SOURCE:${action.payload.id}:${action.field}` } : undefined;
     case "UPDATE_SYLLABLE_TEXT":
       return { coalesceKey: `UPDATE_SYLLABLE_TEXT:${action.payload.wordIdx}:${action.payload.sylIdx}` };
     case "UPDATE_LINE_METADATA":
@@ -494,7 +602,18 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
         focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
       };
     case "UPDATE_LINE_BOXES":
+    case "SET_LINE_GAPS":
+      // Arrow nudges pass meta.coalesceKey `UPDATE_LINE_BOXES:${lineId}:${syllable}:nudge`
+      // (one undo step per run of nudges on one box).
       return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId } };
+    case "SET_LINE_RANGE":
+      // One handle drag (or a run of Tab past the end) is one undo step.
+      return {
+        coalesceKey: `SET_LINE_RANGE:${action.payload.lineId}`,
+        focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
+      };
+    case "COPY_LINE_ADJUSTMENTS_TO_SOURCE":
+      return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.fromLineId } };
     case "UPDATE_LINE_ADJUSTMENTS":
       return {
         coalesceKey: `UPDATE_LINE_ADJUSTMENTS:${action.payload.lineId}:${sortedKeys(action.payload.adjustments)}`,

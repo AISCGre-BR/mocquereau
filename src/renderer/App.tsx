@@ -16,10 +16,14 @@ import { useTheme } from "./shell/useTheme";
 import { Welcome } from "./views/Welcome";
 import { NewProjectGuide } from "./views/NewProjectGuide";
 import { TextoView } from "./views/TextoView";
-import { FontesView } from "./views/FontesView";
 import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
+import { ClassificationDialog } from "./components/sources/ClassificationDialog";
+import { RecortesTools } from "./components/recortes/RecortesTools";
+import { RecortesProvider, useRecortesCommands, useRecortesContext } from "./hooks/RecortesContext";
+import { createEmptySource } from "./lib/sources";
+import { resetSourceTreeSession } from "./components/sources/SourceTree";
 import { toSupportedLang, type SupportedLang } from "./i18n";
 
 const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
@@ -30,21 +34,25 @@ export function App() {
   const { t } = useTranslation();
   return (
     <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
-      <Toaster dismissLabel={t("toast.dismiss")}>
-        <Workbench />
-      </Toaster>
+      <RecortesProvider>
+        <Toaster dismissLabel={t("toast.dismiss")}>
+          <Workbench />
+        </Toaster>
+      </RecortesProvider>
     </ProjectContext.Provider>
   );
 }
 
 function Workbench() {
-  const { state, history, pending } = useProject();
+  const { state, dispatch, history, pending } = useProject();
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [view, setView] = useState<ViewId>("texto");
   const [exportOpen, setExportOpen] = useState(false);
-  // Desfazer/Refazer troca o projeto por baixo das vistas, que guardam cópias locais
-  // (campos do Texto, caixas do editor) até a onda B: remontá-las relê o projeto.
+  const [classificationOpen, setClassificationOpen] = useState(false);
+  // Desfazer/Refazer troca o projeto por baixo das vistas. As que ainda guardam
+  // cópias locais (campos do Texto) remontam para reler o projeto; Recortes lê o
+  // projeto a cada render (D6) e fica montada, com a seleção e o zoom.
   const [historyEpoch, setHistoryEpoch] = useState(0);
   function stepHistory(direction: "undo" | "redo") {
     if (!history) return;
@@ -58,6 +66,33 @@ function Workbench() {
     setHistoryEpoch((n) => n + 1);
   }
   const file = useProjectFile({ onOpened: () => setView("texto") });
+  const recortes = useRecortesCommands();
+  const recortesCtx = useRecortesContext();
+  // Projeto trocado ou fechado: diálogos e escolhas de sessão do anterior não seguem.
+  const setRecortesDialog = recortesCtx.setDialog;
+  useEffect(() => {
+    setClassificationOpen(false);
+    setRecortesDialog(null);
+    resetSourceTreeSession();
+  }, [file.projectEpoch, setRecortesDialog]);
+
+  // Fonte nova pedida pela Texto: Recortes abre o diálogo Fonte dela ao montar.
+  const [newSourceId, setNewSourceId] = useState<string | null>(null);
+
+  function addSourceInRecortes() {
+    const source = createEmptySource();
+    dispatch({ type: "ADD_SOURCE", payload: source });
+    recortesCtx.selectSource(source.id);
+    setNewSourceId(source.id);
+    setView("recortes");
+  }
+
+  // Seleção e sílaba ativa vivem no provider; trocar de vista antes de apontar
+  // deixa a Recortes já montada na página certa.
+  function openInRecortes(sourceId: string, syllable: number) {
+    setView("recortes");
+    recortesCtx.goTo({ sourceId, syllable });
+  }
 
   // "Salvar" no diálogo de fechar a janela: o main pede, o renderer salva (gravando
   // antes as edições pendentes). O project:save iniciado aqui é o que o main aguarda.
@@ -92,6 +127,7 @@ function Workbench() {
       language,
       canUndo: history?.canUndo ?? false,
       canRedo: history?.canRedo ?? false,
+      recortes: recortes.state,
     },
     {
       newProject: file.newProject,
@@ -99,6 +135,7 @@ function Workbench() {
       save: () => void file.save(),
       saveAs: () => void file.saveAs(),
       importGueranger: () => void file.importGueranger(),
+      editClassification: () => setClassificationOpen(true),
       exportDocx: () => setExportOpen(true),
       closeProject: file.close,
       undo: () => stepHistory("undo"),
@@ -109,6 +146,10 @@ function Workbench() {
       openWebsite: () => void window.mocquereau.openExternal(HOMEPAGE),
       reportIssue: () => void window.mocquereau.openExternal(`${HOMEPAGE}/issues`),
       openExample: () => void file.openExample(),
+      removeBox: recortes.removeBox,
+      clearPage: recortes.clearPage,
+      realignBoxes: recortes.realignBoxes,
+      nextSource: recortes.nextSource,
       clearRecent: () => {
         if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
         void window.mocquereau
@@ -138,6 +179,7 @@ function Workbench() {
             view={view}
             onViewChange={setView}
             platform={platform}
+            tools={view === "recortes" ? <RecortesTools /> : undefined}
             primaryAction={
               view === "tabela" ? (
                 <Button
@@ -165,17 +207,19 @@ function Workbench() {
           onOpenExample={() => void file.openExample()}
         />
       ) : (
-        <div key={`${file.projectEpoch}:${historyEpoch}`} className="flex min-h-0 flex-1 flex-col">
+        <div
+          key={view === "recortes" ? `${file.projectEpoch}` : `${file.projectEpoch}:${historyEpoch}`}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           {view === "texto" && (
-            // Sem fontes, a vista Fontes já abre com uma fonte nova pronta para preencher.
-            <TextoView onAddSource={() => setView("fontes")} onImportGueranger={() => void file.importGueranger()} />
+            <TextoView onAddSource={addSourceInRecortes} onImportGueranger={() => void file.importGueranger()} />
           )}
-          {view === "fontes" && <FontesView />}
-          {view === "recortes" && <RecortesView />}
-          {view === "tabela" && <TabelaView onNavigateToEditor={() => setView("recortes")} />}
+          {view === "recortes" && <RecortesView openSourceId={newSourceId} onOpenSourceHandled={() => setNewSourceId(null)} />}
+          {view === "tabela" && <TabelaView onNavigateToEditor={openInRecortes} />}
         </div>
       )}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+      {classificationOpen && project && !creating && <ClassificationDialog onClose={() => setClassificationOpen(false)} />}
     </AppShell>
   );
 }

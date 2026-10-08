@@ -233,6 +233,35 @@ describe('collectDocxCrops', () => {
     expect(gapCell.pngBuffer).toBeNull();
   });
 
+  it('overlapping pages resolve like the Tabela (resolveCellState): first page with an entry or gap wins', async () => {
+    const { collectDocxCrops } = await import('./docx-collect');
+    const { resolveCellState } = await import('./tableUtils');
+    const line = (id: string, start: number, end: number, extra: object) => ({
+      id, image: makeImage({ width: 200, height: 100 }), syllableRange: { start, end }, dividers: [], gaps: [],
+      confirmed: true, syllableBoxes: {}, ...extra,
+    });
+    const source = {
+      id: 's1',
+      order: 0,
+      metadata: { siglum: 'A', library: '', city: '', century: '', classes: [null, null, null] as [null, null, null] },
+      lines: [
+        line('l1', 0, 4, { syllableBoxes: { 0: makeBox({ w: 0.25 }), 1: makeBox({ w: 0.25 }) }, gaps: [3] }),
+        line('l2', 1, 4, { syllableBoxes: { 1: makeBox({ w: 0.75 }), 2: makeBox({ w: 0.75 }), 3: makeBox(), 4: null } }),
+      ],
+      syllableCuts: {},
+    };
+    const payload = await collectDocxCrops(makeProject({ sources: [source] }));
+    const cells = payload.rows[0].cells;
+    for (let i = 0; i < 5; i++) {
+      const st = resolveCellState(source, i);
+      expect(cells[i].isGap, `syllable ${i}`).toBe(st.kind === 'gap');
+      expect(cells[i].pngBuffer !== null, `syllable ${i}`).toBe(st.kind === 'filled');
+    }
+    expect(cells[1].cropWidth).toBe(50); // page l1 (0.25 * 200), not l2
+    expect(cells[2].cropWidth).toBe(150); // falls through to l2
+    expect(cells[3].isGap).toBe(true); // gap on l1 wins over the box on l2
+  });
+
   it('filled cells produce non-null pngBuffer and correct dimensions', async () => {
     const { collectDocxCrops } = await import('./docx-collect');
     const project = makeProject({

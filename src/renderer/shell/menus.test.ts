@@ -12,6 +12,7 @@ function actions(): MenuActions {
     save: vi.fn(),
     saveAs: vi.fn(),
     importGueranger: vi.fn(),
+    editClassification: vi.fn(),
     exportDocx: vi.fn(),
     closeProject: vi.fn(),
     undo: vi.fn(),
@@ -23,10 +24,14 @@ function actions(): MenuActions {
     reportIssue: vi.fn(),
     openExample: vi.fn(),
     clearRecent: vi.fn(),
+    removeBox: vi.fn(),
+    clearPage: vi.fn(),
+    realignBoxes: vi.fn(),
+    nextSource: vi.fn(),
   };
 }
 
-const base: MenuState = { hasProject: true, canExport: true, view: "fontes", theme: "dark", language: "en", canUndo: true, canRedo: false };
+const base: MenuState = { hasProject: true, canExport: true, view: "texto", theme: "dark", language: "en", canUndo: true, canRedo: false };
 
 function flat(items: MenuEntry[]): MenuCommand[] {
   return items.flatMap((item) => (item === "separator" ? [] : "items" in item ? flat(item.items) : [item]));
@@ -59,20 +64,20 @@ describe("buildMenus", () => {
     const menus = buildMenus({ ...base, hasProject: false, canExport: false }, actions(), t);
     expect(find(menus, "file.new").disabled).toBeFalsy();
     expect(find(menus, "file.open").disabled).toBeFalsy();
-    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.exportDocx", "file.close"]) {
+    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.exportDocx", "file.close"]) {
       expect(find(menus, id).disabled).toBe(true);
     }
-    for (const id of ["view.texto", "view.fontes", "view.recortes", "view.tabela"]) {
+    for (const id of ["view.texto", "view.recortes", "view.tabela"]) {
       expect(find(menus, id).disabled).toBe(true);
       expect(find(menus, id).checked).toBe(false);
     }
   });
 
-  it("marca a vista, o tema e o idioma atuais; atalhos das vistas são Ctrl+1…4", () => {
+  it("marca a vista, o tema e o idioma atuais; atalhos das vistas são Ctrl+1…3", () => {
     const menus = buildMenus(base, actions(), t);
-    expect(find(menus, "view.fontes").checked).toBe(true);
-    expect(find(menus, "view.texto").checked).toBe(false);
-    expect(find(menus, "view.tabela").accelerator).toBe("Ctrl+4");
+    expect(find(menus, "view.texto").checked).toBe(true);
+    expect(find(menus, "view.recortes").checked).toBe(false);
+    expect(find(menus, "view.tabela").accelerator).toBe("Ctrl+3");
     expect(find(menus, "theme.dark").checked).toBe(true);
     expect(find(menus, "theme.system").checked).toBe(false);
     expect(find(menus, "lang.en").checked).toBe(true);
@@ -146,11 +151,49 @@ describe("buildMenus", () => {
     expect(a.openExample).toHaveBeenCalledTimes(1);
   });
 
+  it("Classificação… fica no Arquivo, habilitada só com projeto aberto, e chama a ação", () => {
+    const a = actions();
+    const item = find(buildMenus(base, a, t), "file.classification");
+    expect(item.label).toBe("shell.file.classification");
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(a.editClassification).toHaveBeenCalledOnce();
+    expect(find(buildMenus({ ...base, hasProject: false }, a, t), "file.classification").disabled).toBe(true);
+  });
+
   it("Limpar recentes só aparece sem projeto aberto", () => {
     const a = actions();
     const sem = buildMenus({ ...base, hasProject: false }, a, t);
     find(sem, "file.clearRecent").onSelect();
     expect(a.clearRecent).toHaveBeenCalledTimes(1);
     expect(() => find(buildMenus(base, a, t), "file.clearRecent")).toThrow();
+  });
+
+  it("menu Recortes só existe na vista Recortes, entre Exibir e Ajuda", () => {
+    expect(buildMenus(base, actions(), t).some((m) => m.id === "recortes")).toBe(false);
+    expect(buildMenus({ ...base, view: "recortes", hasProject: false }, actions(), t).some((m) => m.id === "recortes")).toBe(false);
+    expect(buildMenus({ ...base, view: "recortes" }, actions(), t).map((m) => m.id)).toEqual(["file", "edit", "view", "recortes", "help"]);
+  });
+
+  it("menu Recortes: itens, atalhos, estados e ações", () => {
+    const a = actions();
+    const recortes = { canRemoveBox: true, canClearPage: true, canRealign: false, hasNextSource: true };
+    const menus = buildMenus({ ...base, view: "recortes", recortes }, a, t);
+    const menu = menus.find((m) => m.id === "recortes")!;
+    expect(menu.label).toBe("shell.view.recortes");
+    expect(flat(menu.items).map((i) => [i.id, i.label, i.accelerator, i.disabled])).toEqual([
+      ["recortes.removeBox", "recortes.menu.removeBox", "Delete", false],
+      ["recortes.clearPage", "recortes.menu.clearPage", undefined, false],
+      ["recortes.realign", "recortes.menu.realign", undefined, true],
+      ["recortes.nextSource", "recortes.menu.nextSource", "Ctrl+Enter", false],
+    ]);
+    for (const id of ["recortes.removeBox", "recortes.clearPage", "recortes.realign", "recortes.nextSource"]) find(menus, id).onSelect();
+    expect(a.removeBox).toHaveBeenCalledOnce();
+    expect(a.clearPage).toHaveBeenCalledOnce();
+    expect(a.realignBoxes).toHaveBeenCalledOnce();
+    expect(a.nextSource).toHaveBeenCalledOnce();
+    // Sem estado do Recortes, tudo desabilitado.
+    const bare = buildMenus({ ...base, view: "recortes" }, a, t).find((m) => m.id === "recortes")!;
+    expect(flat(bare.items).every((i) => i.disabled)).toBe(true);
   });
 });

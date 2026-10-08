@@ -1,7 +1,10 @@
 // src/renderer/components/slice-editor/SyllableBoxOverlay.tsx
 //
 // Renders a single selected bounding box with 8 resize handles.
-// Handles pointer-based drag-to-move and drag-to-resize, plus keyboard nudge/delete.
+// Handles pointer-based drag-to-move and drag-to-resize. While dragging only
+// onBoxChange fires (a local draft); the project is written once, on
+// onBoxCommit (spec D6). Delete and the arrow nudge are window shortcuts of the
+// Recortes view (one path, with the per-box nudge coalescing), not of this box.
 // All coordinates are fractions of the container dimensions (0.0–1.0).
 
 import React, { useRef } from 'react';
@@ -19,9 +22,9 @@ interface SyllableBoxOverlayProps {
   syllableIdx: number;                                  // índice global da sílaba (pigmento)
   label?: string;                                       // texto da sílaba na etiqueta
   containerRef: React.RefObject<HTMLDivElement | null>; // the image wrapper div
-  onBoxChange: (newBox: SyllableBox) => void;           // called on every pointermove (live feedback)
-  onBoxCommit: (newBox: SyllableBox) => void;           // called on pointerup (dispatch to reducer)
-  onDeleteBox: () => void;                              // called on Delete/Backspace keydown
+  onBoxChange: (newBox: SyllableBox) => void;           // every pointermove: the draft, kept by the canvas
+  onBoxCommit: (newBox: SyllableBox) => void;           // end of the gesture (pointerup): written to the project
+  onBoxCancel?: () => void;                             // gesture cancelled (pointercancel, capture lost): drop the draft
 }
 
 // ── Drag state type ───────────────────────────────────────────────────────────
@@ -111,13 +114,15 @@ export function SyllableBoxOverlay({
   containerRef,
   onBoxChange,
   onBoxCommit,
-  onDeleteBox,
+  onBoxCancel,
 }: SyllableBoxOverlayProps) {
   const dragState = useRef<DragState | null>(null);
 
   // ── Pointer events on the outer div (body drag + handle move relay) ────────
 
   function onOuterPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    // Only the primary button edits (right click opens the context menu).
+    if (e.button !== 0) return;
     // Only respond to direct clicks on the box body (not on handles)
     if (e.target !== e.currentTarget) return;
 
@@ -167,12 +172,15 @@ export function SyllableBoxOverlay({
   function onOuterPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const state = dragState.current;
     if (!state) return;
+    // Cleared before releasing the capture: the lostpointercapture it causes
+    // must not read as a cancelled gesture.
+    dragState.current = null;
 
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 
     const container = containerRef.current;
     if (!container) {
-      dragState.current = null;
+      onBoxCancel?.();
       return;
     }
 
@@ -195,13 +203,20 @@ export function SyllableBoxOverlay({
       finalBox = applyHandleDelta(state.startBox, state.handleId!, dx, dy);
     }
 
-    dragState.current = null;
     onBoxCommit(finalBox);
+  }
+
+  /** pointercancel / lostpointercapture mid-gesture: nothing is written. */
+  function onOuterPointerCancel() {
+    if (!dragState.current) return;
+    dragState.current = null;
+    onBoxCancel?.();
   }
 
   // ── Pointer events on individual handles ──────────────────────────────────
 
   function onHandlePointerDown(e: React.PointerEvent<HTMLDivElement>, handleId: HandleId) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -220,45 +235,6 @@ export function SyllableBoxOverlay({
     };
   }
 
-  // ── Keyboard handling ──────────────────────────────────────────────────────
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      onDeleteBox();
-      return;
-    }
-
-    const arrowKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
-    if (!arrowKeys.includes(e.key)) return;
-
-    e.preventDefault();
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const offW = container.offsetWidth;
-    const offH = container.offsetHeight;
-    const pixels = e.shiftKey ? 10 : 1;
-    let dxPx = 0;
-    let dyPx = 0;
-    switch (e.key) {
-      case 'ArrowLeft':  dxPx = -pixels; break;
-      case 'ArrowRight': dxPx = +pixels; break;
-      case 'ArrowUp':    dyPx = -pixels; break;
-      case 'ArrowDown':  dyPx = +pixels; break;
-    }
-    const dxFrac = dxPx / offW;
-    const dyFrac = dyPx / offH;
-
-    let { x, y, w, h } = box;
-    x += dxFrac;
-    y += dyFrac;
-
-    const newBox = clampBox({ x, y, w, h });
-    onBoxCommit(newBox);
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -274,7 +250,8 @@ export function SyllableBoxOverlay({
       onPointerDown={onOuterPointerDown}
       onPointerMove={onOuterPointerMove}
       onPointerUp={onOuterPointerUp}
-      onKeyDown={onKeyDown}
+      onPointerCancel={onOuterPointerCancel}
+      onLostPointerCapture={onOuterPointerCancel}
     >
       {label && <span className="sc-box__tag pointer-events-none">{label}</span>}
       {HANDLES.map((h) => (

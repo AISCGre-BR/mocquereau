@@ -3,9 +3,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { StoredImage, SyllabifiedWord, SyllableBox } from '../../lib/models';
 import type { ImageAdjustments } from '../../lib/models';
-import { EditorAction } from './editorReducer';
 import { SyllableBoxOverlay, cropBoxClass } from './SyllableBoxOverlay';
-import { ImageAdjustmentsPanel } from './ImageAdjustmentsPanel';
 import {
   buildImageFilter,
   buildImageTransform,
@@ -23,37 +21,31 @@ import {
   wheelZoom,
   type ZoomAnchor,
 } from '../../lib/canvas-zoom';
-import {
-  FINE_MAX,
-  FINE_MIN,
-  FINE_STEP,
-  isRotateShortcut,
-  rotateQuarter,
-  splitRotation,
-  withFine,
-} from '../../lib/canvas-rotation';
-import { RotateCcw, RotateCw, RotateCwSquare } from 'lucide-react';
+import { isRotateShortcut, rotateQuarter } from '../../lib/canvas-rotation';
 import { isTextInput } from '../../shell/useMenuShortcuts';
 import { useTranslation } from 'react-i18next';
 
 interface ImageCanvasProps {
   image: StoredImage | null;
+  /** The page's boxes in the frame the user sees (boxesInView), read from the project. */
   syllableBoxes: Record<number, SyllableBox | null>;
   activeSyllableIdx: number | null;
   syllableRange: { start: number; end: number } | null;
-  gaps: number[];
-  hoveredSyllableIdx: number | null;
   zoom: number;
-  panOffset: { x: number; y: number };
-  dispatch: React.Dispatch<EditorAction>;
+  onZoomChange: (zoom: number) => void;
+  onActivateSyllable?: (syllableIdx: number) => void;
+  /** End of a gesture (draw, move, resize): the box goes to the project. */
+  onBoxCommit?: (syllableIdx: number, box: SyllableBox) => void;
   words?: SyllabifiedWord[];
   showAllBoxes?: boolean;
   sameSizeMode?: boolean;
+  /** Off: a click on the sheet only selects (no new box). */
+  drawMode?: boolean;
   adjustments?: ImageAdjustments;
-  panelOpen?: boolean;
+  /** Ctrl+[ / Ctrl+] rotate through it (the Image panel holds the other controls). */
   onUpdateAdjustments?: (partial: Partial<ImageAdjustments>) => void;
-  onClosePanel?: () => void;
-  onRealign?: () => void;
+  /** Right click on the sheet (the Recortes menu as a context menu). */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function ImageCanvas({
@@ -61,19 +53,17 @@ export function ImageCanvas({
   syllableBoxes,
   activeSyllableIdx,
   syllableRange,
-  gaps,
-  hoveredSyllableIdx,
   zoom,
-  panOffset,
-  dispatch,
+  onZoomChange,
+  onActivateSyllable,
+  onBoxCommit,
   words,
   showAllBoxes = false,
   sameSizeMode = false,
+  drawMode = true,
   adjustments,
-  panelOpen = false,
   onUpdateAdjustments,
-  onClosePanel,
-  onRealign,
+  onContextMenu,
 }: ImageCanvasProps) {
   const { t } = useTranslation();
   const imageWrapperRef = useRef<HTMLDivElement>(null);
@@ -98,7 +88,6 @@ export function ImageCanvas({
   }, [image?.dataUrl]);
 
   const rot = adjustments?.rotation ?? 0;
-  const fine = splitRotation(rot).fine;
   const θ = (normalizeRotation(rot) * Math.PI) / 180;
   const absCos = Math.abs(Math.cos(θ));
   const absSin = Math.abs(Math.sin(θ));
@@ -120,6 +109,20 @@ export function ImageCanvas({
     live: SyllableBox | null;
   } | null>(null);
   const [liveDrawBox, setLiveDrawBox] = useState<SyllableBox | null>(null);
+
+  // Draft of the active box while it is moved or resized: lives here until the
+  // pointer goes up, then the box is committed to the project (spec D6). It only
+  // counts over the very boxes it was drawn on: another page, an undo or another
+  // syllable makes it stale, so it never draws over the wrong page.
+  const [draft, setDraft] = useState<{
+    base: Record<number, SyllableBox | null>;
+    idx: number;
+    box: SyllableBox;
+  } | null>(null);
+  const boxes =
+    draft && draft.base === syllableBoxes && draft.idx === activeSyllableIdx
+      ? { ...syllableBoxes, [draft.idx]: draft.box }
+      : syllableBoxes;
 
   // Resolve syllable text for a given global idx (used by box overlay labels/titles)
   function syllableTextAt(globalIdx: number): string {
@@ -161,7 +164,7 @@ export function ImageCanvas({
     if (Math.abs(z - zoomRef.current) < 1e-9) return;
     zoomRef.current = z;
     pendingAnchor.current = anchor;
-    dispatch({ type: 'SET_ZOOM', payload: z });
+    onZoomChange(z);
   }
   const applyZoomRef = useRef(applyZoom);
   applyZoomRef.current = applyZoom;
@@ -213,13 +216,11 @@ export function ImageCanvas({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [hasImage]);
 
-  // ── Girar ──────────────────────────────────────────────────────────────────
-  const [fineOpen, setFineOpen] = useState(false);
+  // ── Girar (atalhos; os botões ficam no painel Imagem) ──────────────────────
   const rotationRef = useRef(rot);
   rotationRef.current = rot;
   const updateAdjRef = useRef(onUpdateAdjustments);
   updateAdjRef.current = onUpdateAdjustments;
-  const canRotate = !!onUpdateAdjustments;
 
   // Ctrl+[ / Ctrl+]: gira 90°. Mesmas guardas dos atalhos de zoom.
   useEffect(() => {
@@ -236,30 +237,22 @@ export function ImageCanvas({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [hasImage]);
 
-  useEffect(() => {
-    if (!fineOpen) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setFineOpen(false);
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [fineOpen]);
-
   // Find the "template box" for same-size mode: first box (by lowest syllable idx) that exists
   function getTemplateBox(): SyllableBox | null {
-    const indices = Object.keys(syllableBoxes)
+    const indices = Object.keys(boxes)
       .map(Number)
-      .filter(k => syllableBoxes[k] != null)
+      .filter(k => boxes[k] != null)
       .sort((a, b) => a - b);
     if (indices.length === 0) return null;
-    return syllableBoxes[indices[0]];
+    return boxes[indices[0]];
   }
 
   // ── Draw-new-box pointer handlers ─────────────────────────────────────────
   function handleImagePointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (activeSyllableIdx === null) return;
-    const hasBox =
-      activeSyllableIdx in syllableBoxes && syllableBoxes[activeSyllableIdx] !== null;
+    // Only the primary button draws (right click opens the context menu).
+    if (e.button !== 0) return;
+    if (!drawMode || activeSyllableIdx === null) return;
+    const hasBox = boxes[activeSyllableIdx] != null;
     if (hasBox) return;  // SyllableBoxOverlay handles its own pointer events
 
     // Same-size mode: if a template box exists, click places a box of same dimensions
@@ -308,19 +301,24 @@ export function ImageCanvas({
   }
 
   function handleImagePointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (!drawState.current || !drawState.current.live || activeSyllableIdx === null) {
-      drawState.current = null;
-      setLiveDrawBox(null);
-      return;
-    }
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    const box = drawState.current.live;
-    // Only commit if box is big enough (at least 2% in both dimensions)
+    const box = drawState.current?.live ?? null;
+    const drawing = drawState.current !== null;
+    // Cleared before releasing the capture: the lostpointercapture it causes
+    // must not read as a cancelled gesture.
+    drawState.current = null;
+    setLiveDrawBox(null);
+    if (drawing) (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    if (!box || activeSyllableIdx === null) return;
     // Accept very small selections (0.5% = ~5-10 pixels depending on image size).
     // Rejecting too aggressively frustrates users marking narrow neumes.
     if (box.w >= 0.005 && box.h >= 0.005) {
-      dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box } });
+      onBoxCommit?.(activeSyllableIdx, box);
     }
+  }
+
+  /** pointercancel / lostpointercapture mid-draw: the new box is dropped. */
+  function handleImagePointerCancel() {
+    if (!drawState.current) return;
     drawState.current = null;
     setLiveDrawBox(null);
   }
@@ -334,22 +332,20 @@ export function ImageCanvas({
   }
 
   return (
-    <div className="relative flex flex-col h-full bg-parchment-deep">
-      {/* Image + boxes area */}
-      <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto">
+    <div className="relative flex flex-col h-full">
+      {/* Image + boxes area: 16 px margins around the sheet, which sits in a
+          card (radius-lg, elev-2). Zoom 1 still fits the sheet to the width. */}
+      <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto p-4">
         {/* Wrapper = AABB do retângulo da imagem rotacionada (axis-aligned com a tela).
             Não recebe rotation transform: só translate+aspect-ratio. As boxes
             são posicionadas em fração desse AABB. */}
         <div
           ref={imageWrapperRef}
           data-image-wrapper
+          data-sheet-card
           className={[
-            'relative mx-auto',
-            activeSyllableIdx !== null &&
-            !(
-              activeSyllableIdx in syllableBoxes &&
-              syllableBoxes[activeSyllableIdx] !== null
-            )
+            'relative mx-auto rounded-lg bg-surface shadow-elev-2',
+            drawMode && activeSyllableIdx !== null && boxes[activeSyllableIdx] == null
               ? 'cursor-crosshair'
               : 'cursor-default',
           ].join(' ')}
@@ -358,27 +354,33 @@ export function ImageCanvas({
             // afastar abaixo de 100% também funciona.
             width: `${100 * zoom}%`,
             aspectRatio: intrinsic ? `${1} / ${aabbRatio}` : undefined,
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
           }}
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
           onPointerUp={handleImagePointerUp}
+          onPointerCancel={handleImagePointerCancel}
+          onLostPointerCapture={handleImagePointerCancel}
+          onContextMenu={onContextMenu}
         >
-          <img
-            src={image.dataUrl}
-            alt={t('imageCanvas.manuscriptAlt')}
-            className="block select-none pointer-events-none absolute"
-            draggable={false}
-            style={{
-              left: '50%',
-              top: '50%',
-              width: `${imgWidthPct}%`,
-              height: `${imgHeightPct}%`,
-              transform: `translate(-50%, -50%) ${imageTransform ?? ''}`.trim(),
-              transformOrigin: 'center center',
-              filter: imageFilter || undefined,
-            }}
-          />
+          {/* The card's rounded corners clip the image only: box tags and
+              handles may still reach past the sheet's edge. */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">
+            <img
+              src={image.dataUrl}
+              alt={t('imageCanvas.manuscriptAlt')}
+              className="block select-none pointer-events-none absolute"
+              draggable={false}
+              style={{
+                left: '50%',
+                top: '50%',
+                width: `${imgWidthPct}%`,
+                height: `${imgHeightPct}%`,
+                transform: `translate(-50%, -50%) ${imageTransform ?? ''}`.trim(),
+                transformOrigin: 'center center',
+                filter: imageFilter || undefined,
+              }}
+            />
+          </div>
 
           {/* Non-active boxes — clickable to switch active syllable. Always rendered
               when there's a box (visible styling only when showAllBoxes is on). */}
@@ -386,7 +388,7 @@ export function ImageCanvas({
             ? Array.from({ length: syllableRange.end - syllableRange.start + 1 }, (_, k) => syllableRange.start + k)
             : []
           ).map((idx) => {
-            const box = syllableBoxes[idx];
+            const box = boxes[idx];
             if (!box || idx === activeSyllableIdx) return null;
             return (
               <div
@@ -408,22 +410,27 @@ export function ImageCanvas({
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx });
+                  onActivateSyllable?.(idx);
                 }}
-                title={t('imageCanvas.clickToEdit', { syllable: syllableTextAt(idx) })}
+                // Focusable boxes are buttons for the editor keys too
+                // (isOutsideEditorKeys): Tab moves focus on, Enter/Space activate.
+                role={showAllBoxes ? 'button' : undefined}
+                data-box-tabstop={showAllBoxes ? '' : undefined}
+                aria-label={t('imageCanvas.clickToEdit', { syllable: syllableTextAt(idx) })}
                 tabIndex={showAllBoxes ? 0 : undefined}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     e.stopPropagation();
-                    dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx });
+                    onActivateSyllable?.(idx);
                   }
                 }}
               >
                 {showAllBoxes && (
                   <span
                     data-box-label
-                    className="sc-box__tag pointer-events-none z-10 opacity-0 group-hover:opacity-100 group-focus:opacity-100"
+                    aria-hidden="true"
+                    className="sc-box__tag pointer-events-none z-10 opacity-0 group-focus-visible:opacity-100"
                   >
                     {syllableTextAt(idx)}
                   </span>
@@ -433,21 +440,18 @@ export function ImageCanvas({
           })}
 
           {/* SyllableBoxOverlay for active syllable that has a box */}
-          {activeSyllableIdx !== null && syllableBoxes[activeSyllableIdx] != null && (
+          {activeSyllableIdx !== null && boxes[activeSyllableIdx] != null && (
             <SyllableBoxOverlay
-              box={syllableBoxes[activeSyllableIdx] as SyllableBox}
+              box={boxes[activeSyllableIdx] as SyllableBox}
               syllableIdx={activeSyllableIdx}
               label={syllableTextAt(activeSyllableIdx)}
               containerRef={imageWrapperRef}
-              onBoxChange={(newBox) => {
-                dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box: newBox } });
-              }}
+              onBoxChange={(newBox) => setDraft({ base: syllableBoxes, idx: activeSyllableIdx, box: newBox })}
               onBoxCommit={(newBox) => {
-                dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box: newBox } });
+                setDraft(null);
+                onBoxCommit?.(activeSyllableIdx, newBox);
               }}
-              onDeleteBox={() => {
-                dispatch({ type: 'DELETE_BOX', payload: { syllableIdx: activeSyllableIdx } });
-              }}
+              onBoxCancel={() => setDraft(null)}
             />
           )}
 
@@ -465,89 +469,6 @@ export function ImageCanvas({
           )}
         </div>
       </div>
-
-      {/* Adjustments panel — sibling of the scroller (anchored to the visible viewport),
-          so it neither scrolls with the image nor gets clipped. */}
-      {panelOpen && onUpdateAdjustments && onClosePanel && (
-        <ImageAdjustmentsPanel
-          adjustments={adjustments}
-          onUpdate={onUpdateAdjustments}
-          onClose={onClosePanel}
-          onRealign={onRealign}
-        />
-      )}
-
-      {/* Girar: grupo sc-zoom à esquerda do zoom (giros de 90° + endireitar). */}
-      {canRotate && (
-        <div
-          className="sc-zoom"
-          style={{ right: 112 }}
-          role="toolbar"
-          aria-label={t('imageCanvas.rotateControls')}
-        >
-          <button
-            type="button"
-            onClick={() => onUpdateAdjustments?.({ rotation: rotateQuarter(rot, -1) })}
-            title={t('imageCanvas.rotateLeft')}
-            aria-label={t('imageCanvas.rotateLeft')}
-          >
-            <RotateCcw size={16} className="mx-auto" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={() => onUpdateAdjustments?.({ rotation: rotateQuarter(rot, 1) })}
-            title={t('imageCanvas.rotateRight')}
-            aria-label={t('imageCanvas.rotateRight')}
-          >
-            <RotateCw size={16} className="mx-auto" aria-hidden />
-          </button>
-          <span aria-hidden style={{ minWidth: 0, width: 1, height: 16, margin: '0 3px', background: 'var(--rule)' }} />
-          <button
-            type="button"
-            onClick={() => setFineOpen((o) => !o)}
-            aria-pressed={fineOpen}
-            aria-expanded={fineOpen}
-            title={t('imageCanvas.straighten')}
-            aria-label={t('imageCanvas.straighten')}
-          >
-            <RotateCwSquare size={16} className="mx-auto" aria-hidden />
-          </button>
-          {fineOpen && (
-            <div
-              role="dialog"
-              aria-label={t('imageCanvas.straightenTitle')}
-              className="absolute bottom-full right-0 mb-2 flex items-center gap-2 whitespace-nowrap rounded-md border border-rule bg-surface-high p-2 shadow-lg"
-            >
-              <input
-                type="range"
-                min={FINE_MIN}
-                max={FINE_MAX}
-                step={FINE_STEP}
-                value={Math.max(FINE_MIN, Math.min(FINE_MAX, fine))}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (!Number.isNaN(v)) onUpdateAdjustments?.({ rotation: withFine(rot, v) });
-                }}
-                aria-label={t('imageCanvas.straightenAngle')}
-                className="w-40 accent-rubric"
-              />
-              <output className="w-12 text-right tabular-nums" aria-label={t('imageCanvas.straightenReadout')}>
-                {`${fine > 0 ? '+' : ''}${fine.toFixed(1)}°`}
-              </output>
-              <button
-                type="button"
-                className="!w-auto px-1"
-                onClick={() => onUpdateAdjustments?.({ rotation: withFine(rot, 0) })}
-                disabled={fine === 0}
-                title={t('imageCanvas.straightenReset')}
-                aria-label={t('imageCanvas.straightenReset')}
-              >
-                ×
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Controle flutuante de zoom (Parchment sc-zoom): fora do contêiner que rola. */}
       <div className="sc-zoom" role="toolbar" aria-label={t('imageCanvas.zoomControls')}>

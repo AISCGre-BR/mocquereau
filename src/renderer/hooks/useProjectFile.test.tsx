@@ -669,6 +669,38 @@ describe("useProjectFile: realinhamento de caixas em arquivo legado", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  it("página sem intervalo ({0,0} sem caixas) recebe o texto inteiro ao abrir, em silêncio", async () => {
+    const p = createNewProject("Puer", "");
+    p.text = { raw: "a b c", words: ["a", "b", "c"].map((w) => ({ original: w, syllables: [w] })), hyphenationMode: "sung" };
+    p.sources = [
+      {
+        id: "S",
+        order: 1,
+        metadata: { siglum: "X", library: "", city: "", century: "", classes: [null, null, null] },
+        lines: [
+          {
+            id: "L",
+            image: { dataUrl: "data:,", width: W, height: H, mimeType: "image/png" },
+            syllableRange: { start: 0, end: 0 },
+            dividers: [],
+            gaps: [],
+            confirmed: false,
+          },
+        ],
+        syllableCuts: {},
+      },
+    ];
+    mockApi({ openProjectByPath: vi.fn().mockResolvedValue({ project: p, filePath: "/p.mocquereau" }) });
+    const { result } = setupWith(async () => RASTER);
+    await act(async () => {
+      await result.current.file.openRecent("/p.mocquereau");
+    });
+    expect(result.current.ctx.state.project!.sources[0].lines[0].syllableRange).toEqual({ start: 0, end: 2 });
+    expect(result.current.ctx.state.isDirty).toBe(false);
+    expect(result.current.ctx.history?.canUndo).toBe(false);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("arquivo .mocquereau (com caminho) não é reanalisado", async () => {
     const loadRaster = vi.fn(async () => RASTER);
     mockApi({ openProjectByPath: vi.fn().mockResolvedValue({ project: legacyProject(), filePath: "/g.mocquereau" }) });

@@ -15,6 +15,7 @@ import { buildRecentMeta, firstPageLine } from "../lib/recent-meta";
 import { makeThumbnail } from "../lib/thumbnail";
 import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
 import type { NewProjectDraft } from "../lib/new-project";
+import { resolveUnsetRanges } from "../lib/sources";
 
 export const AUTOSAVE_DELAY_MS = 3000;
 
@@ -172,7 +173,9 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
   const adoptOpened = useCallback(
     async (project: MocquereauProject, filePath: string | null, legacy = filePath === null) => {
       const seq = ++openSeq.current;
-      const ready = legacy ? await realignLegacy(project, () => seq !== openSeq.current) : project;
+      const realigned = legacy ? await realignLegacy(project, () => seq !== openSeq.current) : project;
+      // Correção silenciosa na abertura, como o realinhamento: páginas sem intervalo.
+      const ready = resolveUnsetRanges(realigned);
       if (seq !== openSeq.current) return; // a newer open superseded this one
       // Valores do projeto entram na biblioteca em segundo plano: sem dispatch, o projeto não suja.
       // Leitura própria, sem fallback sugerido: se falhar, não grava (não sobrescreve a biblioteca real).

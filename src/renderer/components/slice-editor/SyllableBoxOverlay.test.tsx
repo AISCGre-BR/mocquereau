@@ -18,7 +18,6 @@ function setup(syllableIdx = 7) {
       containerRef={{ current: container }}
       onBoxChange={vi.fn()}
       onBoxCommit={onBoxCommit}
-      onDeleteBox={vi.fn()}
     />,
   );
   const box = utils.container.querySelector("[data-box-overlay]") as HTMLElement;
@@ -37,12 +36,11 @@ describe("SyllableBoxOverlay", () => {
     for (const id of handles) expect(box.querySelector(`.sc-box__h--${id}`)).not.toBeNull();
   });
 
-  it("setas continuam movendo a caixa 1px (Shift: 10px)", () => {
+  it("setas e Delete não são tratados pela caixa (atalhos da vista Recortes, um só caminho)", () => {
     const { box, onBoxCommit } = setup();
     fireEvent.keyDown(box, { key: "ArrowRight" });
-    expect(onBoxCommit).toHaveBeenLastCalledWith({ x: 0.1 + 1 / 1000, y: 0.2, w: 0.3, h: 0.4 });
-    fireEvent.keyDown(box, { key: "ArrowDown", shiftKey: true });
-    expect(onBoxCommit).toHaveBeenLastCalledWith({ x: 0.1, y: 0.2 + 10 / 500, w: 0.3, h: 0.4 });
+    fireEvent.keyDown(box, { key: "Delete" });
+    expect(onBoxCommit).not.toHaveBeenCalled();
   });
 
   it("cropBoxClass cobre confirmada, ativa e sugerida", () => {

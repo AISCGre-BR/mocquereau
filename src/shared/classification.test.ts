@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  SUGGESTED_CLASSIFICATION, cloneClassification, emptyClasses, mergeClassification,
-  notationOf, notationToClassId,
+  SUGGESTED_CLASSIFICATION, applyClassificationEdits, cloneClassification, emptyClasses,
+  mergeClassification, notationOf, notationToClassId,
 } from "./classification";
 
 describe("SUGGESTED_CLASSIFICATION", () => {
@@ -74,6 +74,56 @@ describe("mergeClassification", () => {
     expect(merged[0].name).toBe("Notação");
     expect(proj[0].name).toBe("Tipo");
     expect(merged).not.toBe(lib);
+  });
+});
+
+describe("applyClassificationEdits", () => {
+  it("project names and order win for project ids; library-only values go last", () => {
+    const lib = cloneClassification(SUGGESTED_CLASSIFICATION);
+    lib[2].values.push({ id: "v-lib-only", name: "Só na biblioteca" });
+    const proj = cloneClassification(SUGGESTED_CLASSIFICATION);
+    proj[2].name = "Escola";
+    proj[2].values.reverse();
+    proj[2].values[0].name = "Solesmes";
+    proj[2].values.push({ id: "v-new", name: "Moçárabe" });
+    const out = applyClassificationEdits(lib, proj);
+    expect(out[2].name).toBe("Escola");
+    expect(out[2].values.map((v) => v.id)).toEqual([...proj[2].values.map((v) => v.id), "v-lib-only"]);
+    expect(out[2].values[0]).toEqual({ id: "familia.solesmense", name: "Solesmes" });
+    expect(out[2].values.at(-1)).toEqual({ id: "v-lib-only", name: "Só na biblioteca" });
+  });
+  it("removed ids leave the library too; other library-only values stay", () => {
+    const lib = cloneClassification(SUGGESTED_CLASSIFICATION);
+    lib[1].values.push({ id: "v-lib-only", name: "Só na biblioteca" });
+    const proj = cloneClassification(SUGGESTED_CLASSIFICATION);
+    proj[0].values = proj[0].values.filter((v) => v.id !== "tipo.quadrada");
+    const out = applyClassificationEdits(lib, proj, ["tipo.quadrada"]);
+    expect(out[0].values.map((v) => v.id)).not.toContain("tipo.quadrada");
+    expect(out[1].values.at(-1)!.id).toBe("v-lib-only");
+    // Without the removal list the library value comes back (old behaviour).
+    expect(applyClassificationEdits(lib, proj)[0].values.map((v) => v.id)).toContain("tipo.quadrada");
+  });
+  it("a project that still uses a removed id gets it back on open (merge)", () => {
+    const lib = applyClassificationEdits(
+      cloneClassification(SUGGESTED_CLASSIFICATION),
+      cloneClassification(SUGGESTED_CLASSIFICATION).map((l, i) =>
+        i === 0 ? { ...l, values: l.values.filter((v) => v.id !== "tipo.quadrada") } : l,
+      ) as typeof SUGGESTED_CLASSIFICATION,
+      ["tipo.quadrada"],
+    );
+    const other = cloneClassification(SUGGESTED_CLASSIFICATION);
+    expect(mergeClassification(lib, other)[0].values.map((v) => v.id)).toContain("tipo.quadrada");
+  });
+  it("dedupes project ids and does not mutate inputs", () => {
+    const lib = cloneClassification(SUGGESTED_CLASSIFICATION);
+    const proj = cloneClassification(SUGGESTED_CLASSIFICATION);
+    proj[0].values.push({ id: "v-dup", name: "A" }, { id: "v-dup", name: "B" });
+    const out = applyClassificationEdits(lib, proj);
+    expect(out[0].values.filter((v) => v.id === "v-dup")).toEqual([{ id: "v-dup", name: "A" }]);
+    expect(out[0].values).toHaveLength(5);
+    out[0].values[0].name = "x";
+    expect(proj[0].values[0].name).toBe("Adiastemática");
+    expect(lib[0].values[0].name).toBe("Adiastemática");
   });
 });
 

@@ -1,8 +1,8 @@
 import { TablePreview } from "../components/TablePreview";
 
 export interface TabelaViewProps {
-  /** "Editar em Recortes" no menu de contexto da célula (deep link com sílaba: onda B). */
-  onNavigateToEditor: (sourceId: string) => void;
+  /** "Editar em Recortes" no menu de contexto da célula e clique na célula vazia: abrem Recortes na fonte e sílaba. */
+  onNavigateToEditor: (sourceId: string, syllable: number) => void;
 }
 
 /** Vista Tabela: prévia da tabela comparativa; ação principal Exportar DOCX… na toolbar. */

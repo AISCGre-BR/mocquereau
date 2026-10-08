@@ -8,6 +8,11 @@ export interface DialogProps {
   open: boolean;
   /** Pergunta ou verbo. */
   title: string;
+  /**
+   * Cabeçalho próprio no lugar do título visível (ex.: a sigla editável da
+   * fonte). O diálogo continua nomeado por `title`.
+   */
+  header?: ReactNode;
   onClose: () => void;
   /** Ação principal acionada por Enter (fora de botões, textarea e select). */
   onConfirm?: () => void;
@@ -17,7 +22,7 @@ export interface DialogProps {
   className?: string;
 }
 
-export function Dialog({ open, title, onClose, onConfirm, children, actions, className }: DialogProps) {
+export function Dialog({ open, title, header, onClose, onConfirm, children, actions, className }: DialogProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -122,14 +127,19 @@ export function Dialog({ open, title, onClose, onConfirm, children, actions, cla
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-labelledby={header === undefined ? titleId : undefined}
+        aria-label={header === undefined ? undefined : title}
         tabIndex={-1}
         className={["sc-dialog", className ?? ""].filter(Boolean).join(" ")}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId} className="sc-dialog__title">
-          {title}
-        </h2>
+        {header === undefined ? (
+          <h2 id={titleId} className="sc-dialog__title">
+            {title}
+          </h2>
+        ) : (
+          header
+        )}
         {children !== undefined && <div className="sc-dialog__body">{children}</div>}
         {actions && <div className="sc-dialog__actions">{actions}</div>}
       </div>

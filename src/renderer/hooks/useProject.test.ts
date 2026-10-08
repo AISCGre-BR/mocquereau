@@ -1,6 +1,15 @@
 import { boxesInView } from "@shared/box-frame";
 import { describe, it, expect } from "vitest";
-import { projectReducer, initialStateForTest, createNewProject, type ProjectState } from "./useProject";
+import {
+  projectReducer,
+  initialStateForTest,
+  createNewProject,
+  createDocumentReducer,
+  initialDocumentState,
+  toProjectState,
+  type DocumentState,
+  type ProjectState,
+} from "./useProject";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "@shared/classification";
 import type { ManuscriptSource, ManuscriptLine, StoredImage, SyllabifiedWord, ImageAdjustments } from "../lib/models";
 
@@ -593,5 +602,123 @@ describe("classification", () => {
     const s1 = projectReducer(s0, { type: "SET_CLASSIFICATION", payload: next });
     expect(s1.project!.classification[2].values.at(-1)!.name).toBe("Moçárabe");
     expect(s1.isDirty).toBe(true);
+  });
+});
+
+describe("projectReducer — line range and gaps (D6)", () => {
+  const words: SyllabifiedWord[] = [
+    { original: "Puer", syllables: ["Pu", "er"] },
+    { original: "natus", syllables: ["na", "tus"] },
+    { original: "est", syllables: ["est"] },
+    { original: "nobis", syllables: ["no", "bis"] },
+    { original: "et", syllables: ["et"] },
+  ]; // 8 syllables
+  const B = { x: 0.1, y: 0.1, w: 0.1, h: 0.1 };
+  const state = () =>
+    makeStateWithSources(
+      [{ ...makeSource("S1", 1), lines: [mkLine("L1", { syllableRange: { start: 0, end: 7 }, gaps: [6], syllableBoxes: { 2: B, 7: B } })] }],
+      words,
+    );
+  const line = (s: ProjectState) => s.project!.sources[0].lines[0];
+  const setRange = (start: number, end: number) => ({
+    type: "SET_LINE_RANGE" as const,
+    payload: { sourceId: "S1", lineId: "L1", range: { start, end } },
+  });
+
+  it("SET_LINE_RANGE normalizes and keeps out-of-range boxes", () => {
+    const next = projectReducer(state(), setRange(5, 2));
+    expect(line(next).syllableRange).toEqual({ start: 2, end: 5 });
+    expect(line(next).syllableBoxes![7]).toEqual(B);
+    expect(line(next).gaps).toEqual([6]);
+    expect(next.isDirty).toBe(true);
+  });
+
+  it("SET_LINE_RANGE clamps to the text's syllables", () => {
+    const narrowed = projectReducer(state(), setRange(2, 3));
+    expect(line(projectReducer(narrowed, setRange(-3, 40))).syllableRange).toEqual({ start: 0, end: 7 });
+  });
+
+  it("SET_LINE_RANGE with the current range is a no-op", () => {
+    const s = state();
+    expect(projectReducer(s, setRange(0, 7))).toBe(s);
+  });
+
+  it("SET_LINE_GAPS stores sorted unique gaps", () => {
+    const next = projectReducer(state(), {
+      type: "SET_LINE_GAPS",
+      payload: { sourceId: "S1", lineId: "L1", gaps: [5, 1, 5] },
+    });
+    expect(line(next).gaps).toEqual([1, 5]);
+  });
+
+  it("consecutive SET_LINE_RANGE on the same line coalesce into one undo step", () => {
+    let clock = 0;
+    const reduce = createDocumentReducer(() => clock);
+    let doc: DocumentState = reduce(initialDocumentState, { type: "SET_PROJECT", payload: state().project! });
+    doc = reduce(doc, setRange(0, 6));
+    clock += 200;
+    doc = reduce(doc, setRange(0, 5));
+    clock += 200;
+    doc = reduce(doc, setRange(0, 4));
+    expect(doc.history.past).toHaveLength(1);
+    expect(line(toProjectState(doc)).syllableRange).toEqual({ start: 0, end: 4 });
+    doc = reduce(doc, { type: "UNDO" });
+    expect(line(toProjectState(doc)).syllableRange).toEqual({ start: 0, end: 7 });
+  });
+
+  it("arrow nudges coalesce through the UPDATE_LINE_BOXES nudge key", () => {
+    let clock = 0;
+    const reduce = createDocumentReducer(() => clock);
+    let doc: DocumentState = reduce(initialDocumentState, { type: "SET_PROJECT", payload: state().project! });
+    for (const x of [0.11, 0.12, 0.13]) {
+      clock += 100;
+      doc = reduce(doc, {
+        type: "UPDATE_LINE_BOXES",
+        payload: { sourceId: "S1", lineId: "L1", syllableBoxes: { 2: { ...B, x }, 7: B } },
+        meta: { coalesceKey: "UPDATE_LINE_BOXES:L1:2:nudge" },
+      });
+    }
+    expect(doc.history.past).toHaveLength(1);
+    expect(doc.history.past[0].focus).toEqual({ sourceId: "S1", lineId: "L1" });
+  });
+});
+
+describe("projectReducer — COPY_LINE_ADJUSTMENTS_TO_SOURCE", () => {
+  const adj: ImageAdjustments = { brightness: 120, contrast: 100, saturation: 100, grayscale: 0, invert: false, rotation: 90, flipH: false, flipV: false };
+  const BOX = { x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
+  function state(lines: ManuscriptLine[], other: ManuscriptLine[] = [mkLine("O1")]) {
+    const src = (id: string, ls: ManuscriptLine[]): ManuscriptSource => ({
+      id,
+      order: 1,
+      metadata: { siglum: id, library: "", city: "", century: "", classes: [null, null, null] },
+      lines: ls,
+      syllableCuts: {},
+    });
+    return { ...initialStateForTest, project: { ...createNewProject("T", ""), sources: [src("S1", lines), src("S2", other)] } };
+  }
+
+  it("copia os ajustes da página para as outras páginas da fonte, e só dessa fonte", () => {
+    const next = projectReducer(state([mkLine("L1", { imageAdjustments: adj }), mkLine("L2"), mkLine("L3", { imageAdjustments: { ...adj, invert: true } })]), {
+      type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE",
+      payload: { sourceId: "S1", fromLineId: "L1" },
+    });
+    expect(next.project!.sources[0].lines.map((l) => l.imageAdjustments)).toEqual([adj, adj, adj]);
+    expect(next.project!.sources[1].lines[0].imageAdjustments).toBeUndefined();
+  });
+
+  it("página de origem sem ajustes limpa os das outras; caixas sem frame ficam presas ao frame anterior", () => {
+    const next = projectReducer(state([mkLine("L1"), mkLine("L2", { imageAdjustments: adj, syllableBoxes: { 0: BOX } })]), {
+      type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE",
+      payload: { sourceId: "S1", fromLineId: "L1" },
+    });
+    const l2 = next.project!.sources[0].lines[1];
+    expect(l2.imageAdjustments).toBeUndefined();
+    expect(l2.boxFrame).toEqual({ rotation: 90, flipH: false, flipV: false });
+    expect(boxesInView(l2)[0]).not.toEqual(BOX); // vistas no frame atual (sem giro), as caixas giram de volta
+  });
+
+  it("fonte de uma página só não muda", () => {
+    const s = state([mkLine("L1", { imageAdjustments: adj })]);
+    expect(projectReducer(s, { type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE", payload: { sourceId: "S1", fromLineId: "L1" } })).toBe(s);
   });
 });

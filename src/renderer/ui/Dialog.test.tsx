@@ -90,4 +90,15 @@ describe("Dialog", () => {
     rerender(ui(false));
     expect(document.activeElement).toBe(fora);
   });
+
+  it("header substitui o título visível; o diálogo continua nomeado pelo título", () => {
+    render(
+      <Dialog open title="Fonte" header={<input aria-label="Sigla" />} onClose={vi.fn()}>
+        corpo
+      </Dialog>,
+    );
+    expect(screen.getByRole("dialog", { name: "Fonte" })).toBeTruthy();
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Sigla" })).toBeTruthy();
+  });
 });

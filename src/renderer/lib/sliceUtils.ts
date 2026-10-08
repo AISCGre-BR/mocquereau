@@ -37,7 +37,7 @@ export function getActiveSyllables(
  * Returns a record mapping global syllable indices → cropped StoredImage or null (gap/absent).
  *
  * When `adjustments` is provided, the canvas bakes the visual adjustments into the
- * PNG output (so DOCX export reflects what the user sees in SliceEditor/TablePreview):
+ * PNG output (so DOCX export reflects what the user sees in Recortes/TablePreview):
  *   - Color filter (brightness/contrast/saturation/grayscale/invert) via `ctx.filter`.
  *   - Geometric transform (rotation any angle + flipH + flipV) via `ctx` transforms;
  *     output canvas dimensions = AABB of the rotated source rectangle (Phase 12 / DOCX-08).

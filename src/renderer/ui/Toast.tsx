@@ -17,6 +17,11 @@ export const TOAST_AUTO_DISMISS_MS = 4000;
 
 const ToastContext = createContext<ToastApi | null>(null);
 
+/** The toast API, or null outside a <Toaster> (components also mounted alone, e.g. in tests). */
+export function useOptionalToast(): ToastApi | null {
+  return useContext(ToastContext);
+}
+
 export function useToast(): ToastApi {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error("useToast precisa estar dentro de <Toaster>");
