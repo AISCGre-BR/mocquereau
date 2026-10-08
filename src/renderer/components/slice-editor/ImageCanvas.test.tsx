@@ -209,3 +209,33 @@ describe("ImageCanvas: etiquetas das caixas e painel Ajustes", () => {
     expect(panel.style.maxHeight).toBe("calc(100% - 16px)");
   });
 });
+
+describe("ImageCanvas: rascunho do arraste", () => {
+  it("vale só sobre as caixas em que foi desenhado (troca de página ou desfazer o descartam)", () => {
+    const offW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")!;
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 100 });
+    Object.assign(HTMLElement.prototype, { setPointerCapture: vi.fn(), hasPointerCapture: () => true });
+    try {
+      const props = {
+        image: IMAGE,
+        activeSyllableIdx: 0,
+        syllableRange: { start: 0, end: 1 },
+        zoom: 1,
+        onZoomChange: vi.fn(),
+      };
+      const { container, rerender } = render(
+        <ImageCanvas {...props} syllableBoxes={{ 0: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 } }} />,
+      );
+      const overlay = () => container.querySelector("[data-box-overlay]") as HTMLElement;
+      const ev = (type: string, x: number) =>
+        act(() => void overlay().dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: 0 })));
+      ev("pointerdown", 10);
+      ev("pointermove", 30);
+      expect(parseFloat(overlay().style.left)).toBeCloseTo(30, 6);
+      rerender(<ImageCanvas {...props} syllableBoxes={{ 0: { x: 0.5, y: 0.1, w: 0.2, h: 0.2 } }} />);
+      expect(overlay().style.left).toBe("50%");
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "offsetWidth", offW);
+    }
+  });
+});
