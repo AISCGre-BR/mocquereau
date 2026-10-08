@@ -67,7 +67,14 @@ export function useRecortesCommands(): RecortesCommands {
     delete boxes[idx];
     dispatch({
       type: "UPDATE_LINE_BOXES",
-      payload: { sourceId: source.id, lineId: line.id, syllableBoxes: boxes, confirmed: hasAnyBox(boxes) },
+      payload: {
+        sourceId: source.id,
+        lineId: line.id,
+        syllableBoxes: boxes,
+        confirmed: hasAnyBox(boxes),
+        // A legacy (pre-B4) crop would otherwise show in the Tabela and DOCX.
+        ...(idx in source.syllableCuts ? { dropCuts: [idx] } : {}),
+      },
     });
   }
 

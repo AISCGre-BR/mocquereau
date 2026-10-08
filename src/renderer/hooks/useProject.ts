@@ -83,6 +83,11 @@ export type ProjectAction =
         confirmed?: boolean;
         /** Crops merged into source.syllableCuts (confirm). */
         syllableCuts?: Record<number, StoredImage | null>;
+        /**
+         * Legacy source.syllableCuts entries removed in the same step (removing
+         * a box or unmarking a gap must not reveal a pre-B4 crop underneath).
+         */
+        dropCuts?: number[];
       };
     }
   | {
@@ -486,7 +491,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case "UPDATE_LINE_BOXES": {
       if (!state.project) return state;
-      const { sourceId, lineId, syllableBoxes, syllableRange, gaps, confirmed, syllableCuts } = action.payload;
+      const { sourceId, lineId, syllableBoxes, syllableRange, gaps, confirmed, syllableCuts, dropCuts } = action.payload;
       const src = state.project.sources.find((s) => s.id === sourceId);
       if (!src || !src.lines.some((l) => l.id === lineId)) return state;
       const sources = state.project.sources.map((s) => {
@@ -504,7 +509,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           if (confirmed !== undefined) next.confirmed = confirmed;
           return next;
         });
-        return syllableCuts ? { ...s, lines, syllableCuts: { ...s.syllableCuts, ...syllableCuts } } : { ...s, lines };
+        if (!syllableCuts && !dropCuts?.length) return { ...s, lines };
+        const cuts = { ...s.syllableCuts, ...syllableCuts };
+        for (const idx of dropCuts ?? []) delete cuts[idx];
+        return { ...s, lines, syllableCuts: cuts };
       });
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
