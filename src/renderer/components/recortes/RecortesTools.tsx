@@ -11,7 +11,8 @@ import { useProject } from "../../hooks/useProject";
 import { useRecortesContext } from "../../hooks/RecortesContext";
 import { IMAGE_ADJUSTMENTS_DEFAULT } from "../../lib/image-adjustments";
 import type { ImageAdjustments } from "../../lib/models";
-import { ImagePanel } from "./ImagePanel";
+import { ImagePanel, type ImageGesture } from "./ImagePanel";
+import type { HistoryMeta } from "../../history/history";
 
 export function RecortesTools() {
   const { t } = useTranslation();
@@ -27,9 +28,21 @@ export function RecortesTools() {
   const hasImage = !!line?.image;
   const open = recortes.imagePanelOpen && hasImage;
 
-  function update(adjustments: Partial<ImageAdjustments>) {
+  function update(adjustments: Partial<ImageAdjustments>, gesture?: ImageGesture) {
     if (!source || !line) return;
-    dispatch({ type: "UPDATE_LINE_ADJUSTMENTS", payload: { sourceId: source.id, lineId: line.id, adjustments } });
+    // Turns and the tilt both write `rotation`: without their own keys a turn
+    // and the tilt drag after it would merge into one undo step.
+    const meta: HistoryMeta | undefined =
+      gesture === "turn"
+        ? { coalesceKey: undefined }
+        : gesture === "tilt"
+          ? { coalesceKey: `UPDATE_LINE_ADJUSTMENTS:${line.id}:tilt` }
+          : undefined;
+    dispatch({
+      type: "UPDATE_LINE_ADJUSTMENTS",
+      payload: { sourceId: source.id, lineId: line.id, adjustments },
+      ...(meta ? { meta } : {}),
+    });
   }
 
   const iconProps = { "aria-hidden": true, strokeWidth: 1.75 } as const;

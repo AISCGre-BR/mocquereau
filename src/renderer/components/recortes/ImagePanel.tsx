@@ -16,9 +16,16 @@ import { Button } from "../../ui/Button";
 export const TILT_MIN = -45;
 export const TILT_MAX = 45;
 
+/**
+ * What an update is, for undo: "turn" (a 90° step: its own undo step) or
+ * "tilt" (the tilt slider: one drag is one undo step, never merged with a turn).
+ * Absent: the default coalescing per adjusted field.
+ */
+export type ImageGesture = "turn" | "tilt";
+
 export interface ImagePanelProps {
   adjustments?: ImageAdjustments;
-  onUpdate: (partial: Partial<ImageAdjustments>) => void;
+  onUpdate: (partial: Partial<ImageAdjustments>, gesture?: ImageGesture) => void;
   onReset: () => void;
   /** Absent when the source has no other page. */
   onApplyToOtherPages?: () => void;
@@ -42,7 +49,8 @@ export function ImagePanel({ adjustments, onUpdate, onReset, onApplyToOtherPages
       onCloseRef.current();
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
+      // An inner control (a select's list, a menu) that handled Escape keeps it.
+      if (e.key !== "Escape" || e.defaultPrevented) return;
       e.preventDefault();
       onCloseRef.current();
       anchor?.focus();
@@ -54,6 +62,12 @@ export function ImagePanel({ adjustments, onUpdate, onReset, onApplyToOtherPages
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [anchor]);
+
+  // Opening moves focus into the panel (its first control); Escape gives it
+  // back to the "Imagem" button.
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>("button, input")?.focus();
+  }, []);
 
   const tilt = splitRotation(adj.rotation).fine;
   const degrees = new Intl.NumberFormat(i18n.language, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -68,8 +82,8 @@ export function ImagePanel({ adjustments, onUpdate, onReset, onApplyToOtherPages
     >
       <h3 className="text-label font-semibold">{t("imagePanel.orientation")}</h3>
       <div className="grid grid-cols-4 gap-1.5">
-        <Tile icon={<RotateCcw />} label={t("imagePanel.rotateLeft")} onClick={() => onUpdate({ rotation: rotateQuarter(adj.rotation, -1) })} />
-        <Tile icon={<RotateCw />} label={t("imagePanel.rotateRight")} onClick={() => onUpdate({ rotation: rotateQuarter(adj.rotation, 1) })} />
+        <Tile icon={<RotateCcw />} label={t("imagePanel.rotateLeft")} onClick={() => onUpdate({ rotation: rotateQuarter(adj.rotation, -1) }, "turn")} />
+        <Tile icon={<RotateCw />} label={t("imagePanel.rotateRight")} onClick={() => onUpdate({ rotation: rotateQuarter(adj.rotation, 1) }, "turn")} />
         <Tile icon={<FlipHorizontal />} label={t("imagePanel.flip")} pressed={adj.flipH} onClick={() => onUpdate({ flipH: !adj.flipH })} />
         {/* Sem endireitar automático: o botão leva à Inclinação. */}
         <Tile icon={<ScanLine />} label={t("imagePanel.straighten")} onClick={() => tiltRef.current?.focus()} />
@@ -88,7 +102,7 @@ export function ImagePanel({ adjustments, onUpdate, onReset, onApplyToOtherPages
             className="relative w-full accent-rubric"
             onChange={(e) => {
               const v = Number(e.target.value);
-              if (!Number.isNaN(v)) onUpdate({ rotation: withFine(adj.rotation, v) });
+              if (!Number.isNaN(v)) onUpdate({ rotation: withFine(adj.rotation, v) }, "tilt");
             }}
           />
         </div>

@@ -163,6 +163,65 @@ describe("RecortesTools: painel Imagem", () => {
     expect(v.line().imageAdjustments?.grayscale).toBe(0);
   });
 
+  it("Girar e a inclinação logo depois são passos de desfazer separados", () => {
+    const v = mount(projectWith([mkLine("a1")]));
+    const q = within(v.openPanel());
+    fireEvent.click(q.getByRole("button", { name: "Girar à direita" }));
+    const tilt = q.getByRole("slider", { name: "Inclinação" });
+    fireEvent.change(tilt, { target: { value: "2" } });
+    fireEvent.change(tilt, { target: { value: "3" } });
+    expect(v.line().imageAdjustments?.rotation).toBe(93);
+    act(() => v.ref.history!.undo()); // o arraste da inclinação inteiro
+    expect(v.line().imageAdjustments?.rotation).toBe(90);
+    act(() => v.ref.history!.undo()); // o Girar
+    expect(v.line().imageAdjustments).toBeUndefined();
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("cada Girar é um passo de desfazer", () => {
+    const v = mount(projectWith([mkLine("a1")]));
+    const q = within(v.openPanel());
+    fireEvent.click(q.getByRole("button", { name: "Girar à direita" }));
+    fireEvent.click(q.getByRole("button", { name: "Girar à direita" }));
+    act(() => v.ref.history!.undo());
+    expect(v.line().imageAdjustments?.rotation).toBe(90);
+  });
+
+  it("Tons de cinza legado (40) aparece ligado; desligar grava 0", () => {
+    const v = mount(
+      projectWith([mkLine("a1", { imageAdjustments: { brightness: 100, contrast: 100, saturation: 100, grayscale: 40, invert: false, rotation: 0, flipH: false, flipV: false } })]),
+    );
+    const sw = within(v.openPanel()).getByRole("switch", { name: "Tons de cinza" });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(sw);
+    expect(v.line().imageAdjustments?.grayscale ?? 0).toBe(0);
+  });
+
+  it("Esc tratado por um menu interno não fecha o painel", () => {
+    const v = mount(projectWith([mkLine("a1")]));
+    const panel = v.openPanel();
+    const inner = document.createElement("div");
+    panel.appendChild(inner);
+    inner.addEventListener("keydown", (e) => e.preventDefault());
+    fireEvent.keyDown(inner, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Imagem" })).toBeTruthy();
+  });
+
+  it("abrir leva o foco ao primeiro controle; Esc fecha e devolve o foco ao botão Imagem", () => {
+    const v = mount(projectWith([mkLine("a1")]));
+    const panel = v.openPanel();
+    expect(document.activeElement).toBe(within(panel).getByRole("button", { name: "Girar à esquerda" }));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Imagem" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Imagem/ }));
+  });
+
+  it("Aplicar às outras páginas sem nada a mudar não cria passo de desfazer", () => {
+    const v = mount(projectWith([mkLine("a1"), mkLine("a2")]));
+    fireEvent.click(within(v.openPanel()).getByRole("button", { name: "Aplicar às outras páginas" }));
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
   it("Restaurar volta tudo ao padrão", () => {
     const v = mount(
       projectWith([mkLine("a1", { imageAdjustments: { brightness: 140, contrast: 90, saturation: 100, grayscale: 100, invert: true, rotation: 93, flipH: true, flipV: false } })]),

@@ -192,6 +192,22 @@ function withAdjustments(line: ManuscriptLine, partial: Partial<ImageAdjustments
   return pinFrame ? { ...next, boxFrame: pinFrame } : next;
 }
 
+/** Same effective adjustments (absent = all default; rotation normalized). */
+function sameAdjustments(a: ImageAdjustments | undefined, b: ImageAdjustments | undefined): boolean {
+  const x: ImageAdjustments = { ...ADJ_DEFAULT, ...a };
+  const y: ImageAdjustments = { ...ADJ_DEFAULT, ...b };
+  return (
+    x.brightness === y.brightness &&
+    x.contrast === y.contrast &&
+    x.saturation === y.saturation &&
+    x.grayscale === y.grayscale &&
+    x.invert === y.invert &&
+    normalizeRotation(x.rotation) === normalizeRotation(y.rotation) &&
+    x.flipH === y.flipH &&
+    x.flipV === y.flipV
+  );
+}
+
 // ── Line helpers ─────────────────────────────────────────────────────────────
 
 /** Replaces one line through `update`; returns the same state when nothing changed. */
@@ -455,9 +471,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const from = src?.lines.find((l) => l.id === fromLineId);
       if (!src || !from || src.lines.length < 2) return state;
       const adjustments: ImageAdjustments = { ...ADJ_DEFAULT, ...from.imageAdjustments };
-      const sources = state.project.sources.map((s) =>
-        s.id !== sourceId ? s : { ...s, lines: s.lines.map((l) => (l.id === fromLineId ? l : withAdjustments(l, adjustments))) },
-      );
+      // Pages that already have these adjustments stay as they are; when none
+      // changes, the same state (no undo entry for a no-op).
+      let changed = false;
+      const lines = src.lines.map((l) => {
+        if (l.id === fromLineId || sameAdjustments(l.imageAdjustments, adjustments)) return l;
+        changed = true;
+        return withAdjustments(l, adjustments);
+      });
+      if (!changed) return state;
+      const sources = state.project.sources.map((s) => (s.id !== sourceId ? s : { ...s, lines }));
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
 
@@ -580,7 +603,8 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
       };
     case "UPDATE_LINE_BOXES":
     case "SET_LINE_GAPS":
-      // Arrow nudges pass meta.coalesceKey `UPDATE_LINE_BOXES:${lineId}:nudge`.
+      // Arrow nudges pass meta.coalesceKey `UPDATE_LINE_BOXES:${lineId}:${syllable}:nudge`
+      // (one undo step per run of nudges on one box).
       return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId } };
     case "SET_LINE_RANGE":
       // One handle drag (or a run of Tab past the end) is one undo step.
