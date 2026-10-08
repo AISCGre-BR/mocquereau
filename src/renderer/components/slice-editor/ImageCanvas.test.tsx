@@ -3,31 +3,26 @@ import "../../i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { ImageCanvas } from "./ImageCanvas";
-import type { EditorAction } from "./editorReducer";
 
 afterEach(cleanup);
 
 const IMAGE = { dataUrl: "data:image/png;base64,iVBORw0KGgo=", width: 100, height: 50, mimeType: "image/png" };
 
 function setup(zoom = 1) {
-  const dispatch = vi.fn<(a: EditorAction) => void>();
+  const onZoomChange = vi.fn<(z: number) => void>();
   const utils = render(
     <ImageCanvas
       image={IMAGE}
       syllableBoxes={{}}
       activeSyllableIdx={null}
       syllableRange={{ start: 0, end: 3 }}
-      gaps={[]}
-      hoveredSyllableIdx={null}
       zoom={zoom}
-      panOffset={{ x: 0, y: 0 }}
-      dispatch={dispatch}
+      onZoomChange={onZoomChange}
     />,
   );
   const wrapper = utils.container.querySelector("[data-image-wrapper]") as HTMLElement;
-  const zooms = () =>
-    dispatch.mock.calls.map(([a]) => a).filter((a) => a.type === "SET_ZOOM").map((a) => (a as { payload: number }).payload);
-  return { ...utils, wrapper, dispatch, zooms };
+  const zooms = () => onZoomChange.mock.calls.map(([z]) => z);
+  return { ...utils, wrapper, onZoomChange, zooms };
 }
 
 function wheel(target: Element, init: WheelEventInit) {
@@ -77,11 +72,8 @@ describe("ImageCanvas: controles de giro", () => {
         syllableBoxes={{}}
         activeSyllableIdx={null}
         syllableRange={{ start: 0, end: 3 }}
-        gaps={[]}
-        hoveredSyllableIdx={null}
         zoom={1}
-        panOffset={{ x: 0, y: 0 }}
-        dispatch={vi.fn()}
+        onZoomChange={vi.fn()}
         adjustments={{ brightness: 100, contrast: 100, saturation: 100, grayscale: 0, invert: false, rotation, flipH: false, flipV: false }}
         onUpdateAdjustments={onUpdate}
       />,
@@ -182,11 +174,8 @@ describe("ImageCanvas: etiquetas das caixas e painel Ajustes", () => {
         syllableBoxes={{ 0: { x: 0.1, y: 0.2, w: 0.2, h: 0.3 }, 1: { x: 0.4, y: 0.2, w: 0.2, h: 0.3 } }}
         activeSyllableIdx={0}
         syllableRange={{ start: 0, end: 1 }}
-        gaps={[]}
-        hoveredSyllableIdx={null}
         zoom={1}
-        panOffset={{ x: 0, y: 0 }}
-        dispatch={vi.fn()}
+        onZoomChange={vi.fn()}
         showAllBoxes
         {...extra}
       />,

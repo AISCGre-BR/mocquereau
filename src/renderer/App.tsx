@@ -43,8 +43,9 @@ function Workbench() {
   const { theme, setTheme } = useTheme();
   const [view, setView] = useState<ViewId>("texto");
   const [exportOpen, setExportOpen] = useState(false);
-  // Desfazer/Refazer troca o projeto por baixo das vistas, que guardam cópias locais
-  // (campos do Texto, caixas do editor) até a onda B: remontá-las relê o projeto.
+  // Desfazer/Refazer troca o projeto por baixo das vistas. As que ainda guardam
+  // cópias locais (campos do Texto) remontam para reler o projeto; Recortes lê o
+  // projeto a cada render (D6) e fica montada, com a seleção e o zoom.
   const [historyEpoch, setHistoryEpoch] = useState(0);
   function stepHistory(direction: "undo" | "redo") {
     if (!history) return;
@@ -165,7 +166,10 @@ function Workbench() {
           onOpenExample={() => void file.openExample()}
         />
       ) : (
-        <div key={`${file.projectEpoch}:${historyEpoch}`} className="flex min-h-0 flex-1 flex-col">
+        <div
+          key={view === "recortes" ? `${file.projectEpoch}` : `${file.projectEpoch}:${historyEpoch}`}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           {view === "texto" && (
             // Sem fontes, a vista Fontes já abre com uma fonte nova pronta para preencher.
             <TextoView onAddSource={() => setView("fontes")} onImportGueranger={() => void file.importGueranger()} />

@@ -216,7 +216,7 @@ describe("App", () => {
     expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Sem título");
   });
 
-  it("caixa movida no Recortes e Ctrl+N antes de 300 ms: pergunta antes de descartar", async () => {
+  it("caixa removida no Recortes e Ctrl+N: pergunta antes de descartar", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
     render(<App />);
@@ -224,7 +224,7 @@ describe("App", () => {
     await screen.findByDisplayValue("Introito");
     ctrl("3");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "Delete" });
     ctrl("n");
     expect(confirm).toHaveBeenCalledOnce();
     expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
@@ -281,7 +281,7 @@ describe("App", () => {
     expect(setDirty).toHaveBeenLastCalledWith(true);
   });
 
-  it("caixa movida no Recortes: o main sabe que há alterações antes dos 300 ms", async () => {
+  it("caixa removida no Recortes: o main sabe que há alterações na hora", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
     render(<App />);
@@ -291,8 +291,24 @@ describe("App", () => {
     await wait(50);
     const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
     setDirty.mockClear();
-    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "Delete" });
     expect(setDirty).toHaveBeenLastCalledWith(true);
+  });
+
+  it("Desfazer no Recortes devolve a caixa à folha sem remontar a vista", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("3");
+    const sheet = container.querySelector("[data-image-wrapper]") as HTMLElement;
+    expect(sheet.querySelector("[data-box-overlay]")).not.toBeNull();
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(sheet.querySelector("[data-box-overlay]")).toBeNull();
+    ctrl("z");
+    expect(container.querySelector("[data-image-wrapper]")).toBe(sheet);
+    expect(sheet.querySelector("[data-box-overlay]")).not.toBeNull();
   });
 });
 

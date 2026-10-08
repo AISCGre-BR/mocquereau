@@ -64,7 +64,8 @@ export type ProjectAction =
     }
   | {
       /**
-       * Boxes edited in the SliceEditor (autosave, confirm). syllableBoxes is the
+       * Boxes edited in Recortes, written at the end of each gesture (pointer up,
+       * Delete, arrow nudge). syllableBoxes is the
        * line's COMPLETE map in the frame the user currently sees (boxesInView):
        * the reducer stores it and sets boxFrame to the current adjustments.
        */
@@ -80,6 +81,16 @@ export type ProjectAction =
         syllableCuts?: Record<number, StoredImage | null>;
       };
     }
+  | {
+      /**
+       * Syllable range of a page (range handles, Tab past the end). Normalized
+       * to start <= end inside the text; boxes and gaps outside the new range
+       * are kept and count again if the range grows back.
+       */
+      type: "SET_LINE_RANGE";
+      payload: { sourceId: string; lineId: string; range: { start: number; end: number } };
+    }
+  | { type: "SET_LINE_GAPS"; payload: { sourceId: string; lineId: string; gaps: number[] } }
   | {
       type: "UPDATE_LINE_ADJUSTMENTS";
       payload: {
@@ -145,6 +156,35 @@ function isAllDefaultAdjustments(a: ImageAdjustments): boolean {
     a.flipH === false &&
     a.flipV === false
   );
+}
+
+// ── Line helpers ─────────────────────────────────────────────────────────────
+
+/** Replaces one line through `update`; returns the same state when nothing changed. */
+function updateLine(
+  state: ProjectState,
+  sourceId: string,
+  lineId: string,
+  update: (line: ManuscriptLine) => ManuscriptLine,
+): ProjectState {
+  if (!state.project) return state;
+  let changed = false;
+  const sources = state.project.sources.map((s) => {
+    if (s.id !== sourceId) return s;
+    const lines = s.lines.map((l) => {
+      if (l.id !== lineId) return l;
+      const next = update(l);
+      if (next !== l) changed = true;
+      return next;
+    });
+    return changed ? { ...s, lines } : s;
+  });
+  if (!changed) return state;
+  return { ...state, project: { ...state.project, sources }, isDirty: true };
+}
+
+function syllableCount(words: SyllabifiedWord[]): number {
+  return words.reduce((n, w) => n + w.syllables.length, 0);
 }
 
 // ── Reducer ──────────────────────────────────────────────────────────────────
@@ -425,6 +465,28 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
 
+    case "SET_LINE_RANGE": {
+      if (!state.project) return state;
+      const { sourceId, lineId, range } = action.payload;
+      const last = Math.max(0, syllableCount(state.project.text.words) - 1);
+      const clamp = (i: number) => Math.max(0, Math.min(last, Math.round(i)));
+      const start = clamp(Math.min(range.start, range.end));
+      const end = clamp(Math.max(range.start, range.end));
+      return updateLine(state, sourceId, lineId, (l) =>
+        l.syllableRange.start === start && l.syllableRange.end === end
+          ? l
+          : { ...l, syllableRange: { start, end } },
+      );
+    }
+
+    case "SET_LINE_GAPS": {
+      const { sourceId, lineId } = action.payload;
+      const gaps = Array.from(new Set(action.payload.gaps)).sort((a, b) => a - b);
+      return updateLine(state, sourceId, lineId, (l) =>
+        l.gaps.length === gaps.length && l.gaps.every((g, i) => g === gaps[i]) ? l : { ...l, gaps },
+      );
+    }
+
     case "SET_LINE_BOX_FRAME": {
       if (!state.project) return state;
       const updates = Array.isArray(action.payload) ? action.payload : [action.payload];
@@ -494,7 +556,15 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
         focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
       };
     case "UPDATE_LINE_BOXES":
+    case "SET_LINE_GAPS":
+      // Arrow nudges pass meta.coalesceKey `UPDATE_LINE_BOXES:${lineId}:nudge`.
       return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId } };
+    case "SET_LINE_RANGE":
+      // One handle drag (or a run of Tab past the end) is one undo step.
+      return {
+        coalesceKey: `SET_LINE_RANGE:${action.payload.lineId}`,
+        focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
+      };
     case "UPDATE_LINE_ADJUSTMENTS":
       return {
         coalesceKey: `UPDATE_LINE_ADJUSTMENTS:${action.payload.lineId}:${sortedKeys(action.payload.adjustments)}`,

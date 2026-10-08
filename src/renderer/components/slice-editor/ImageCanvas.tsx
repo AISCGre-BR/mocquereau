@@ -3,7 +3,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { StoredImage, SyllabifiedWord, SyllableBox } from '../../lib/models';
 import type { ImageAdjustments } from '../../lib/models';
-import { EditorAction } from './editorReducer';
 import { SyllableBoxOverlay, cropBoxClass } from './SyllableBoxOverlay';
 import { ImageAdjustmentsPanel } from './ImageAdjustmentsPanel';
 import {
@@ -38,14 +37,16 @@ import { useTranslation } from 'react-i18next';
 
 interface ImageCanvasProps {
   image: StoredImage | null;
+  /** The page's boxes in the frame the user sees (boxesInView), read from the project. */
   syllableBoxes: Record<number, SyllableBox | null>;
   activeSyllableIdx: number | null;
   syllableRange: { start: number; end: number } | null;
-  gaps: number[];
-  hoveredSyllableIdx: number | null;
   zoom: number;
-  panOffset: { x: number; y: number };
-  dispatch: React.Dispatch<EditorAction>;
+  onZoomChange: (zoom: number) => void;
+  onActivateSyllable?: (syllableIdx: number) => void;
+  /** End of a gesture (draw, move, resize): the box goes to the project. */
+  onBoxCommit?: (syllableIdx: number, box: SyllableBox) => void;
+  onBoxDelete?: (syllableIdx: number) => void;
   words?: SyllabifiedWord[];
   showAllBoxes?: boolean;
   sameSizeMode?: boolean;
@@ -61,11 +62,11 @@ export function ImageCanvas({
   syllableBoxes,
   activeSyllableIdx,
   syllableRange,
-  gaps,
-  hoveredSyllableIdx,
   zoom,
-  panOffset,
-  dispatch,
+  onZoomChange,
+  onActivateSyllable,
+  onBoxCommit,
+  onBoxDelete,
   words,
   showAllBoxes = false,
   sameSizeMode = false,
@@ -121,6 +122,13 @@ export function ImageCanvas({
   } | null>(null);
   const [liveDrawBox, setLiveDrawBox] = useState<SyllableBox | null>(null);
 
+  // Draft of the active box while it is moved or resized: lives here until the
+  // pointer goes up, then the box is committed to the project (spec D6).
+  const [draft, setDraft] = useState<{ idx: number; box: SyllableBox } | null>(null);
+  useEffect(() => setDraft(null), [activeSyllableIdx]);
+  const boxes =
+    draft && draft.idx === activeSyllableIdx ? { ...syllableBoxes, [draft.idx]: draft.box } : syllableBoxes;
+
   // Resolve syllable text for a given global idx (used by box overlay labels/titles)
   function syllableTextAt(globalIdx: number): string {
     if (!words) return String(globalIdx);
@@ -161,7 +169,7 @@ export function ImageCanvas({
     if (Math.abs(z - zoomRef.current) < 1e-9) return;
     zoomRef.current = z;
     pendingAnchor.current = anchor;
-    dispatch({ type: 'SET_ZOOM', payload: z });
+    onZoomChange(z);
   }
   const applyZoomRef = useRef(applyZoom);
   applyZoomRef.current = applyZoom;
@@ -247,19 +255,18 @@ export function ImageCanvas({
 
   // Find the "template box" for same-size mode: first box (by lowest syllable idx) that exists
   function getTemplateBox(): SyllableBox | null {
-    const indices = Object.keys(syllableBoxes)
+    const indices = Object.keys(boxes)
       .map(Number)
-      .filter(k => syllableBoxes[k] != null)
+      .filter(k => boxes[k] != null)
       .sort((a, b) => a - b);
     if (indices.length === 0) return null;
-    return syllableBoxes[indices[0]];
+    return boxes[indices[0]];
   }
 
   // ── Draw-new-box pointer handlers ─────────────────────────────────────────
   function handleImagePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (activeSyllableIdx === null) return;
-    const hasBox =
-      activeSyllableIdx in syllableBoxes && syllableBoxes[activeSyllableIdx] !== null;
+    const hasBox = boxes[activeSyllableIdx] != null;
     if (hasBox) return;  // SyllableBoxOverlay handles its own pointer events
 
     // Same-size mode: if a template box exists, click places a box of same dimensions
@@ -319,7 +326,7 @@ export function ImageCanvas({
     // Accept very small selections (0.5% = ~5-10 pixels depending on image size).
     // Rejecting too aggressively frustrates users marking narrow neumes.
     if (box.w >= 0.005 && box.h >= 0.005) {
-      dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box } });
+      onBoxCommit?.(activeSyllableIdx, box);
     }
     drawState.current = null;
     setLiveDrawBox(null);
@@ -345,11 +352,7 @@ export function ImageCanvas({
           data-image-wrapper
           className={[
             'relative mx-auto',
-            activeSyllableIdx !== null &&
-            !(
-              activeSyllableIdx in syllableBoxes &&
-              syllableBoxes[activeSyllableIdx] !== null
-            )
+            activeSyllableIdx !== null && boxes[activeSyllableIdx] == null
               ? 'cursor-crosshair'
               : 'cursor-default',
           ].join(' ')}
@@ -358,7 +361,6 @@ export function ImageCanvas({
             // afastar abaixo de 100% também funciona.
             width: `${100 * zoom}%`,
             aspectRatio: intrinsic ? `${1} / ${aabbRatio}` : undefined,
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
           }}
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
@@ -386,7 +388,7 @@ export function ImageCanvas({
             ? Array.from({ length: syllableRange.end - syllableRange.start + 1 }, (_, k) => syllableRange.start + k)
             : []
           ).map((idx) => {
-            const box = syllableBoxes[idx];
+            const box = boxes[idx];
             if (!box || idx === activeSyllableIdx) return null;
             return (
               <div
@@ -408,7 +410,7 @@ export function ImageCanvas({
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx });
+                  onActivateSyllable?.(idx);
                 }}
                 title={t('imageCanvas.clickToEdit', { syllable: syllableTextAt(idx) })}
                 tabIndex={showAllBoxes ? 0 : undefined}
@@ -416,7 +418,7 @@ export function ImageCanvas({
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     e.stopPropagation();
-                    dispatch({ type: 'SET_ACTIVE_SYLLABLE', payload: idx });
+                    onActivateSyllable?.(idx);
                   }
                 }}
               >
@@ -433,20 +435,20 @@ export function ImageCanvas({
           })}
 
           {/* SyllableBoxOverlay for active syllable that has a box */}
-          {activeSyllableIdx !== null && syllableBoxes[activeSyllableIdx] != null && (
+          {activeSyllableIdx !== null && boxes[activeSyllableIdx] != null && (
             <SyllableBoxOverlay
-              box={syllableBoxes[activeSyllableIdx] as SyllableBox}
+              box={boxes[activeSyllableIdx] as SyllableBox}
               syllableIdx={activeSyllableIdx}
               label={syllableTextAt(activeSyllableIdx)}
               containerRef={imageWrapperRef}
-              onBoxChange={(newBox) => {
-                dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box: newBox } });
-              }}
+              onBoxChange={(newBox) => setDraft({ idx: activeSyllableIdx, box: newBox })}
               onBoxCommit={(newBox) => {
-                dispatch({ type: 'SET_BOX', payload: { syllableIdx: activeSyllableIdx, box: newBox } });
+                setDraft(null);
+                onBoxCommit?.(activeSyllableIdx, newBox);
               }}
               onDeleteBox={() => {
-                dispatch({ type: 'DELETE_BOX', payload: { syllableIdx: activeSyllableIdx } });
+                setDraft(null);
+                onBoxDelete?.(activeSyllableIdx);
               }}
             />
           )}

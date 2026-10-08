@@ -2,6 +2,8 @@
 //
 // Renders a single selected bounding box with 8 resize handles.
 // Handles pointer-based drag-to-move and drag-to-resize, plus keyboard nudge/delete.
+// While dragging only onBoxChange fires (a local draft); the project is written
+// once, on onBoxCommit (spec D6).
 // All coordinates are fractions of the container dimensions (0.0–1.0).
 
 import React, { useRef } from 'react';
@@ -19,8 +21,8 @@ interface SyllableBoxOverlayProps {
   syllableIdx: number;                                  // índice global da sílaba (pigmento)
   label?: string;                                       // texto da sílaba na etiqueta
   containerRef: React.RefObject<HTMLDivElement | null>; // the image wrapper div
-  onBoxChange: (newBox: SyllableBox) => void;           // called on every pointermove (live feedback)
-  onBoxCommit: (newBox: SyllableBox) => void;           // called on pointerup (dispatch to reducer)
+  onBoxChange: (newBox: SyllableBox) => void;           // every pointermove: the draft, kept by the canvas
+  onBoxCommit: (newBox: SyllableBox) => void;           // end of the gesture (pointerup, nudge): written to the project
   onDeleteBox: () => void;                              // called on Delete/Backspace keydown
 }
 
