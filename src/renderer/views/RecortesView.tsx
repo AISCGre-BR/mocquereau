@@ -14,21 +14,31 @@ import { SourceTree } from "../components/sources/SourceTree";
 import { useAddPage, type AddPage } from "../components/sources/useAddPage";
 import { ResizeImageDialog } from "../components/sources/ResizeImageDialog";
 import { SourceDialog } from "../components/sources/SourceDialog";
-import { SyllableRangeBar } from "../components/slice-editor/SyllableRangeBar";
+import { SyllableStrip } from "../components/recortes/SyllableStrip";
 import { ImageCanvas } from "../components/slice-editor/ImageCanvas";
 import { RealignBoxesDialog } from "../components/slice-editor/RealignBoxesDialog";
 import { flattenSyllables } from "../lib/sliceUtils";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
 
-/** Global syllable indices confirmed by OTHER pages of the source. */
-function computeCoveredSyllables(source: ManuscriptSource, excludeLineId: string | null): number[] {
-  const covered = new Set<number>();
-  for (const line of source.lines) {
-    if (line.id === excludeLineId || !line.confirmed) continue;
-    for (let i = line.syllableRange.start; i <= line.syllableRange.end; i++) covered.add(i);
-  }
-  return Array.from(covered);
+/**
+ * Global syllables confirmed by OTHER pages of the source, each with the label
+ * of the (first) page that covers it: its folio, else its position.
+ */
+function coveredByOtherPages(
+  source: ManuscriptSource,
+  excludeLineId: string | null,
+  pageLabel: string,
+): Map<number, string> {
+  const covered = new Map<number, string>();
+  source.lines.forEach((line, n) => {
+    if (line.id === excludeLineId || !line.confirmed) return;
+    const label = line.folio || `${pageLabel} ${n + 1}`;
+    for (let i = line.syllableRange.start; i <= line.syllableRange.end; i++) {
+      if (!covered.has(i)) covered.set(i, label);
+    }
+  });
+  return covered;
 }
 
 /** Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas). */
@@ -49,7 +59,6 @@ export function RecortesView() {
   const recortes = useRecortes(project);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
-  const [hoveredSyllable, setHoveredSyllable] = useState<number | null>(null);
   const [showRealign, setShowRealign] = useState(false);
 
   const words = project?.text.words;
@@ -61,13 +70,12 @@ export function RecortesView() {
   // a line object changes whenever its boxes or its frame do).
   const viewBoxes = useMemo(() => (activeLine ? boxesInView(activeLine) : {}), [activeLine]);
   const range: SyllableRange | null = activeLine ? activeLine.syllableRange : null;
+  const pageLabel = t("sourceTree.page");
   const covered = useMemo(
-    () => (activeSource && activeLine ? computeCoveredSyllables(activeSource, activeLine.id) : []),
-    [activeSource, activeLine],
+    () => (activeSource && activeLine ? coveredByOtherPages(activeSource, activeLine.id, pageLabel) : new Map<number, string>()),
+    [activeSource, activeLine, pageLabel],
   );
   const activeSyllable = recortes.activeSyllable;
-  const activeSyllableLabel =
-    words && activeSyllable !== null ? (flattenSyllables(words)[activeSyllable] ?? null) : null;
 
   // ── Writes to the project (end of each gesture) ──────────────────────────
 
@@ -147,7 +155,7 @@ export function RecortesView() {
   };
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
-      // Text pasted into a field (the Fólio dialog, the range inputs) is not a page.
+      // Text pasted into a field (the Fólio dialog) is not a page.
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       if (target instanceof Element && target.closest("[role=dialog]")) return;
@@ -280,105 +288,18 @@ export function RecortesView() {
             </div>
           </div>
 
-          {hasImage && range && (
-            <div className="flex-shrink-0 border-b border-rule-soft bg-surface px-3 py-2">
-              <div className="mb-2 flex items-center gap-3">
-                <span className="text-xs font-medium text-ink-muted">{t("sliceEditor.range")}</span>
-                <label className="flex items-center gap-1 text-xs text-ink-soft">
-                  {t("sliceEditor.from")}
-                  <input
-                    type="number"
-                    min={0}
-                    max={total - 1}
-                    value={range.start}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val)) setRange({ start: Math.min(val, range.end), end: range.end });
-                    }}
-                    className="w-14 rounded border border-rule px-1 py-0.5 text-center text-xs"
-                  />
-                </label>
-                <label className="flex items-center gap-1 text-xs text-ink-soft">
-                  {t("sliceEditor.to")}
-                  <input
-                    type="number"
-                    min={0}
-                    max={total - 1}
-                    value={range.end}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val)) setRange({ start: range.start, end: Math.max(val, range.start) });
-                    }}
-                    className="w-14 rounded border border-rule px-1 py-0.5 text-center text-xs"
-                  />
-                </label>
-              </div>
-              <SyllableRangeBar
+          {hasImage && activeLine && (
+            <div className="flex-shrink-0 px-4 pt-3">
+              <SyllableStrip
                 words={project.text.words}
-                syllableRange={range}
-                gaps={activeLine!.gaps}
-                hoveredSyllableIdx={hoveredSyllable}
-                activeSyllableIdx={activeSyllable}
-                coveredSyllables={covered}
+                line={activeLine}
+                activeSyllable={activeSyllable}
+                coveredByOthers={covered}
+                onActivate={recortes.setActiveSyllable}
                 onRangeChange={setRange}
-                onGapToggle={toggleGap}
-                onHover={setHoveredSyllable}
-                onRename={(globalIdx, newText) => {
-                  let offset = 0;
-                  for (let w = 0; w < project.text.words.length; w++) {
-                    const len = project.text.words[w].syllables.length;
-                    if (globalIdx < offset + len) {
-                      dispatch({
-                        type: "UPDATE_SYLLABLE_TEXT",
-                        payload: { wordIdx: w, sylIdx: globalIdx - offset, newText },
-                      });
-                      return;
-                    }
-                    offset += len;
-                  }
-                }}
+                onToggleGap={toggleGap}
+                onRemoveBox={deleteBox}
               />
-            </div>
-          )}
-
-          {hasImage && (
-            <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-rubric-soft bg-rubric-wash px-4 py-2 text-xs text-rubric">
-              <div className="flex min-w-0 items-center gap-3">
-                {activeSyllableLabel !== null ? (
-                  <span className="flex items-center gap-2">
-                    <span className="text-ink-soft">{t("sliceEditor.markingAreaFor")}</span>
-                    <span className="inline-block rounded bg-rubric px-2 py-0.5 font-mono text-sm font-bold text-on-rubric">
-                      {activeSyllableLabel}
-                    </span>
-                    <span className="hidden text-ink-muted md:inline">{t("sliceEditor.markingHint")}</span>
-                  </span>
-                ) : (
-                  <span className="text-ink-soft">
-                    <span className="font-medium">{t("sliceEditor.clickSyllableAbove")}</span>{" "}
-                    {t("sliceEditor.clickSyllableAboveSuffix")}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-4">
-                <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={recortes.sameSize}
-                    onChange={(e) => recortes.setSameSize(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <span className="font-medium">{t("sliceEditor.sameSizeAsFirst")}</span>
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={recortes.showAll}
-                    onChange={(e) => recortes.setShowAll(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <span className="font-medium">{t("sliceEditor.showAllBoxes")}</span>
-                </label>
-              </div>
             </div>
           )}
 

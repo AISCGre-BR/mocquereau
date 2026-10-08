@@ -66,7 +66,11 @@ function mount(project: MocquereauProject) {
   const line = (sourceIdx = 0, lineIdx = 0) => ref.state!.project!.sources[sourceIdx].lines[lineIdx];
   const wrapper = () => utils.container.querySelector("[data-image-wrapper]") as HTMLElement;
   const key = (init: KeyboardEventInit) => act(() => void fireEvent.keyDown(window, init));
-  return { ...utils, ref, line, wrapper, key };
+  const startHandle = () => utils.getByRole("slider", { name: "Início do intervalo da página" });
+  const endHandle = () => utils.getByRole("slider", { name: "Fim do intervalo da página" });
+  /** Range shown by the strip's handles. */
+  const shownRange = () => [startHandle(), endHandle()].map((h) => h.getAttribute("aria-valuenow"));
+  return { ...utils, ref, line, wrapper, key, startHandle, endHandle, shownRange };
 }
 
 function pointer(el: Element, type: string, clientX: number, clientY: number) {
@@ -168,20 +172,18 @@ describe("RecortesView: o projeto é a fonte única das caixas (D6)", () => {
     const lines = v.ref.state!.project!.sources[0].lines;
     expect(lines).toHaveLength(2);
     // Página nova selecionada, com o intervalo sugerido depois da última confirmada.
-    const [from] = v.getAllByRole("spinbutton") as HTMLInputElement[];
-    expect(from.value).toBe("4");
+    expect(v.shownRange()[0]).toBe("4");
 
     act(() => v.ref.dispatch!({ type: "UNDO" }));
     expect(v.ref.state!.project!.sources[0].lines).toHaveLength(1);
-    const [fromAfter, toAfter] = v.getAllByRole("spinbutton") as HTMLInputElement[];
-    expect([fromAfter.value, toAfter.value]).toEqual(["0", "3"]);
+    expect(v.shownRange()).toEqual(["0", "3"]);
     expect(v.wrapper()).not.toBeNull();
   });
 
   it("range changes go to the project and keep boxes outside the range", () => {
     const v = mount(projectWith([mkSource("A", [mkLine("line-1", { syllableBoxes: { 0: BOX, 3: BOX } })])]));
-    const [, to] = v.getAllByRole("spinbutton") as HTMLInputElement[];
-    fireEvent.change(to, { target: { value: "1" } });
+    fireEvent.keyDown(v.endHandle(), { key: "ArrowLeft" });
+    fireEvent.keyDown(v.endHandle(), { key: "ArrowLeft" });
     expect(v.line().syllableRange).toEqual({ start: 0, end: 1 });
     expect(v.line().syllableBoxes![3]).toEqual(BOX);
   });
@@ -190,10 +192,57 @@ describe("RecortesView: o projeto é a fonte única das caixas (D6)", () => {
 describe("RecortesView: intervalo de uma sílaba", () => {
   it("{0,0} é mostrado e gravado como está; clicar numa sílaba estende a partir dele", () => {
     const v = mount(projectWith([mkSource("A", [mkLine("line-1", { syllableRange: { start: 0, end: 0 } })])]));
-    const [from, to] = v.getAllByRole("spinbutton") as HTMLInputElement[];
-    expect([from.value, to.value]).toEqual(["0", "0"]);
+    expect(v.shownRange()).toEqual(["0", "0"]);
     fireEvent.click(v.getByText("na"));
     expect(v.line().syllableRange).toEqual({ start: 0, end: 2 });
+  });
+});
+
+describe("RecortesView: faixa de sílabas", () => {
+  function dragEnd(v: ReturnType<typeof mount>, x: number) {
+    act(() => void fireEvent.pointerDown(v.endHandle(), { button: 0 }));
+    act(() => void window.dispatchEvent(new MouseEvent("pointermove", { clientX: x })));
+    act(() => void window.dispatchEvent(new MouseEvent("pointerup", {})));
+  }
+
+  it("arrastes seguidos da alça na mesma página são um passo de desfazer", () => {
+    const v = mount(projectWith());
+    // Every syllable's centre is at x = 100 (mocked rect): left of it → end at the start.
+    dragEnd(v, 50);
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 0 });
+    dragEnd(v, 150);
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 4 });
+    act(() => v.ref.dispatch!({ type: "UNDO" }));
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 3 });
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("clique ativa a sílaba; o menu de contexto alterna o gap e remove a caixa no projeto", () => {
+    const v = mount(projectWith());
+    const syl = (i: number) => v.container.querySelector(`[data-syllable="${i}"]`) as HTMLElement;
+    fireEvent.click(syl(2));
+    expect(syl(2).className).toContain("italic");
+    fireEvent.contextMenu(syl(1));
+    fireEvent.click(v.getByRole("menuitemcheckbox", { name: "Sem neuma nesta página" }));
+    expect(v.line().gaps).toEqual([1]);
+    fireEvent.contextMenu(syl(0));
+    fireEvent.click(v.getByRole("menuitem", { name: "Remover caixa" }));
+    expect(v.line().syllableBoxes![0]).toBeNull();
+  });
+
+  it("sílabas confirmadas por outra página da fonte ficam inertes", () => {
+    const v = mount(
+      projectWith([
+        mkSource("A", [
+          mkLine("a1", { folio: "12r", syllableRange: { start: 0, end: 1 } }),
+          mkLine("a2", { syllableRange: { start: 2, end: 4 }, syllableBoxes: {}, confirmed: false }),
+        ]),
+      ]),
+    );
+    const syl0 = v.container.querySelector('[data-syllable="0"]') as HTMLElement;
+    expect(syl0.className).toContain("cursor-default");
+    fireEvent.click(syl0);
+    expect(v.line(0, 1).syllableRange).toEqual({ start: 2, end: 4 });
   });
 });
 
@@ -222,8 +271,7 @@ describe("RecortesView: atalhos", () => {
       ]),
     );
     v.key({ key: "Enter", ctrlKey: true });
-    const [from, to] = v.getAllByRole("spinbutton") as HTMLInputElement[];
-    expect([from.value, to.value]).toEqual(["1", "2"]);
+    expect(v.shownRange()).toEqual(["1", "2"]);
   });
 
   it("Delete remove a caixa ativa na hora e desconfirma a página vazia", () => {
