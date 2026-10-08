@@ -362,5 +362,29 @@ describe("App", () => {
     expect(container.querySelector("[data-box-overlay]")).toBeNull();
     expect(container.querySelector('[role=treeitem][aria-selected=true][data-line-id="line-2"]')).not.toBeNull();
   });
+  it("abrir outro projeto esquece as fontes abertas na árvore do Recortes", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const project = projectWithBox();
+    const second = { ...project.sources[0], id: "src-2", order: 1, metadata: { ...project.sources[0].metadata, siglum: "B" } };
+    second.lines = [{ ...second.lines[0], id: "line-2" }];
+    const opened = { ...project, sources: [project.sources[0], second] };
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: opened, filePath: null });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("2");
+    const other = () => container.querySelector('[role=treeitem][data-source-id="src-2"]') as HTMLElement;
+    expect(other().getAttribute("aria-expanded")).toBe("false");
+    fireEvent.keyDown(other(), { key: "ArrowRight" });
+    expect(other().getAttribute("aria-expanded")).toBe("true");
+    ctrl("1");
+    ctrl("2");
+    expect(other().getAttribute("aria-expanded")).toBe("true"); // mesma sessão: lembrada
+    ctrl("o");
+    await screen.findByDisplayValue("Introito");
+    ctrl("2");
+    expect(other().getAttribute("aria-expanded")).toBe("false");
+  });
 });
 

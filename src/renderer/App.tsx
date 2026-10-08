@@ -23,6 +23,7 @@ import { ClassificationDialog } from "./components/sources/ClassificationDialog"
 import { RecortesTools } from "./components/recortes/RecortesTools";
 import { RecortesProvider, useRecortesCommands, useRecortesContext } from "./hooks/RecortesContext";
 import { createEmptySource } from "./lib/sources";
+import { resetSourceTreeSession } from "./components/sources/SourceTree";
 import { toSupportedLang, type SupportedLang } from "./i18n";
 
 const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
@@ -67,6 +68,14 @@ function Workbench() {
   const file = useProjectFile({ onOpened: () => setView("texto") });
   const recortes = useRecortesCommands();
   const recortesCtx = useRecortesContext();
+  // Projeto trocado ou fechado: diálogos e escolhas de sessão do anterior não seguem.
+  const setRecortesDialog = recortesCtx.setDialog;
+  useEffect(() => {
+    setClassificationOpen(false);
+    setRecortesDialog(null);
+    resetSourceTreeSession();
+  }, [file.projectEpoch, setRecortesDialog]);
+
   // Fonte nova pedida pela Texto: Recortes abre o diálogo Fonte dela ao montar.
   const [newSourceId, setNewSourceId] = useState<string | null>(null);
 
