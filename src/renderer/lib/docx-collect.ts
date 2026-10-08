@@ -3,6 +3,7 @@
 import { boxesInView } from '@shared/box-frame';
 import type { MocquereauProject, DocxExportPayload, DocxCellData, StoredImage } from './models';
 import { flattenSyllables, computeSyllableCuts } from './sliceUtils';
+import { tableRows } from './sources';
 import { firstFolio, isWordBoundary, resolveCellLine } from './tableUtils';
 
 /**
@@ -28,10 +29,12 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
  *
  * @param project  Complete project state
  * @param onProgress  Optional callback(processedCells, totalCells) for UI feedback
+ * @param options.untitled  Title used when the piece has none, the same the Tabela shows (t('file.untitled'))
  */
 export async function collectDocxCrops(
   project: MocquereauProject,
   onProgress?: (done: number, total: number) => void,
+  options: { untitled?: string } = {},
 ): Promise<DocxExportPayload> {
   const syllables = flattenSyllables(project.text.words);
   const totalSyllables = syllables.length;
@@ -41,11 +44,13 @@ export async function collectDocxCrops(
     isWordBoundary(project.text.words, idx),
   );
 
-  const totalCells = project.sources.length * totalSyllables;
+  const grouped = tableRows(project);
+  const flat = grouped.flatMap((g) => g.sources.map((source) => ({ source, groupId: g.group.id })));
+  const totalCells = flat.length * totalSyllables;
   let processedCells = 0;
 
   const rows = await Promise.all(
-    project.sources.map(async source => {
+    flat.map(async ({ source, groupId }) => {
       // Crops of every page with boxes, in the frame the user sees (spec R1).
       // Per-line imageAdjustments are baked in (Phase 10 / IMG-06), so the
       // DOCX export reflects what the user sees in Recortes and the Tabela.
@@ -107,29 +112,19 @@ export async function collectDocxCrops(
           folio: firstFolio(source),
           folios: perImageFolios,
         },
+        groupId,
         cells,
       };
     }),
   );
 
-  // DEBUG: summarize what's being sent
-  let filled = 0, gap = 0, unfilled = 0;
-  for (const row of rows) {
-    for (const cell of row.cells) {
-      if (cell.pngBuffer !== null && !cell.isGap) filled++;
-      else if (cell.isGap) gap++;
-      else unfilled++;
-    }
-  }
-  // eslint-disable-next-line no-console
-  console.log(`[docx-collect] sources=${rows.length}, syllables=${syllables.length}, filled=${filled}, gap=${gap}, unfilled=${unfilled}`);
-
   return {
-    title: project.meta.title,
+    title: project.meta.title.trim() || options.untitled || project.meta.title,
     author: project.meta.author,
     rawText: project.text.raw,
     syllables,
     rows,
+    groups: grouped.map((g) => g.group),
     wordBoundaries,
   };
 }

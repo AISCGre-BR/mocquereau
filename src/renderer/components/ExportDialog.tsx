@@ -44,9 +44,13 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
     if (!project || isWorking) return;
     setExportState({ phase: 'collecting', done: 0, total: 1 });
     try {
-      const payload = await collectDocxCrops(project, (done, total) => {
-        setExportState({ phase: 'collecting', done, total });
-      });
+      const payload = await collectDocxCrops(
+        project,
+        (done, total) => {
+          setExportState({ phase: 'collecting', done, total });
+        },
+        { untitled: t('file.untitled') },
+      );
       setExportState({ phase: 'saving' });
       // A ponte do preload tipa o argumento como MocquereauProject; o valor real é o
       // DocxExportPayload, que o handler do main lê corretamente.

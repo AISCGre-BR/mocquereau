@@ -17,13 +17,10 @@ import {
 } from 'docx';
 import { dialog, ipcMain } from 'electron';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { t } from './i18n';
 import type { DocxExportPayload, DocxCellData } from '../renderer/lib/models';
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
-let debugFirstCellWritten = false;
 function log(...args: unknown[]) {
   // eslint-disable-next-line no-console
   console.log('[docx-export]', ...args);
@@ -49,7 +46,7 @@ const MARGIN_TWIPS      = 720;   // 12.7mm (~0.5 inch) all sides
 const META_COL_WIDTH_TWIPS = 1800; // ~32mm — siglum + city + century + folio
 const DATA_COL_WIDTH_TWIPS = 680;  // ~12mm per syllable — fits ~20 syllables in landscape A4
 const ROW_HEIGHT_TWIPS     = 1008; // ~18mm — uniform for all data rows (D-05)
-const HEADER_ROW_HEIGHT    = 360;  // ~6mm for syllable text + accent rows
+const HEADER_ROW_HEIGHT    = 360;  // ~6mm for syllable text row
 
 // ── Chunking (DOCX-07 fix — D-01) ────────────────────────────────────────────
 // Quebra da tabela em múltiplas tabelas empilhadas verticalmente quando a peça
@@ -220,27 +217,6 @@ function buildDataCell(cell: DocxCellData): TableCell {
       : Buffer.from(new Uint8Array(buf));
     const dims = scaleToFit(cell.cropWidth, cell.cropHeight);
 
-    // DEBUG: inspect the buffer
-    const firstBytes = Array.from(nodeBuffer.slice(0, 8))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join(' ');
-    const isValidPng =
-      nodeBuffer[0] === 0x89 &&
-      nodeBuffer[1] === 0x50 &&
-      nodeBuffer[2] === 0x4e &&
-      nodeBuffer[3] === 0x47;
-    log(`cell buffer: size=${nodeBuffer.length} bytes, first=${firstBytes}, validPng=${isValidPng}, dims=${dims.width}x${dims.height}, cropSrc=${cell.cropWidth}x${cell.cropHeight}`);
-
-    // Write first valid buffer to tmp for manual inspection
-    if (!debugFirstCellWritten && isValidPng) {
-      debugFirstCellWritten = true;
-      const debugPath = join(tmpdir(), 'mocquereau-debug-cell.png');
-      writeFile(debugPath, nodeBuffer).then(
-        () => log(`first cell PNG written to ${debugPath} for inspection`),
-        (err) => log('failed to write debug PNG:', err),
-      );
-    }
-
     const imgId = nextImageId();
     children = [
       new Paragraph({
@@ -289,67 +265,6 @@ function buildDataCell(cell: DocxCellData): TableCell {
 
 // ── Header rows ───────────────────────────────────────────────────────────────
 
-/** Determine which syllable indices are accented (penultimate syllable of each word ≥2 syllables). */
-function buildAccentSet(syllables: string[], wordBoundaries: boolean[]): Set<number> {
-  const accentSet = new Set<number>();
-  const n = syllables.length;
-
-  // Walk through syllables, collecting words by looking at wordBoundaries.
-  // A word ends where wordBoundaries[i] === true (last syllable of word i).
-  let wordStart = 0;
-  for (let i = 0; i < n; i++) {
-    const isEnd = wordBoundaries[i];
-    if (isEnd) {
-      const wordLen = i - wordStart + 1;
-      if (wordLen >= 2) {
-        // penultimate syllable = i - 1
-        accentSet.add(i - 1);
-      }
-      wordStart = i + 1;
-    }
-  }
-  // Handle last word if not terminated by a boundary
-  if (wordStart < n) {
-    const wordLen = n - wordStart;
-    if (wordLen >= 2) {
-      accentSet.add(n - 2);
-    }
-  }
-
-  return accentSet;
-}
-
-function buildHeaderAccentRow(syllables: string[], wordBoundaries: boolean[]): TableRow {
-  const accentSet = buildAccentSet(syllables, wordBoundaries);
-
-  // First cell: empty meta cell
-  const metaCell = new TableCell({
-    children: [new Paragraph({ children: [] })],
-    width: { size: META_COL_WIDTH_TWIPS, type: WidthType.DXA },
-    borders: cellBorders(false),
-  });
-
-  const syllableCells = syllables.map((_syl, idx) => {
-    const isAccent = accentSet.has(idx);
-    return new TableCell({
-      children: [
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: isAccent ? [new TextRun({ text: '•', size: 14 })] : [],
-        }),
-      ],
-      width: { size: DATA_COL_WIDTH_TWIPS, type: WidthType.DXA },
-      borders: cellBorders(wordBoundaries[idx] ?? false),
-    });
-  });
-
-  return new TableRow({
-    children: [metaCell, ...syllableCells],
-    height: { value: HEADER_ROW_HEIGHT, rule: HeightRule.ATLEAST },
-    tableHeader: true,
-  });
-}
-
 function buildHeaderTextRow(syllables: string[], wordBoundaries: boolean[]): TableRow {
   const metaCell = new TableCell({
     children: [new Paragraph({ children: [] })],
@@ -377,17 +292,58 @@ function buildHeaderTextRow(syllables: string[], wordBoundaries: boolean[]): Tab
   });
 }
 
+// ── Title and group rows ──────────────────────────────────────────────────────
+
+/** Title paragraph, plus an author paragraph below it only when the author is not empty. */
+export function buildTitleParagraphs(title: string, author: string): Paragraph[] {
+  const hasAuthor = author.trim() !== '';
+  const paragraphs = [
+    new Paragraph({
+      children: [new TextRun({ text: title, bold: true, size: 28 })],
+      spacing: { after: hasAuthor ? 40 : 120 },
+    }),
+  ];
+  if (hasAuthor) {
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun({ text: author, size: 22 })],
+        spacing: { after: 120 },
+      }),
+    );
+  }
+  return paragraphs;
+}
+
+/** One merged cell spanning the whole table width, naming a group of sources (styled like the Tabela label). */
+export function buildGroupRow(name: string, span: number): TableRow {
+  const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  return new TableRow({
+    children: [
+      new TableCell({
+        columnSpan: span,
+        children: [
+          new Paragraph({
+            children: [new TextRun({ text: name, size: 16, bold: true, color: '6f604f' })],
+          }),
+        ],
+        borders: { top: none, bottom: none, left: none, right: none },
+        margins: { top: 60, bottom: 20, left: 40, right: 40 },
+      }),
+    ],
+    cantSplit: true,
+  });
+}
+
 // ── Document builder ──────────────────────────────────────────────────────────
-function buildDocument(payload: DocxExportPayload): Document {
+export function buildDocument(payload: DocxExportPayload): Document {
   const { title, author, rawText, syllables, rows, wordBoundaries } = payload;
+  const groupNames = new Map<string | null, string>();
+  for (const g of payload.groups ?? []) {
+    if (g.name && g.name.trim() !== '') groupNames.set(g.id, g.name);
+  }
 
   // Header paragraphs (D-02, D-03)
-  const titlePara = new Paragraph({
-    children: [
-      new TextRun({ text: `${title} — ${author}`, bold: true, size: 28 }),
-    ],
-    spacing: { after: 120 },
-  });
+  const titleParas = buildTitleParagraphs(title, author);
 
   const rawTextPara = new Paragraph({
     children: [
@@ -410,17 +366,23 @@ function buildDocument(payload: DocxExportPayload): Document {
     const chunkSyllables = syllables.slice(chunkStart, chunkEnd + 1);
     const chunkWordBoundaries = wordBoundaries.slice(chunkStart, chunkEnd + 1);
 
-    const headerAccentRow = buildHeaderAccentRow(chunkSyllables, chunkWordBoundaries);
     const headerTextRow = buildHeaderTextRow(chunkSyllables, chunkWordBoundaries);
 
-    const dataRows = rows.map((row) => {
+    const dataRows: TableRow[] = [];
+    let prevGroupId: string | null | undefined = undefined;
+    rows.forEach((row) => {
+      if (row.groupId !== prevGroupId) {
+        const name = groupNames.get(row.groupId);
+        if (name) dataRows.push(buildGroupRow(name, 1 + chunkSyllables.length));
+        prevGroupId = row.groupId;
+      }
       const metaCell = buildMetaCell(row.meta);
       const chunkCells = row.cells.slice(chunkStart, chunkEnd + 1);
       const dataCells = chunkCells.map((cell) => buildDataCell(cell));
-      return new TableRow({
+      dataRows.push(new TableRow({
         children: [metaCell, ...dataCells],
         height: { value: ROW_HEIGHT_TWIPS, rule: HeightRule.ATLEAST },
-      });
+      }));
     });
 
     const columnWidths = [
@@ -429,7 +391,7 @@ function buildDocument(payload: DocxExportPayload): Document {
     ];
 
     return new Table({
-      rows: [headerAccentRow, headerTextRow, ...dataRows],
+      rows: [headerTextRow, ...dataRows],
       layout: TableLayoutType.FIXED,
       columnWidths,
       width: { size: 100, type: WidthType.PERCENTAGE },
@@ -467,7 +429,7 @@ function buildDocument(payload: DocxExportPayload): Document {
             },
           },
         },
-        children: [titlePara, rawTextPara, ...tablesWithSpacing],
+        children: [...titleParas, rawTextPara, ...tablesWithSpacing],
       },
     ],
   });
@@ -476,7 +438,6 @@ function buildDocument(payload: DocxExportPayload): Document {
 // ── IPC handler ───────────────────────────────────────────────────────────────
 export function registerDocxExportHandler(): void {
   ipcMain.handle('export:docx', async (_event, payload: DocxExportPayload) => {
-    debugFirstCellWritten = false; // reset for each export
     imageIdCounter = 1000;          // reset unique image ID counter
     try {
       log(`payload received: title="${payload.title}", rows=${payload.rows.length}, syllables=${payload.syllables.length}`);

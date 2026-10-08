@@ -322,14 +322,18 @@ export interface DocxExportPayload {
    */
   syllables: string[];
   /**
-   * Per-source rows. Each row has cells[syllableIdx] for each syllable.
-   * Length matches sources order in project.
+   * Per-source rows, in Tabela order (tableRows: grouped by level-1 value).
+   * Each row has cells[syllableIdx] for each syllable.
    */
   rows: Array<{
     meta: DocxSourceMeta;
+    /** Level-1 group id of the row; null for the group without a value. */
+    groupId: string | null;
     /** Indexed by global syllable index (0-based). Length = syllables.length */
     cells: DocxCellData[];
   }>;
+  /** The row groups, in order (matches the `groupId` of the rows). */
+  groups: Array<{ id: string | null; name: string | null }>;
   /**
    * Word boundary flags indexed by global syllable index.
    * Duplicated from DocxCellData.isWordBoundary for convenience when building header rows.

@@ -6,7 +6,16 @@
 // extension up to 25 (MAX) for very long words, force cut at MAX-1 as fallback.
 
 import { describe, it, expect } from 'vitest';
-import { computeChunkBoundaries, formatFolioText } from './docx-export';
+import JSZip from 'jszip';
+import { Packer, Document, Table } from 'docx';
+import {
+  computeChunkBoundaries,
+  formatFolioText,
+  buildTitleParagraphs,
+  buildGroupRow,
+  buildDocument,
+} from './docx-export';
+import type { DocxExportPayload } from '../renderer/lib/models';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -150,5 +159,101 @@ describe('formatFolioText (SRC-06 consolidation)', () => {
 
   it('consolidates 3+ folios in order', () => {
     expect(formatFolioText('12r', ['12r', '12v', '13r'])).toBe('fólios 12r, 12v, 13r');
+  });
+});
+
+// ── Title, group rows and document structure ─────────────────────────────────
+
+
+async function documentXml(payload: DocxExportPayload): Promise<string> {
+  const buf = await Packer.toBuffer(buildDocument(payload));
+  const zip = await JSZip.loadAsync(buf);
+  return zip.file('word/document.xml')!.async('string');
+}
+
+function payloadWithGroups(nSyllables: number): DocxExportPayload {
+  const meta = (siglum: string) => ({ siglum, city: 'C', century: 'X', folio: '1r' });
+  const cells = Array.from({ length: nSyllables }, () => ({
+    pngBuffer: null,
+    cropWidth: 0,
+    cropHeight: 0,
+    isGap: false,
+    isWordBoundary: false,
+  }));
+  return {
+    title: 'Puer natus',
+    author: '',
+    rawText: 'texto',
+    syllables: Array.from({ length: nSyllables }, (_, i) => `s${i}`),
+    rows: [
+      { meta: meta('SRC-A'), groupId: 'g1', cells },
+      { meta: meta('SRC-B'), groupId: 'g2', cells },
+      { meta: meta('SRC-C'), groupId: null, cells },
+    ],
+    groups: [
+      { id: 'g1', name: 'GrupoUm' },
+      { id: 'g2', name: 'GrupoDois' },
+      { id: null, name: null },
+    ],
+    wordBoundaries: Array.from({ length: nSyllables }, (_, i) => i % 3 === 2),
+  } as unknown as DocxExportPayload;
+}
+
+describe('buildTitleParagraphs', () => {
+  it('empty author yields a single paragraph without the dash', () => {
+    const paras = buildTitleParagraphs('Puer natus', '');
+    expect(paras).toHaveLength(1);
+    expect(JSON.stringify(paras)).not.toContain('—');
+  });
+
+  it('author goes in a second paragraph', () => {
+    const paras = buildTitleParagraphs('Puer natus', 'Gabriel');
+    expect(paras).toHaveLength(2);
+    expect(JSON.stringify(paras[1])).toContain('Gabriel');
+    expect(JSON.stringify(paras[0])).not.toContain('Gabriel');
+  });
+});
+
+describe('buildGroupRow', () => {
+  it('builds one cell with the given columnSpan', async () => {
+    const doc = new Document({
+      sections: [{ children: [new Table({ rows: [buildGroupRow('Alfa', 7)] })] }],
+    });
+    const zip = await JSZip.loadAsync(await Packer.toBuffer(doc));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml.match(/<w:tc>/g)).toHaveLength(1);
+    expect(xml).toContain('<w:gridSpan w:val="7"/>');
+    expect(xml).toContain('Alfa');
+  });
+
+  it('matches the Tabela label: bold, size 16, colour 6f604f, no small caps', async () => {
+    const doc = new Document({
+      sections: [{ children: [new Table({ rows: [buildGroupRow('Alfa', 7)] })] }],
+    });
+    const zip = await JSZip.loadAsync(await Packer.toBuffer(doc));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml).not.toContain('<w:smallCaps/>');
+    expect(xml).toContain('<w:b/>');
+    expect(xml).toContain('<w:sz w:val="16"/>');
+    expect(xml).toContain('<w:color w:val="6f604f"/>');
+  });
+});
+
+describe('buildDocument', () => {
+  it('inserts a group row before each named group in every chunk, none for the unnamed group', async () => {
+    const xml = await documentXml(payloadWithGroups(30)); // 2 chunks
+    expect(xml.match(/GrupoUm/g)).toHaveLength(2);
+    expect(xml.match(/GrupoDois/g)).toHaveLength(2);
+    expect(xml.match(/<w:gridSpan /g)).toHaveLength(4);
+    // group row precedes the first source of its group
+    expect(xml.indexOf('GrupoUm')).toBeLessThan(xml.indexOf('SRC-A'));
+    expect(xml.indexOf('GrupoDois')).toBeLessThan(xml.indexOf('SRC-B'));
+    expect(xml.indexOf('GrupoDois')).toBeGreaterThan(xml.indexOf('SRC-A'));
+  });
+
+  it('header has only the syllable row (no accent bullets)', async () => {
+    const xml = await documentXml(payloadWithGroups(6));
+    expect(xml).not.toContain('•');
+    expect(xml.match(/<w:tblHeader\/>/g)).toHaveLength(1);
   });
 });

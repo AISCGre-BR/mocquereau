@@ -5,17 +5,37 @@ import type { CellState } from '../../lib/tableUtils';
 import type { ImageAdjustments } from '../../lib/models';
 import { buildImageFilter, buildImageTransform, normalizeRotation } from '../../lib/image-adjustments';
 import { useTranslation } from 'react-i18next';
+import { Plus } from 'lucide-react';
+
+/** Where a menu opened from the cell goes, and the cell to refocus when it closes. */
+export interface CellAnchor {
+  x: number;
+  y: number;
+  cell: HTMLElement;
+}
+
+/** Keyboard anchor: below the cell's left edge. */
+function anchorBelow(cell: HTMLElement): CellAnchor {
+  const r = cell.getBoundingClientRect();
+  return { x: r.left, y: r.bottom, cell };
+}
 
 export interface TableCellProps {
   state: CellState;
-  /** If true, renders 2px right border (word boundary, D-05). Otherwise 1px. */
-  isWordBoundary: boolean;
+  /** First syllable of a word (not the first of the text): left border rule-strong, else rule-soft. */
+  startsWord: boolean;
+  /** Identifies the cell in tests: `cell-{sourceId}-{syllable}`. */
+  testId?: string;
   /** Column width in pixels — cells are uniform (D-11). */
   colWidthPx: number;
   /** Row height in pixels — uniform (D-10). */
   rowHeightPx: number;
-  /** Called when cell is clicked — opens context menu (D-06). */
-  onClick: (e: React.MouseEvent) => void;
+  /** Accessible name: "Recortar <sílaba> em <sigla>" (pending) or the cell actions. */
+  ariaLabel?: string;
+  /** Click, Enter or Space: pending goes to Recortes, otherwise opens the menu (D-06). */
+  onActivate: (anchor: CellAnchor) => void;
+  /** Right click, the ContextMenu key or Shift+F10: opens the menu. */
+  onOpenMenu: (anchor: CellAnchor) => void;
   /** Ajustes visuais da linha de origem do recorte (Phase 10 / IMG-06; expandido em Phase 11 / IMG-07).
    *  Undefined/default → célula renderiza sem filter/transform (idêntico a v0.0.3).
    *
@@ -34,10 +54,13 @@ export interface TableCellProps {
 
 export function TableCell({
   state,
-  isWordBoundary,
+  startsWord,
+  testId,
   colWidthPx,
   rowHeightPx,
-  onClick,
+  ariaLabel,
+  onActivate,
+  onOpenMenu,
   adjustments,
 }: TableCellProps) {
   const { t } = useTranslation();
@@ -71,21 +94,44 @@ export function TableCell({
     state.box.w > 0 &&
     state.box.h > 0;
 
-  // Fronteira de palavra: 2px rule-strong | dentro da palavra: 1px rule-soft (D-05)
-  const borderRight = isWordBoundary
-    ? '2px solid var(--rule-strong)'
-    : '1px solid var(--rule-soft)';
+  const pending = state.kind === 'unfilled';
 
   return (
     <div
       ref={cellRef}
-      className="relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-b border-rule-soft"
+      data-testid={testId}
+      className={[
+        'group relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-l border-b border-rule-soft focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus',
+        // Fronteira de palavra: borda esquerda rule-strong; dentro da palavra, rule-soft.
+        startsWord ? 'border-l-rule-strong' : '',
+        pending ? 'bg-parchment hover:bg-rubric-wash' : '',
+      ].join(' ')}
       style={{
         width: colWidthPx,
         height: rowHeightPx,
-        borderRight,
       }}
-      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      aria-haspopup={state.kind === 'unfilled' ? undefined : 'menu'}
+      onClick={(e) => {
+        e.stopPropagation();
+        onActivate({ x: e.clientX, y: e.clientY, cell: e.currentTarget });
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpenMenu({ x: e.clientX, y: e.clientY, cell: e.currentTarget });
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onActivate(anchorBelow(e.currentTarget));
+        } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+          e.preventDefault();
+          onOpenMenu(anchorBelow(e.currentTarget));
+        }
+      }}
       onMouseEnter={() => state.kind === 'filled' && setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       title={
@@ -134,11 +180,9 @@ export function TableCell({
         <span className="text-ink-muted text-sm font-medium select-none">—</span>
       )}
 
-      {/* ── Unfilled: dashed border + plus icon (D-04) ── */}
-      {state.kind === 'unfilled' && (
-        <div className="w-full h-full flex items-center justify-center border-2 border-dashed border-rule rounded-sm m-1">
-          <span className="text-ink-muted text-lg leading-none">+</span>
-        </div>
+      {/* ── Pendente: fundo parchment; no hover, rubric-wash e "+" em rubric ── */}
+      {pending && (
+        <Plus aria-hidden="true" strokeWidth={1.75} className="size-4 text-rubric opacity-0 group-hover:opacity-100" />
       )}
 
       {/* ── Hover tooltip: enlarged crop (D-07) — viewport-clamped via position:fixed ── */}

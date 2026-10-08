@@ -1,4 +1,4 @@
-// Fixture sintética para o visual-check: projeto v3 mínimo com duas fontes e páginas
+// Fixture sintética para o visual-check: projeto v3 mínimo com três fontes e páginas
 // geradas aqui (SVG). Nenhuma imagem real de manuscrito entra no repositório.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -66,10 +66,14 @@ function makeImage(seed) {
   };
 }
 
-/** Caixas em metade das sílabas (as pares), para os estados com e sem recorte aparecerem. */
-function boxes() {
+/**
+ * Caixas nas sílabas pares e "sem neuma" nas ímpares, para os estados com e sem
+ * recorte aparecerem. A partir de `pendingFrom` as sílabas ficam sem nada
+ * (pendentes), para a Tabela mostrar também o estilo da célula pendente.
+ */
+function boxes(pendingFrom = TOTAL) {
   const out = {};
-  for (let i = 0; i < TOTAL; i++) {
+  for (let i = 0; i < pendingFrom; i++) {
     out[i] = i % 2 === 0 ? { x: 0.025 + i * 0.059, y: 0.07, w: 0.05, h: 0.2 } : null;
   }
   return out;
@@ -80,7 +84,7 @@ const NO_ADJUST = {
   invert: false, rotation: 0, flipH: false, flipV: false,
 };
 
-function source(order, siglum, library, city, century, classes, folio, image, confirmed) {
+function source(order, siglum, library, city, century, classes, folio, image, confirmed, pendingFrom) {
   return {
     id: `src-${order}`,
     order,
@@ -91,7 +95,7 @@ function source(order, siglum, library, city, century, classes, folio, image, co
       syllableRange: { start: 0, end: TOTAL - 1 },
       dividers: [],
       gaps: [],
-      syllableBoxes: boxes(),
+      syllableBoxes: boxes(pendingFrom),
       folio,
       imageAdjustments: { ...NO_ADJUST },
       confirmed,
@@ -103,6 +107,7 @@ function source(order, siglum, library, city, century, classes, folio, image, co
 export function buildFixture() {
   const a = makeImage(11);
   const b = makeImage(29);
+  const c = makeImage(47);
   const now = "2026-01-01T00:00:00.000Z";
   const project = {
     meta: { title: "Puer natus est", author: "", createdAt: now, updatedAt: now },
@@ -120,8 +125,11 @@ export function buildFixture() {
       source(0, "Einsiedeln 121", "Stiftsbibliothek", "Einsiedeln", "X",
         ["tipo.adiastematica", "regiao.germanica", "familia.sao-galo"], "12r", a.ref, true),
       source(1, "Laon 239", "Bibliothèque municipale", "Laon", "X",
-        ["tipo.adiastematica", "regiao.francesa", "familia.laon"], "5v", b.ref, false),
+        ["tipo.adiastematica", "regiao.francesa", "familia.laon"], "5v", b.ref, false, TOTAL - 5),
+      // Segundo valor de nível 1: a Tabela mostra duas linhas de grupo.
+      source(2, "Graduale Novum", "", "Regensburg", "XXI",
+        ["tipo.quadrada", null, null], "28", c.ref, true),
     ],
   };
-  return { project, images: [a.stored, b.stored] };
+  return { project, images: [a.stored, b.stored, c.stored] };
 }

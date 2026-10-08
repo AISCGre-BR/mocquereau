@@ -198,6 +198,13 @@ const SCREENS = {
     await settle(page, 600);
   },
   tabela: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+3"); await settle(page, 5000); },
+  exportar: async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+3");
+    await settle(page, 3000);
+    await page.getByRole("button", { name: "Exportar DOCX…" }).click();
+    await settle(page, 600);
+  },
 };
 
 let failed = false;

@@ -1,90 +1,37 @@
 // src/renderer/components/table-preview/ContextMenu.tsx
+//
+// Menu of a Tabela cell, with the Recortes wording: "Sem neuma nesta página"
+// is the same toggle as in the syllable strip.
 
-import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { MenuItem, MenuSurface, type MenuCloseReason } from '../../ui/Menu';
 
 export interface ContextMenuProps {
-  /** Pixel position of the menu (from click event clientX/Y). */
+  /** Pixel position of the menu (pointer, or the cell when opened by keyboard). */
   x: number;
   y: number;
-  /** True if the cell currently has a filled state (enables "Remover recorte"). */
+  /** True if the cell currently shows a crop (enables "Remover recorte"). */
   hasCrop: boolean;
-  /** True if the cell is currently a gap (changes "Marcar como gap" label). */
+  /** True if the cell currently has no neume (checks "Sem neuma nesta página"). */
   isGap: boolean;
   onEditInEditor: () => void;
   onRemoveCrop: () => void;
-  onMarkAsGap: () => void;
-  onClose: () => void;
+  onToggleGap: () => void;
+  onClose: (reason: MenuCloseReason) => void;
 }
 
-export function ContextMenu({
-  x, y,
-  hasCrop,
-  isGap,
-  onEditInEditor,
-  onRemoveCrop,
-  onMarkAsGap,
-  onClose,
-}: ContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close on outside click or Escape
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [onClose]);
-
-  // Keep menu inside viewport
-  const style: React.CSSProperties = {
-    position: 'fixed',
-    left: x,
-    top: y,
-    zIndex: 1000,
-  };
-
-  const itemClass =
-    'w-full text-left px-4 py-2 text-sm text-ink-soft hover:bg-ink-wash disabled:opacity-40 disabled:cursor-not-allowed';
-
+export function ContextMenu({ x, y, hasCrop, isGap, onEditInEditor, onRemoveCrop, onToggleGap, onClose }: ContextMenuProps) {
+  const { t } = useTranslation();
   return (
-    <div
-      ref={menuRef}
-      className="bg-surface border border-rule-soft rounded shadow-lg py-1 min-w-48 outline-none"
-      style={style}
-      role="menu"
+    <MenuSurface
+      aria-label={t('tablePreview.menu.label')}
+      className="fixed z-[130]"
+      style={{ left: x, top: y }}
+      onClose={onClose}
     >
-      <button
-        className={itemClass}
-        role="menuitem"
-        onClick={() => { onEditInEditor(); onClose(); }}
-      >
-        Editar no editor
-      </button>
-      <button
-        className={itemClass}
-        role="menuitem"
-        disabled={!hasCrop}
-        onClick={() => { onRemoveCrop(); onClose(); }}
-      >
-        Remover recorte
-      </button>
-      <button
-        className={itemClass}
-        role="menuitem"
-        onClick={() => { onMarkAsGap(); onClose(); }}
-      >
-        {isGap ? 'Desmarcar gap' : 'Marcar como gap'}
-      </button>
-    </div>
+      <MenuItem label={t('tablePreview.menu.editInRecortes')} onSelect={onEditInEditor} />
+      <MenuItem label={t('tablePreview.menu.removeCrop')} disabled={!hasCrop} onSelect={onRemoveCrop} />
+      <MenuItem label={t('tablePreview.menu.noNeume')} checked={isGap} onSelect={onToggleGap} />
+    </MenuSurface>
   );
 }
