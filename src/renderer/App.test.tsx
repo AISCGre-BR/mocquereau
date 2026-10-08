@@ -89,13 +89,14 @@ describe("App", () => {
     expect(screen.getByText("Mocquereau", { selector: ".sc-menubar__title span" })).toBeTruthy();
   });
 
-  it("Novo projeto leva ao Texto; Ctrl+2 e Ctrl+4 trocam de vista; não há Avançar/Voltar", async () => {
+  it("Novo projeto leva ao Texto; Ctrl+2 e Ctrl+3 trocam de vista; não há Avançar/Voltar", async () => {
     render(<App />);
     await createViaGuide();
     expect(tab("Texto").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Texto", "Recortes", "Tabela"]);
     ctrl("2");
-    expect(tab("Fontes").getAttribute("aria-selected")).toBe("true");
-    ctrl("4");
+    expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
+    ctrl("3");
     expect(tab("Tabela").getAttribute("aria-selected")).toBe("true");
     expect((screen.getByRole("button", { name: /Exportar DOCX/ }) as HTMLButtonElement).disabled).toBe(true);
     for (const label of [/Próximo/, /Anterior/]) {
@@ -108,7 +109,7 @@ describe("App", () => {
     await createViaGuide();
     await wait(350);
     expect(screen.getByText("— Editado")).toBeTruthy();
-    ctrl("4");
+    ctrl("3");
     ctrl("1");
     await wait(350);
     // Nada a desfazer: trocar de vista não editou o projeto.
@@ -168,7 +169,7 @@ describe("App", () => {
     render(<App />);
     await createViaGuide();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    ctrl("4");
+    ctrl("3");
     ctrl("o");
     expect(await screen.findByDisplayValue("Sanctus VIII")).toBeTruthy();
     expect(tab("Texto").getAttribute("aria-selected")).toBe("true");
@@ -222,13 +223,43 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
     await screen.findByDisplayValue("Introito");
-    ctrl("3");
+    ctrl("2");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.keyDown(window, { key: "Delete" });
     ctrl("n");
     expect(confirm).toHaveBeenCalledOnce();
     expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("— Editado")).toBeTruthy();
+  });
+
+  it("Adicionar fonte na Texto abre Recortes com o diálogo Fonte de uma fonte nova", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    render(<App />);
+    await createViaGuide();
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar fonte" }));
+    expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.getAttribute("aria-label") ?? dialog.querySelector("h2")?.textContent).toBe("Fonte");
+    expect(document.querySelectorAll("[role=treeitem][data-source-id]").length).toBe(1);
+  });
+
+  it("clique numa célula vazia da Tabela abre Recortes na fonte e na sílaba", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const project = projectWithBox();
+    const second = { ...project.sources[0], id: "src-2", order: 1, metadata: { ...project.sources[0].metadata, siglum: "B" } };
+    second.lines = [{ ...second.lines[0], id: "line-2", syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false }];
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: { ...project, sources: [project.sources[0], second] }, filePath: null });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("3");
+    // Pendentes: 4 da fonte A (sílabas 1-4), depois 5 da fonte B; o 8º é a sílaba 3 de B.
+    const pending = container.querySelectorAll('[title="Recorte pendente"]');
+    expect(pending.length).toBe(9);
+    fireEvent.click(pending[7]);
+    expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
+    expect(container.querySelector('[role=treeitem][aria-selected=true][data-line-id="line-2"]')).not.toBeNull();
+    expect(container.querySelector('[data-syllable="3"][aria-pressed=true]')).not.toBeNull();
   });
 
   it("pedido de salvar do main (Fechar > Salvar) grava o título ainda no debounce, mesmo com diálogo aberto", async () => {
@@ -287,7 +318,7 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
     await screen.findByDisplayValue("Introito");
-    ctrl("3");
+    ctrl("2");
     await wait(50);
     const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
     setDirty.mockClear();
@@ -301,7 +332,7 @@ describe("App", () => {
     const { container } = render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
     await screen.findByDisplayValue("Introito");
-    ctrl("3");
+    ctrl("2");
     const sheet = container.querySelector("[data-image-wrapper]") as HTMLElement;
     expect(sheet.querySelector("[data-box-overlay]")).not.toBeNull();
     fireEvent.keyDown(window, { key: "Delete" });
@@ -322,7 +353,7 @@ describe("App", () => {
     await screen.findByDisplayValue("Introito");
     expect(screen.queryByRole("button", { name: "Desenhar caixa" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Recortes" })).toBeNull();
-    ctrl("3");
+    ctrl("2");
     expect(screen.getByRole("button", { name: "Desenhar caixa" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Imagem/ })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Recortes" })).toBeTruthy();

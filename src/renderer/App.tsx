@@ -16,13 +16,13 @@ import { useTheme } from "./shell/useTheme";
 import { Welcome } from "./views/Welcome";
 import { NewProjectGuide } from "./views/NewProjectGuide";
 import { TextoView } from "./views/TextoView";
-import { FontesView } from "./views/FontesView";
 import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
 import { RecortesTools } from "./components/recortes/RecortesTools";
-import { RecortesProvider, useRecortesCommands } from "./hooks/RecortesContext";
+import { RecortesProvider, useRecortesCommands, useRecortesContext } from "./hooks/RecortesContext";
+import { createEmptySource } from "./lib/sources";
 import { toSupportedLang, type SupportedLang } from "./i18n";
 
 const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
@@ -43,7 +43,7 @@ export function App() {
 }
 
 function Workbench() {
-  const { state, history, pending } = useProject();
+  const { state, dispatch, history, pending } = useProject();
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [view, setView] = useState<ViewId>("texto");
@@ -66,6 +66,24 @@ function Workbench() {
   }
   const file = useProjectFile({ onOpened: () => setView("texto") });
   const recortes = useRecortesCommands();
+  const recortesCtx = useRecortesContext();
+  // Fonte nova pedida pela Texto: Recortes abre o diálogo Fonte dela ao montar.
+  const [newSourceId, setNewSourceId] = useState<string | null>(null);
+
+  function addSourceInRecortes() {
+    const source = createEmptySource();
+    dispatch({ type: "ADD_SOURCE", payload: source });
+    recortesCtx.selectSource(source.id);
+    setNewSourceId(source.id);
+    setView("recortes");
+  }
+
+  // Seleção e sílaba ativa vivem no provider; trocar de vista antes de apontar
+  // deixa a Recortes já montada na página certa.
+  function openInRecortes(sourceId: string, syllable: number) {
+    setView("recortes");
+    recortesCtx.goTo({ sourceId, syllable });
+  }
 
   // "Salvar" no diálogo de fechar a janela: o main pede, o renderer salva (gravando
   // antes as edições pendentes). O project:save iniciado aqui é o que o main aguarda.
@@ -185,12 +203,10 @@ function Workbench() {
           className="flex min-h-0 flex-1 flex-col"
         >
           {view === "texto" && (
-            // Sem fontes, a vista Fontes já abre com uma fonte nova pronta para preencher.
-            <TextoView onAddSource={() => setView("fontes")} onImportGueranger={() => void file.importGueranger()} />
+            <TextoView onAddSource={addSourceInRecortes} onImportGueranger={() => void file.importGueranger()} />
           )}
-          {view === "fontes" && <FontesView />}
-          {view === "recortes" && <RecortesView />}
-          {view === "tabela" && <TabelaView onNavigateToEditor={() => setView("recortes")} />}
+          {view === "recortes" && <RecortesView openSourceId={newSourceId} onOpenSourceHandled={() => setNewSourceId(null)} />}
+          {view === "tabela" && <TabelaView onNavigateToEditor={openInRecortes} />}
         </div>
       )}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />

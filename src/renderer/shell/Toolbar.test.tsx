@@ -10,7 +10,7 @@ describe("Toolbar", () => {
   it("seletor de vistas com a atual selecionada e troca por clique", () => {
     const onViewChange = vi.fn();
     render(<Toolbar view="recortes" onViewChange={onViewChange} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Texto", "Fontes", "Recortes", "Tabela"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Texto", "Recortes", "Tabela"]);
     expect(screen.getByRole("tab", { name: "Recortes" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("tab", { name: "Tabela" }));
     expect(onViewChange).toHaveBeenCalledWith("tabela");

@@ -58,13 +58,24 @@ function sameBox(a: SyllableBox | null | undefined, b: SyllableBox | null | unde
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
-export function RecortesView() {
+export interface RecortesViewProps {
+  /** Fonte recém-criada pela Texto: o diálogo Fonte dela abre ao montar. */
+  openSourceId?: string | null;
+  onOpenSourceHandled?: () => void;
+}
+
+export function RecortesView({ openSourceId = null, onOpenSourceHandled }: RecortesViewProps = {}) {
   const { state, dispatch } = useProject();
   const { t } = useTranslation();
   const project = state.project;
   const recortes = useRecortesContext();
   const commands = useRecortesCommands();
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!openSourceId) return;
+    setEditingSourceId(openSourceId);
+    onOpenSourceHandled?.();
+  }, [openSourceId, onOpenSourceHandled]);
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
   const [sheetMenu, setSheetMenu] = useState<{ x: number; y: number } | null>(null);
 
