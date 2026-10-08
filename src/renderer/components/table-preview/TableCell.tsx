@@ -5,11 +5,14 @@ import type { CellState } from '../../lib/tableUtils';
 import type { ImageAdjustments } from '../../lib/models';
 import { buildImageFilter, buildImageTransform, normalizeRotation } from '../../lib/image-adjustments';
 import { useTranslation } from 'react-i18next';
+import { Plus } from 'lucide-react';
 
 export interface TableCellProps {
   state: CellState;
-  /** If true, renders 2px right border (word boundary, D-05). Otherwise 1px. */
-  isWordBoundary: boolean;
+  /** First syllable of a word (not the first of the text): left border rule-strong, else rule-soft. */
+  startsWord: boolean;
+  /** Identifies the cell in tests: `cell-{sourceId}-{syllable}`. */
+  testId?: string;
   /** Column width in pixels — cells are uniform (D-11). */
   colWidthPx: number;
   /** Row height in pixels — uniform (D-10). */
@@ -34,7 +37,8 @@ export interface TableCellProps {
 
 export function TableCell({
   state,
-  isWordBoundary,
+  startsWord,
+  testId,
   colWidthPx,
   rowHeightPx,
   onClick,
@@ -71,19 +75,21 @@ export function TableCell({
     state.box.w > 0 &&
     state.box.h > 0;
 
-  // Fronteira de palavra: 2px rule-strong | dentro da palavra: 1px rule-soft (D-05)
-  const borderRight = isWordBoundary
-    ? '2px solid var(--rule-strong)'
-    : '1px solid var(--rule-soft)';
+  const pending = state.kind === 'unfilled';
 
   return (
     <div
       ref={cellRef}
-      className="relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-b border-rule-soft"
+      data-testid={testId}
+      className={[
+        'group relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-l border-b border-rule-soft',
+        // Fronteira de palavra: borda esquerda rule-strong; dentro da palavra, rule-soft.
+        startsWord ? 'border-l-rule-strong' : '',
+        pending ? 'bg-parchment hover:bg-rubric-wash' : '',
+      ].join(' ')}
       style={{
         width: colWidthPx,
         height: rowHeightPx,
-        borderRight,
       }}
       onClick={onClick}
       onMouseEnter={() => state.kind === 'filled' && setShowTooltip(true)}
@@ -134,11 +140,9 @@ export function TableCell({
         <span className="text-ink-muted text-sm font-medium select-none">—</span>
       )}
 
-      {/* ── Unfilled: dashed border + plus icon (D-04) ── */}
-      {state.kind === 'unfilled' && (
-        <div className="w-full h-full flex items-center justify-center border-2 border-dashed border-rule rounded-sm m-1">
-          <span className="text-ink-muted text-lg leading-none">+</span>
-        </div>
+      {/* ── Pendente: fundo parchment; no hover, rubric-wash e "+" em rubric ── */}
+      {pending && (
+        <Plus aria-hidden="true" strokeWidth={1.75} className="size-4 text-rubric opacity-0 group-hover:opacity-100" />
       )}
 
       {/* ── Hover tooltip: enlarged crop (D-07) — viewport-clamped via position:fixed ── */}

@@ -23,7 +23,6 @@ type Translated = (typeof TRANSLATED)[number];
 const SAME_AS_EN: Record<string, "*" | readonly Translated[]> = {
   "exportDialog.emptyAuthor": "*",
   "texto.migration.changedWordItem": "*",
-  "tablePreview.folioTitle": ["it", "es", "de", "pl"],
   "sourceTree.menu.folio": ["it", "es", "de", "pl"],
   "sourceTree.folio.folio": ["it", "es", "de", "pl"],
   "sourceDialog.link": ["it", "de", "pl"],

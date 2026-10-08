@@ -1,4 +1,4 @@
-// Fixture sintética para o visual-check: projeto v3 mínimo com duas fontes e páginas
+// Fixture sintética para o visual-check: projeto v3 mínimo com três fontes e páginas
 // geradas aqui (SVG). Nenhuma imagem real de manuscrito entra no repositório.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -103,6 +103,7 @@ function source(order, siglum, library, city, century, classes, folio, image, co
 export function buildFixture() {
   const a = makeImage(11);
   const b = makeImage(29);
+  const c = makeImage(47);
   const now = "2026-01-01T00:00:00.000Z";
   const project = {
     meta: { title: "Puer natus est", author: "", createdAt: now, updatedAt: now },
@@ -121,7 +122,10 @@ export function buildFixture() {
         ["tipo.adiastematica", "regiao.germanica", "familia.sao-galo"], "12r", a.ref, true),
       source(1, "Laon 239", "Bibliothèque municipale", "Laon", "X",
         ["tipo.adiastematica", "regiao.francesa", "familia.laon"], "5v", b.ref, false),
+      // Segundo valor de nível 1: a Tabela mostra duas linhas de grupo.
+      source(2, "Graduale Novum", "", "Regensburg", "XXI",
+        ["tipo.quadrada", null, null], "28", c.ref, true),
     ],
   };
-  return { project, images: [a.stored, b.stored] };
+  return { project, images: [a.stored, b.stored, c.stored] };
 }

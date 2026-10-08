@@ -1,7 +1,7 @@
 # visual-check
 
 Captura as telas do renderer (sem Electron) com Playwright, usando um projeto sintético
-(`fixture.mjs`: "Puer natus est", duas fontes, páginas em SVG geradas no script). Serve para
+(`fixture.mjs`: "Puer natus est", três fontes, páginas em SVG geradas no script). Serve para
 conferir à vista mudanças de interface em dois temas (`light`, `dark`) e dois tamanhos
 (1440x900, 1280x720).
 

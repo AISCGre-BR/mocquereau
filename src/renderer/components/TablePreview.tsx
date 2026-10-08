@@ -1,46 +1,38 @@
 // src/renderer/components/TablePreview.tsx
+//
+// Vista Tabela: prévia do documento num cartão — título e autor da peça e a
+// tabela comparativa (uma coluna por sílaba, uma linha por fonte, agrupadas
+// pelo nível 1 da classificação). O zoom vem do TableZoomProvider.
 
-import { useState, useContext, useCallback, useEffect } from 'react';
+import { useState, useContext } from 'react';
 import { ProjectContext } from '../hooks/useProject';
+import { useTableZoom, useTableZoomShortcuts } from '../hooks/useTableZoom';
 import { flattenSyllables } from '../lib/sliceUtils';
 import { resolveCellState, isWordBoundary, firstFolio } from '../lib/tableUtils';
+import { tableRows } from '../lib/sources';
 import { TableCell } from './table-preview/TableCell';
 import { ContextMenu } from './table-preview/ContextMenu';
-import type { ManuscriptSource, SyllabifiedWord } from '../lib/models';
+import type { ManuscriptSource } from '../lib/models';
 import { useTranslation } from 'react-i18next';
 
-// ── Layout constants (base values at 100% zoom) ─────────────────────────────
-// Phase 08 LPUI-01 (D-03): renamed from *_WIDTH/*_HEIGHT to BASE_* so that the
-// component can derive scaled values at runtime via zoomFactor. Values at 100%
-// zoom are identical to the pre-zoom constants (D-10, D-11).
-const BASE_METADATA_COL_WIDTH = 160;
+// ── Layout (valores a 100%) ──────────────────────────────────────────────────
+// O zoom escala estes tamanhos em vez de usar transform: o cabeçalho e a coluna
+// de metadados continuam fixos (sticky) em qualquer nível.
+const BASE_METADATA_COL_WIDTH = 190;
 const BASE_COL_WIDTH = 64;
 const BASE_ROW_HEIGHT = 80;
-const BASE_ACCENT_ROW_HEIGHT = 24;
-const BASE_SYLLABLE_ROW_HEIGHT = 28;
-const BASE_META_FONT_SIZE = 14; // px — siglum (text-sm ≈ 14px)
-const BASE_SYL_FONT_SIZE = 12;  // px — syllable header text (text-xs ≈ 12px)
+const BASE_HEADER_ROW_HEIGHT = 34;
+const BASE_SIGLUM_FONT_SIZE = 15; // serifa 15/500
+const BASE_SIGLUM_LINE_HEIGHT = 20;
+const BASE_SYL_FONT_SIZE = 15; // serifa 15
+const BASE_CAPTION_FONT_SIZE = 12; // caption
+const BASE_CAPTION_LINE_HEIGHT = 16;
 
-// ── LPUI-01: zoom controls (D-03) ───────────────────────────────────────────
-// Discrete presets only (no free-form zoom). Reduces layout constants
-// proportionally instead of using a CSS scale transform, so that CSS sticky
-// positioning continues to work correctly at all zoom levels.
-const ZOOM_PRESETS = [50, 75, 100, 125, 150] as const;
-type ZoomLevel = typeof ZOOM_PRESETS[number];
-
-// ── Accent heuristic (D-02, Claude's discretion) ─────────────────────────────
-// Mark penultimate syllable of words with ≥2 syllables as accented.
-function buildAccentedSet(words: SyllabifiedWord[]): Set<number> {
-  const accented = new Set<number>();
-  let cursor = 0;
-  for (const word of words) {
-    const n = word.syllables.length;
-    if (n >= 2) {
-      accented.add(cursor + n - 2); // penultimate
-    }
-    cursor += n;
-  }
-  return accented;
+/** Legenda da fonte: "Cidade, Data · f. 12r", sem as partes vazias. */
+export function sourceCaption(source: ManuscriptSource): string {
+  const place = [source.metadata.city.trim(), source.metadata.century.trim()].filter(Boolean).join(', ');
+  const folio = firstFolio(source);
+  return [place, folio ? `f. ${folio}` : ''].filter(Boolean).join(' · ');
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -60,90 +52,52 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   const { state, dispatch } = useContext(ProjectContext)!;
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const { zoom } = useTableZoom();
+  useTableZoomShortcuts();
 
-  // ── LPUI-01: zoom state (session-only, never persisted) ──────────────────
-  const [zoom, setZoom] = useState<ZoomLevel>(100);
-
-  // Scaled layout constants — same names used throughout the component body.
-  // Using Math.round to avoid sub-pixel widths that blur sticky column borders.
-  const zoomFactor = zoom / 100;
-  const METADATA_COL_WIDTH = Math.round(BASE_METADATA_COL_WIDTH * zoomFactor);
-  const COL_WIDTH = Math.round(BASE_COL_WIDTH * zoomFactor);
-  const ROW_HEIGHT = Math.round(BASE_ROW_HEIGHT * zoomFactor);
-  const ACCENT_ROW_HEIGHT = Math.round(BASE_ACCENT_ROW_HEIGHT * zoomFactor);
-  const SYLLABLE_ROW_HEIGHT = Math.round(BASE_SYLLABLE_ROW_HEIGHT * zoomFactor);
-  const metaFontSize = Math.round(BASE_META_FONT_SIZE * zoomFactor);
-  const sylFontSize = Math.round(BASE_SYL_FONT_SIZE * zoomFactor);
-
-  // ── Zoom handlers ────────────────────────────────────────────────────────
-  const zoomIn = useCallback(() => {
-    setZoom(current => {
-      const idx = ZOOM_PRESETS.indexOf(current);
-      if (idx < 0 || idx === ZOOM_PRESETS.length - 1) return current;
-      return ZOOM_PRESETS[idx + 1];
-    });
-  }, []);
-  const zoomOut = useCallback(() => {
-    setZoom(current => {
-      const idx = ZOOM_PRESETS.indexOf(current);
-      if (idx <= 0) return current;
-      return ZOOM_PRESETS[idx - 1];
-    });
-  }, []);
-  const zoomReset = useCallback(() => setZoom(100), []);
-
-  // Keyboard shortcuts: Ctrl+=/+ zoom in, Ctrl+- zoom out, Ctrl+0 reset.
-  // preventDefault() suppresses Electron's native zoom so the table-level
-  // zoom is the one and only zoom the user experiences.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (!e.ctrlKey && !e.metaKey) return;
-      if (e.key === '=' || e.key === '+') {
-        e.preventDefault();
-        zoomIn();
-      } else if (e.key === '-') {
-        e.preventDefault();
-        zoomOut();
-      } else if (e.key === '0') {
-        e.preventDefault();
-        zoomReset();
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [zoomIn, zoomOut, zoomReset]);
+  // Tamanhos escalados; Math.round evita larguras fracionárias que borram as bordas fixas.
+  const scale = (base: number) => Math.round((base * zoom) / 100);
+  const METADATA_COL_WIDTH = scale(BASE_METADATA_COL_WIDTH);
+  const COL_WIDTH = scale(BASE_COL_WIDTH);
+  const ROW_HEIGHT = scale(BASE_ROW_HEIGHT);
+  const HEADER_ROW_HEIGHT = scale(BASE_HEADER_ROW_HEIGHT);
 
   const project = state.project;
+  const author = project?.meta.author.trim() ?? '';
+  const title = project?.meta.title.trim() || t('file.untitled');
 
-  // ── Empty state ─────────────────────────────────────────────────────────────
+  // ── Empty state: a frase dentro do cartão ──────────────────────────────────
   if (!project || project.sources.length === 0) {
     return (
-      <div className="flex flex-col h-full p-8">
-        <h1 className="text-2xl font-bold text-ink mb-2">{t('tablePreview.title')}</h1>
-        <p className="text-ink-muted text-sm">{t('tablePreview.empty')}</p>
+      <div className="flex min-h-0 flex-1 overflow-auto px-8 py-7">
+        <div className="h-fit rounded-lg bg-surface px-10 pt-9 pb-10 shadow-elev-2">
+          <p className="text-body text-ink-muted">{t('tablePreview.empty')}</p>
+        </div>
       </div>
     );
   }
 
   const syllables = flattenSyllables(project.text.words);
-  const totalSyllables = syllables.length;
-  const accented = buildAccentedSet(project.text.words);
-
-  // Sources sorted by order
-  const sources = [...project.sources].sort((a, b) => a.order - b.order);
+  const words = project.text.words;
+  // Borda esquerda da coluna: rule-strong quando a sílaba abre uma palavra (exceto a primeira).
+  const startsWord = (idx: number) => idx > 0 && isWordBoundary(words, idx - 1);
+  const groups = tableRows(project);
+  const sources = groups.flatMap((g) => g.sources);
 
   // ── Context menu handlers ────────────────────────────────────────────────────
-  const handleCellClick = useCallback((e: React.MouseEvent, sourceId: string, syllableIdx: number, unfilled: boolean) => {
+  function handleCellClick(e: React.MouseEvent, sourceId: string, syllableIdx: number, unfilled: boolean) {
     e.stopPropagation();
-    // Célula vazia: nada a remover nem a marcar além de recortar; vai direto a Recortes.
+    // Célula pendente: nada a remover nem a marcar além de recortar; vai direto a Recortes.
     if (unfilled) {
       onNavigateToEditor?.(sourceId, syllableIdx);
       return;
     }
     setMenu({ x: e.clientX, y: e.clientY, sourceId, syllableIdx });
-  }, [onNavigateToEditor]);
+  }
 
-  const closeMenu = useCallback(() => setMenu(null), []);
+  function closeMenu() {
+    setMenu(null);
+  }
 
   function getMenuSource(): ManuscriptSource | undefined {
     if (!menu) return undefined;
@@ -199,194 +153,120 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
     dispatch({ type: 'UPDATE_SOURCE', payload: { ...source, lines: newLines, syllableCuts: newCuts } });
   }
 
-  // ── Sticky layout: outer div clips, inner div scrolls ───────────────────────
-  // Total table width: metadata col + N syllable cols
-  const tableWidth = METADATA_COL_WIDTH + totalSyllables * COL_WIDTH;
+  // Largura da tabela: coluna de metadados + N colunas de sílaba.
+  const tableWidth = METADATA_COL_WIDTH + syllables.length * COL_WIDTH;
+  const captionStyle = {
+    fontSize: scale(BASE_CAPTION_FONT_SIZE),
+    lineHeight: `${scale(BASE_CAPTION_LINE_HEIGHT)}px`,
+  };
 
+  // A área rola; o cabeçalho de sílabas e a coluna de metadados ficam fixos nela.
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-rule-soft bg-surface flex-shrink-0">
-        <h1 className="text-lg font-semibold text-ink">{t('tablePreview.title')}</h1>
-        <div className="flex items-center gap-4">
-          {/* LPUI-01: zoom controls (D-03) */}
-          <div className="flex items-center gap-1" role="toolbar" aria-label={t('tablePreview.zoomControls')}>
-            <button
-              onClick={zoomOut}
-              disabled={zoom === ZOOM_PRESETS[0]}
-              className="px-2 py-1 text-sm bg-parchment-deep hover:bg-ink-wash disabled:opacity-40 disabled:cursor-not-allowed rounded border border-rule"
-              title={t('tablePreview.zoomOutTitle')}
-              aria-label={t('tablePreview.zoomOut')}
-            >−</button>
-            <button
-              onClick={zoomReset}
-              className={`px-2 py-1 text-sm rounded border min-w-[56px] ${
-                zoom === 100
-                  ? 'bg-rubric-wash text-rubric border-rubric font-medium'
-                  : 'bg-parchment-deep hover:bg-ink-wash border-rule'
-              }`}
-              title={t('tablePreview.zoomResetTitle')}
-              aria-label={t('tablePreview.zoomCurrent', { zoom })}
-            >{zoom}%</button>
-            <button
-              onClick={zoomIn}
-              disabled={zoom === ZOOM_PRESETS[ZOOM_PRESETS.length - 1]}
-              className="px-2 py-1 text-sm bg-parchment-deep hover:bg-ink-wash disabled:opacity-40 disabled:cursor-not-allowed rounded border border-rule"
-              title={t('tablePreview.zoomInTitle')}
-              aria-label={t('tablePreview.zoomIn')}
-            >+</button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Scrollable table area ── */}
-      <div className="flex-1 overflow-auto">
-        <div style={{ width: tableWidth, minWidth: '100%' }}>
-
-          {/* ═══════════════════════════════════════════════════════
-              HEADER ROW 1: Accents (D-02)
-          ═══════════════════════════════════════════════════════ */}
-          <div className="flex sticky top-0 z-20 bg-parchment border-b border-rule">
-            {/* Metadata corner cell */}
-            <div
-              className="flex-shrink-0 sticky left-0 z-30 bg-parchment border-r-2 border-rule-strong"
-              style={{ width: METADATA_COL_WIDTH, height: ACCENT_ROW_HEIGHT }}
-            />
-            {/* Accent markers per syllable */}
-            {syllables.map((_, idx) => {
-              const wb = isWordBoundary(project.text.words, idx);
-              return (
-                <div
-                  key={idx}
-                  className="flex-shrink-0 flex items-center justify-center"
-                  style={{
-                    width: COL_WIDTH,
-                    height: ACCENT_ROW_HEIGHT,
-                    borderRight: wb ? '2px solid var(--rule-strong)' : '1px solid var(--rule-soft)',
-                  }}
-                >
-                  {accented.has(idx) && (
-                    <span
-                      className="text-rubric leading-none"
-                      style={{ fontSize: sylFontSize }}
-                      title={t('tablePreview.mainAccent')}
-                    >&#9679;</span>
-                  )}
-                </div>
-              );
-            })}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-auto px-8 py-7">
+        <div className="flex w-max flex-col gap-5 rounded-lg bg-surface px-10 pt-9 pb-10 shadow-elev-2">
+          <div>
+            <h1 className="m-0 font-serif text-doc-title font-semibold text-ink">{title}</h1>
+            {author && (
+              <p data-testid="piece-author" className="m-0 text-label text-ink-muted">
+                {author}
+              </p>
+            )}
           </div>
 
-          {/* ═══════════════════════════════════════════════════════
-              HEADER ROW 2: Syllable text (D-02)
-          ═══════════════════════════════════════════════════════ */}
-          <div className="flex sticky z-20 bg-surface border-b-2 border-rule-strong" style={{ top: ACCENT_ROW_HEIGHT }}>
-            {/* Metadata col label */}
-            <div
-              className="flex-shrink-0 sticky left-0 z-30 bg-surface border-r-2 border-rule-strong flex items-center px-2"
-              style={{ width: METADATA_COL_WIDTH, height: SYLLABLE_ROW_HEIGHT }}
-            >
-              <span className="text-xs text-ink-muted font-medium uppercase tracking-wide">{t('tablePreview.source')}</span>
-            </div>
-            {/* Syllable text cells */}
-            {syllables.map((syl, idx) => {
-              const wb = isWordBoundary(project.text.words, idx);
-              return (
+          <div style={{ width: tableWidth }}>
+            {/* ── Cabeçalho: uma linha de sílabas, fixa no topo ── */}
+            <div className="sticky top-0 z-20 flex border-b border-rule bg-surface">
+              <div
+                className="sticky left-0 z-30 flex-shrink-0 bg-surface"
+                style={{ width: METADATA_COL_WIDTH, height: HEADER_ROW_HEIGHT }}
+              />
+              {syllables.map((syl, idx) => (
                 <div
                   key={idx}
-                  className="flex-shrink-0 flex items-center justify-center overflow-hidden"
-                  style={{
-                    width: COL_WIDTH,
-                    height: SYLLABLE_ROW_HEIGHT,
-                    borderRight: wb ? '2px solid var(--rule-strong)' : '1px solid var(--rule-soft)',
-                  }}
+                  data-testid={`syllable-header-${idx}`}
+                  className={[
+                    'flex flex-shrink-0 items-center justify-center overflow-hidden border-l border-rule-soft font-serif text-ink',
+                    startsWord(idx) ? 'border-l-rule-strong' : '',
+                  ].join(' ')}
+                  style={{ width: COL_WIDTH, height: HEADER_ROW_HEIGHT }}
                 >
                   <span
-                    className="font-mono text-ink-soft truncate px-0.5 select-none"
-                    style={{ fontSize: sylFontSize }}
+                    className="truncate px-0.5 select-none"
+                    style={{ fontSize: scale(BASE_SYL_FONT_SIZE) }}
                     title={syl}
                   >
                     {syl}
                   </span>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* ═══════════════════════════════════════════════════════
-              DATA ROWS: one per source (D-01, D-04, D-05)
-          ═══════════════════════════════════════════════════════ */}
-          {sources.map(source => {
-            // Phase 10 / IMG-06: for each syllable idx, find the ManuscriptLine
-            // whose range contains it and return its imageAdjustments. Fallback
-            // to source.lines[0]?.imageAdjustments when no covering line is
-            // found (rare — typically for out-of-range syllables).
-            // Linear scan is cheap (typical manuscript has 1-5 lines).
-            function adjustmentsForSyllable(syllableIdx: number) {
-              const line = source.lines.find(l =>
-                syllableIdx >= l.syllableRange.start && syllableIdx <= l.syllableRange.end
-              );
-              return (line ?? source.lines[0])?.imageAdjustments;
-            }
-
-            return (
-            <div key={source.id} className="flex border-b border-rule-soft hover:bg-ink-wash">
-
-              {/* ── Sticky metadata cell (D-01, D-08) ── */}
-              <div
-                className="flex-shrink-0 sticky left-0 z-10 bg-surface border-r-2 border-rule-strong flex flex-col justify-center px-2 py-1 gap-0.5"
-                style={{ width: METADATA_COL_WIDTH, height: ROW_HEIGHT }}
-              >
-                <span
-                  className="font-semibold text-ink truncate"
-                  style={{ fontSize: metaFontSize }}
-                  title={source.metadata.siglum}
-                >
-                  {source.metadata.siglum}
-                </span>
-                <span
-                  className="text-ink-muted truncate"
-                  style={{ fontSize: sylFontSize }}
-                  title={source.metadata.city}
-                >
-                  {source.metadata.city}
-                </span>
-                <span
-                  className="text-ink-muted truncate"
-                  style={{ fontSize: sylFontSize }}
-                >
-                  {source.metadata.century}
-                </span>
-                {firstFolio(source) && (
-                  <span
-                    className="text-ink-muted truncate"
-                    style={{ fontSize: sylFontSize }}
-                    title={t('tablePreview.folioTitle', { folio: firstFolio(source) })}
-                  >
-                    f. {firstFolio(source)}
-                  </span>
-                )}
-              </div>
-
-              {/* ── Syllable cells ── */}
-              {syllables.map((_, idx) => {
-                const cellState = resolveCellState(source, idx);
-                const wb = isWordBoundary(project.text.words, idx);
-                return (
-                  <TableCell
-                    key={idx}
-                    state={cellState}
-                    isWordBoundary={wb}
-                    colWidthPx={COL_WIDTH}
-                    rowHeightPx={ROW_HEIGHT}
-                    onClick={e => handleCellClick(e, source.id, idx, cellState.kind === 'unfilled')}
-                    adjustments={adjustmentsForSyllable(idx)}
-                  />
-                );
-              })}
+              ))}
             </div>
-            );
-          })}
+
+            {groups.map((group) => (
+              <div key={group.group.id ?? 'none'}>
+                {/* ── Linha do grupo (só para grupos com nome) ── */}
+                {group.group.name !== null && (
+                  <div data-testid={`group-row-${group.group.id}`} className="pt-4 pb-1.5">
+                    <span className="sticky left-0 inline-block text-caption font-semibold text-ink-muted">{group.group.name}</span>
+                  </div>
+                )}
+
+                {group.sources.map((source) => {
+                  // Ajustes de imagem da página que cobre a sílaba (a primeira página, se nenhuma cobrir).
+                  const adjustmentsForSyllable = (syllableIdx: number) => {
+                    const line = source.lines.find(
+                      (l) => syllableIdx >= l.syllableRange.start && syllableIdx <= l.syllableRange.end,
+                    );
+                    return (line ?? source.lines[0])?.imageAdjustments;
+                  };
+                  const caption = sourceCaption(source);
+
+                  return (
+                    <div key={source.id} data-testid={`source-row-${source.id}`} className="flex">
+                      {/* ── Metadados, fixos à esquerda ── */}
+                      <div
+                        className="sticky left-0 z-10 flex flex-shrink-0 flex-col justify-center border-b border-rule-soft bg-surface pr-4"
+                        style={{ width: METADATA_COL_WIDTH, height: ROW_HEIGHT }}
+                      >
+                        <span
+                          className="truncate font-serif font-medium text-ink"
+                          style={{
+                            fontSize: scale(BASE_SIGLUM_FONT_SIZE),
+                            lineHeight: `${scale(BASE_SIGLUM_LINE_HEIGHT)}px`,
+                          }}
+                          title={source.metadata.siglum}
+                        >
+                          {source.metadata.siglum}
+                        </span>
+                        {caption && (
+                          <span className="truncate text-ink-muted" style={captionStyle} title={caption}>
+                            {caption}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* ── Células ── */}
+                      {syllables.map((_, idx) => {
+                        const cellState = resolveCellState(source, idx);
+                        return (
+                          <TableCell
+                            key={idx}
+                            testId={`cell-${source.id}-${idx}`}
+                            state={cellState}
+                            startsWord={startsWord(idx)}
+                            colWidthPx={COL_WIDTH}
+                            rowHeightPx={ROW_HEIGHT}
+                            onClick={(e) => handleCellClick(e, source.id, idx, cellState.kind === 'unfilled')}
+                            adjustments={adjustmentsForSyllable(idx)}
+                          />
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

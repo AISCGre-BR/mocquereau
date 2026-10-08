@@ -21,6 +21,8 @@ import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
 import { RecortesTools } from "./components/recortes/RecortesTools";
+import { TabelaTools } from "./components/table-preview/TabelaTools";
+import { TableZoomProvider } from "./hooks/useTableZoom";
 import { RecortesProvider, useRecortesCommands, useRecortesContext } from "./hooks/RecortesContext";
 import { createEmptySource } from "./lib/sources";
 import { resetSourceTreeSession } from "./components/sources/SourceTree";
@@ -35,9 +37,11 @@ export function App() {
   return (
     <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
       <RecortesProvider>
-        <Toaster dismissLabel={t("toast.dismiss")}>
-          <Workbench />
-        </Toaster>
+        <TableZoomProvider>
+          <Toaster dismissLabel={t("toast.dismiss")}>
+            <Workbench />
+          </Toaster>
+        </TableZoomProvider>
       </RecortesProvider>
     </ProjectContext.Provider>
   );
@@ -179,7 +183,7 @@ function Workbench() {
             view={view}
             onViewChange={setView}
             platform={platform}
-            tools={view === "recortes" ? <RecortesTools /> : undefined}
+            tools={view === "recortes" ? <RecortesTools /> : view === "tabela" ? <TabelaTools /> : undefined}
             primaryAction={
               view === "tabela" ? (
                 <Button
