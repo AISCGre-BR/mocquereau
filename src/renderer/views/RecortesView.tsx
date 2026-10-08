@@ -13,7 +13,7 @@ import { useRecortes, type SyllableRange } from "../hooks/useRecortes";
 import { SourceTree } from "../components/sources/SourceTree";
 import { useAddPage, type AddPage } from "../components/sources/useAddPage";
 import { ResizeImageDialog } from "../components/sources/ResizeImageDialog";
-import { SourceModal } from "../components/SourceModal";
+import { SourceDialog } from "../components/sources/SourceDialog";
 import { SyllableRangeBar } from "../components/slice-editor/SyllableRangeBar";
 import { ImageCanvas } from "../components/slice-editor/ImageCanvas";
 import { RealignBoxesDialog } from "../components/slice-editor/RealignBoxesDialog";
@@ -47,7 +47,6 @@ export function RecortesView() {
   const { t } = useTranslation();
   const project = state.project;
   const recortes = useRecortes(project);
-  // Provisional until the Source dialog (Task 3): the old SourceModal.
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
   const [hoveredSyllable, setHoveredSyllable] = useState<number | null>(null);
@@ -56,7 +55,6 @@ export function RecortesView() {
   const words = project?.text.words;
   const total = useMemo(() => (words ? flattenSyllables(words).length : 0), [words]);
   const activeSource = project?.sources.find((s) => s.id === recortes.activeSourceId) ?? null;
-  const editingSource = project?.sources.find((s) => s.id === editingSourceId) ?? null;
   const activeLine = activeSource?.lines.find((l) => l.id === recortes.activeLineId) ?? null;
   const hasImage = !!activeLine?.image;
   // Boxes in the frame the user sees, derived from the project (memo per line:
@@ -411,16 +409,7 @@ export function RecortesView() {
         </div>
         <RealignBoxesDialog open={showRealign} line={activeLine} onClose={() => setShowRealign(false)} />
         <ResizeImageDialog addPage={addPage} />
-        {editingSource && (
-          <SourceModal
-            source={editingSource}
-            onSave={(updated) => {
-              dispatch({ type: "UPDATE_SOURCE", payload: updated });
-              setEditingSourceId(null);
-            }}
-            onClose={() => setEditingSourceId(null)}
-          />
-        )}
+        {editingSourceId && <SourceDialog sourceId={editingSourceId} onClose={() => setEditingSourceId(null)} />}
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ function actions(): MenuActions {
     save: vi.fn(),
     saveAs: vi.fn(),
     importGueranger: vi.fn(),
+    editClassification: vi.fn(),
     exportDocx: vi.fn(),
     closeProject: vi.fn(),
     undo: vi.fn(),
@@ -59,7 +60,7 @@ describe("buildMenus", () => {
     const menus = buildMenus({ ...base, hasProject: false, canExport: false }, actions(), t);
     expect(find(menus, "file.new").disabled).toBeFalsy();
     expect(find(menus, "file.open").disabled).toBeFalsy();
-    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.exportDocx", "file.close"]) {
+    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.exportDocx", "file.close"]) {
       expect(find(menus, id).disabled).toBe(true);
     }
     for (const id of ["view.texto", "view.fontes", "view.recortes", "view.tabela"]) {
@@ -144,6 +145,16 @@ describe("buildMenus", () => {
     const a = actions();
     find(buildMenus(base, a, t), "help.openExample").onSelect();
     expect(a.openExample).toHaveBeenCalledTimes(1);
+  });
+
+  it("Classificação… fica no Arquivo, habilitada só com projeto aberto, e chama a ação", () => {
+    const a = actions();
+    const item = find(buildMenus(base, a, t), "file.classification");
+    expect(item.label).toBe("shell.file.classification");
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(a.editClassification).toHaveBeenCalledOnce();
+    expect(find(buildMenus({ ...base, hasProject: false }, a, t), "file.classification").disabled).toBe(true);
   });
 
   it("Limpar recentes só aparece sem projeto aberto", () => {

@@ -102,6 +102,25 @@ describe("documentReducer", () => {
     expect(h.doc.history.past).toHaveLength(2);
   });
 
+  it("live source edits coalesce per source and field; whole-source updates do not", () => {
+    const h = harness();
+    h.dispatch({ type: "SET_PROJECT", payload: makeProject() });
+    const edit = (patch: Partial<MocquereauProject["sources"][0]["metadata"]>, field?: string): DocumentAction => {
+      const s = h.view.project!.sources[0];
+      return { type: "UPDATE_SOURCE", payload: { ...s, metadata: { ...s.metadata, ...patch } }, field };
+    };
+    for (const siglum of ["X1", "X12", "X123"]) {
+      h.dispatch(edit({ siglum }, "siglum"));
+      h.tick(300);
+    }
+    expect(h.doc.history.past).toHaveLength(1);
+    h.dispatch(edit({ city: "Arouca" }, "city"));
+    expect(h.doc.history.past).toHaveLength(2);
+    h.dispatch(edit({ library: "A" }));
+    h.dispatch(edit({ library: "AB" }));
+    expect(h.doc.history.past).toHaveLength(4);
+  });
+
   it("SAVE_SUCCESS marks the save point", () => {
     const h = harness();
     h.dispatch({ type: "SET_PROJECT", payload: makeProject() });

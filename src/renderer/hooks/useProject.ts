@@ -53,7 +53,11 @@ export type ProjectAction =
   | { type: "SAVE_SUCCESS"; payload?: { project: MocquereauProject | null } }
   | { type: "ADD_SOURCE"; payload: ManuscriptSource }
   | { type: "REMOVE_SOURCE"; payload: string }          // source id
-  | { type: "UPDATE_SOURCE"; payload: ManuscriptSource }
+  /**
+   * Whole source. `field` names the field a live edit changed (Source dialog):
+   * typing in one field of one source coalesces into one undo step.
+   */
+  | { type: "UPDATE_SOURCE"; payload: ManuscriptSource; field?: string }
   | { type: "DUPLICATE_SOURCE"; payload: string }       // source id
   | { type: "REORDER_SOURCE"; payload: { id: string; direction: "up" | "down" } }
   | { type: "SET_FILE_PATH"; payload: string | null }
@@ -548,6 +552,8 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
       return { coalesceKey: `SET_META:${sortedKeys(action.payload)}` };
     case "SET_CLASSIFICATION":
       return { coalesceKey: "classification" };
+    case "UPDATE_SOURCE":
+      return action.field ? { coalesceKey: `UPDATE_SOURCE:${action.payload.id}:${action.field}` } : undefined;
     case "UPDATE_SYLLABLE_TEXT":
       return { coalesceKey: `UPDATE_SYLLABLE_TEXT:${action.payload.wordIdx}:${action.payload.sylIdx}` };
     case "UPDATE_LINE_METADATA":

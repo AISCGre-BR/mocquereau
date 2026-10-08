@@ -174,6 +174,21 @@ const SCREENS = {
     await page.locator("[role=treeitem][data-line-id]").filter({ has: page.locator("[data-confirmed]") }).first().click();
     await settle(page, 3000);
   },
+  "fonte-dialog": async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+3");
+    await settle(page);
+    await page.locator("[data-source-id]").first().dblclick();
+    await settle(page, 600);
+  },
+  classificacao: async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+3");
+    await settle(page);
+    await page.getByRole("menuitem", { name: "Arquivo" }).click();
+    await page.getByRole("menuitem", { name: "Classificação…" }).click();
+    await settle(page, 600);
+  },
   tabela: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+4"); await settle(page, 5000); },
 };
 

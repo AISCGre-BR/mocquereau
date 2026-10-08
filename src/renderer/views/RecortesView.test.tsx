@@ -312,3 +312,23 @@ describe("RecortesView: largura presa à vista", () => {
     expect(editor.className.split(/\s+/)).toContain("min-w-0");
   });
 });
+
+describe("RecortesView: diálogo Fonte", () => {
+  it("'Nova fonte' cria a fonte e abre o diálogo Fonte para ela; editar grava ao vivo", () => {
+    const { ref, getByRole, queryByRole } = mount(projectWith());
+    fireEvent.click(getByRole("button", { name: "Nova fonte" }));
+    const sources = ref.state!.project!.sources;
+    expect(sources).toHaveLength(2);
+    const siglum = getByRole("textbox", { name: "Sigla" });
+    fireEvent.change(siglum, { target: { value: "Ein 121" } });
+    expect(ref.state!.project!.sources[1].metadata.siglum).toBe("Ein 121");
+    fireEvent.click(getByRole("button", { name: "Concluído" }));
+    expect(queryByRole("dialog")).toBeNull();
+  });
+
+  it("duplo clique numa fonte abre o diálogo dela", () => {
+    const { getByRole, container } = mount(projectWith());
+    fireEvent.doubleClick(container.querySelector('[data-source-id="A"]')!);
+    expect((getByRole("textbox", { name: "Sigla" }) as HTMLInputElement).value).toBe("A");
+  });
+});

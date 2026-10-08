@@ -23,6 +23,7 @@ export interface MenuActions {
   save: () => void;
   saveAs: () => void;
   importGueranger: () => void;
+  editClassification: () => void;
   exportDocx: () => void;
   closeProject: () => void;
   undo: () => void;
@@ -80,6 +81,7 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         { id: "file.saveAs", label: t("shell.file.saveAs"), accelerator: "Ctrl+Shift+S", disabled: noProject, onSelect: actions.saveAs },
         "separator",
         { id: "file.importGueranger", label: t("shell.file.importGueranger"), disabled: noProject, onSelect: actions.importGueranger },
+        { id: "file.classification", label: t("shell.file.classification"), disabled: noProject, onSelect: actions.editClassification },
         { id: "file.exportDocx", label: t("shell.file.exportDocx"), accelerator: "Ctrl+E", disabled: !state.canExport, onSelect: actions.exportDocx },
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },

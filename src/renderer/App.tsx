@@ -20,6 +20,7 @@ import { FontesView } from "./views/FontesView";
 import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
+import { ClassificationDialog } from "./components/sources/ClassificationDialog";
 import { toSupportedLang, type SupportedLang } from "./i18n";
 
 const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
@@ -43,6 +44,7 @@ function Workbench() {
   const { theme, setTheme } = useTheme();
   const [view, setView] = useState<ViewId>("texto");
   const [exportOpen, setExportOpen] = useState(false);
+  const [classificationOpen, setClassificationOpen] = useState(false);
   // Desfazer/Refazer troca o projeto por baixo das vistas. As que ainda guardam
   // cópias locais (campos do Texto) remontam para reler o projeto; Recortes lê o
   // projeto a cada render (D6) e fica montada, com a seleção e o zoom.
@@ -100,6 +102,7 @@ function Workbench() {
       save: () => void file.save(),
       saveAs: () => void file.saveAs(),
       importGueranger: () => void file.importGueranger(),
+      editClassification: () => setClassificationOpen(true),
       exportDocx: () => setExportOpen(true),
       closeProject: file.close,
       undo: () => stepHistory("undo"),
@@ -180,6 +183,7 @@ function Workbench() {
         </div>
       )}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+      {classificationOpen && project && !creating && <ClassificationDialog onClose={() => setClassificationOpen(false)} />}
     </AppShell>
   );
 }
