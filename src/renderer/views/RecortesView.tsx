@@ -97,7 +97,11 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
 
   // ── Writes to the project (end of each gesture) ──────────────────────────
 
-  function writeBoxes(boxes: Record<number, SyllableBox | null>, meta?: HistoryMeta) {
+  function writeBoxes(
+    boxes: Record<number, SyllableBox | null>,
+    meta?: HistoryMeta,
+    syllableRange?: SyllableRange,
+  ) {
     if (!activeSource || !activeLine) return;
     dispatch({
       type: "UPDATE_LINE_BOXES",
@@ -106,6 +110,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
         lineId: activeLine.id,
         syllableBoxes: boxes,
         confirmed: hasAnyBox(boxes),
+        ...(syllableRange ? { syllableRange } : {}),
       },
       ...(meta ? { meta } : {}),
     });
@@ -113,7 +118,14 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
 
   function commitBox(idx: number, box: SyllableBox, meta?: HistoryMeta) {
     if (sameBox(viewBoxes[idx], box)) return; // a click without moving is no edit
-    writeBoxes({ ...viewBoxes, [idx]: box }, meta);
+    // A box for a syllable outside the page's range (deep link from the Tabela)
+    // grows the range to include it, in the same undo step: otherwise the box
+    // would exist but no cell would show it.
+    const grown =
+      range && (idx < range.start || idx > range.end)
+        ? { start: Math.min(range.start, idx), end: Math.max(range.end, idx) }
+        : undefined;
+    writeBoxes({ ...viewBoxes, [idx]: box }, meta, grown);
   }
 
   function deleteBox(idx: number) {

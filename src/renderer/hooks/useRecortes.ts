@@ -19,6 +19,31 @@ function defaultLine(source: ManuscriptSource): ManuscriptLine | null {
   return source.lines.find((l) => !l.confirmed) ?? source.lines[0] ?? null;
 }
 
+/** Distance from a syllable to a page's range (0 when the range contains it). */
+function rangeDistance(line: ManuscriptLine, syllable: number): number {
+  const { start, end } = line.syllableRange;
+  if (syllable < start) return start - syllable;
+  if (syllable > end) return syllable - end;
+  return 0;
+}
+
+/**
+ * The page whose range contains the syllable, else the one whose range is
+ * nearest to it (ties: the first in page order).
+ */
+export function nearestPage(source: ManuscriptSource, syllable: number): ManuscriptLine | null {
+  let best: ManuscriptLine | null = null;
+  let bestDistance = Infinity;
+  for (const l of source.lines) {
+    const d = rangeDistance(l, syllable);
+    if (d < bestDistance) {
+      best = l;
+      bestDistance = d;
+    }
+  }
+  return best;
+}
+
 export interface RecortesState {
   activeSourceId: string | null;
   activeLineId: string | null;
@@ -86,14 +111,7 @@ export function useRecortes(project: MocquereauProject | null): RecortesState {
     const src = project?.sources.find((s) => s.id === target.sourceId);
     if (!src) return;
     const { syllable } = target;
-    const containing =
-      syllable === undefined
-        ? undefined
-        : src.lines.find((l) => {
-            const r = l.syllableRange;
-            return r.start <= syllable && syllable <= r.end;
-          });
-    const page = containing ?? src.lines[0] ?? null;
+    const page = syllable === undefined ? (src.lines[0] ?? null) : nearestPage(src, syllable);
     dispatch({
       type: "SELECT",
       payload: { sourceId: src.id, lineId: page?.id ?? null, activeSyllableIdx: syllable },

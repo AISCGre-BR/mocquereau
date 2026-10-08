@@ -13,7 +13,8 @@ import {
   type ProjectState,
 } from "../hooks/useProject";
 import { syllabifyText } from "../lib/syllabify";
-import { RecortesProvider } from "../hooks/RecortesContext";
+import { RecortesProvider, useRecortesContext, type RecortesContextValue } from "../hooks/RecortesContext";
+import { resolveCellState } from "../lib/tableUtils";
 import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "../lib/models";
 
 const BOX = { x: 0.1, y: 0.1, w: 0.2, h: 0.5 };
@@ -51,7 +52,16 @@ function projectWith(sources: ManuscriptSource[] = [mkSource("A", [mkLine("line-
 
 /** Real document reducer (with history) around the view. */
 function mount(project: MocquereauProject) {
-  const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; history?: HistoryApi } = {};
+  const ref: {
+    state?: ProjectState;
+    dispatch?: React.Dispatch<DocumentAction>;
+    history?: HistoryApi;
+    recortes?: RecortesContextValue;
+  } = {};
+  function Grab() {
+    ref.recortes = useRecortesContext();
+    return null;
+  }
   function Harness() {
     const [state, dispatch, history] = useProjectReducer();
     Object.assign(ref, { state, dispatch, history });
@@ -59,6 +69,7 @@ function mount(project: MocquereauProject) {
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
         <RecortesProvider>
+          <Grab />
           <RecortesView />
         </RecortesProvider>
       </ProjectContext.Provider>
@@ -76,9 +87,9 @@ function mount(project: MocquereauProject) {
   return { ...utils, ref, line, wrapper, key, startHandle, endHandle, shownRange };
 }
 
-function pointer(el: Element, type: string, clientX: number, clientY: number) {
+function pointer(el: Element, type: string, clientX: number, clientY: number, button = 0) {
   act(() => {
-    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY }));
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY, button }));
   });
 }
 
@@ -174,8 +185,8 @@ describe("RecortesView: o projeto é a fonte única das caixas (D6)", () => {
     });
     const lines = v.ref.state!.project!.sources[0].lines;
     expect(lines).toHaveLength(2);
-    // Página nova selecionada, com o intervalo sugerido depois da última confirmada.
-    expect(v.shownRange()[0]).toBe("4");
+    // Página nova selecionada, com o intervalo sugerido depois da maior sílaba com caixa (0).
+    expect(v.shownRange()[0]).toBe("1");
 
     act(() => v.ref.dispatch!({ type: "UNDO" }));
     expect(v.ref.state!.project!.sources[0].lines).toHaveLength(1);
@@ -189,6 +200,89 @@ describe("RecortesView: o projeto é a fonte única das caixas (D6)", () => {
     fireEvent.keyDown(v.endHandle(), { key: "ArrowLeft" });
     expect(v.line().syllableRange).toEqual({ start: 0, end: 1 });
     expect(v.line().syllableBoxes![3]).toEqual(BOX);
+  });
+});
+
+describe("RecortesView: link da Tabela para sílaba fora do intervalo", () => {
+  it("desenhar a caixa estende o intervalo no mesmo passo de desfazer e a célula da Tabela resolve", () => {
+    const v = mount(
+      projectWith([mkSource("A", [mkLine("line-1", { syllableRange: { start: 0, end: 1 }, syllableBoxes: { 0: BOX } })])]),
+    );
+    act(() => v.ref.recortes!.goTo({ sourceId: "A", syllable: 3 }));
+    expect(v.ref.recortes!.activeSyllable).toBe(3);
+    pointer(v.wrapper(), "pointerdown", 20, 10);
+    pointer(v.wrapper(), "pointermove", 60, 60);
+    pointer(v.wrapper(), "pointerup", 60, 60);
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 3 });
+    expect(v.line().syllableBoxes![3]).toBeTruthy();
+    expect(resolveCellState(v.ref.state!.project!.sources[0], 3).kind).toBe("filled");
+    act(() => v.ref.history!.undo());
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 1 });
+    expect(v.line().syllableBoxes![3]).toBeUndefined();
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("antes do início também estende (o início recua)", () => {
+    const v = mount(
+      projectWith([mkSource("A", [mkLine("line-1", { syllableRange: { start: 2, end: 4 }, syllableBoxes: { 2: BOX } })])]),
+    );
+    act(() => v.ref.recortes!.goTo({ sourceId: "A", syllable: 0 }));
+    pointer(v.wrapper(), "pointerdown", 20, 10);
+    pointer(v.wrapper(), "pointermove", 60, 60);
+    pointer(v.wrapper(), "pointerup", 60, 60);
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 4 });
+  });
+});
+
+describe("RecortesView: só o botão principal edita caixas", () => {
+  it("botão direito na folha não desenha caixa", () => {
+    const v = mount(projectWith());
+    v.key({ key: "Tab" });
+    pointer(v.wrapper(), "pointerdown", 20, 10, 2);
+    pointer(v.wrapper(), "pointermove", 60, 60, 2);
+    pointer(v.wrapper(), "pointerup", 60, 60, 2);
+    expect(v.line().syllableBoxes![1]).toBeUndefined();
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("botão direito na caixa ativa ou numa alça não move nem redimensiona", () => {
+    const v = mount(projectWith());
+    const overlay = v.wrapper().querySelector("[data-box-overlay]") as HTMLElement;
+    pointer(overlay, "pointerdown", 30, 30, 2);
+    pointer(overlay, "pointermove", 50, 30, 2);
+    pointer(overlay, "pointerup", 50, 30, 2);
+    const handle = overlay.querySelector('[data-handle="e"]')!;
+    pointer(handle, "pointerdown", 60, 30, 2);
+    pointer(overlay, "pointermove", 90, 30, 2);
+    pointer(overlay, "pointerup", 90, 30, 2);
+    expect(v.line().syllableBoxes![0]).toEqual(BOX);
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+});
+
+describe("RecortesView: gesto cancelado", () => {
+  it("pointercancel no meio do arraste descarta o rascunho da caixa", () => {
+    const v = mount(projectWith());
+    const overlay = v.wrapper().querySelector("[data-box-overlay]") as HTMLElement;
+    pointer(overlay, "pointerdown", 30, 30);
+    pointer(overlay, "pointermove", 50, 30);
+    expect((v.wrapper().querySelector("[data-box-overlay]") as HTMLElement).style.left).toBe("20%");
+    pointer(overlay, "pointercancel", 50, 30);
+    expect((v.wrapper().querySelector("[data-box-overlay]") as HTMLElement).style.left).toBe("10%");
+    pointer(overlay, "pointerup", 50, 30);
+    expect(v.line().syllableBoxes![0]).toEqual(BOX);
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("pointercancel no meio do desenho descarta a caixa nova", () => {
+    const v = mount(projectWith());
+    v.key({ key: "Tab" });
+    pointer(v.wrapper(), "pointerdown", 20, 10);
+    pointer(v.wrapper(), "pointermove", 60, 60);
+    pointer(v.wrapper(), "pointercancel", 60, 60);
+    pointer(v.wrapper(), "pointerup", 60, 60);
+    expect(v.line().syllableBoxes![1]).toBeUndefined();
+    expect(v.ref.history!.canUndo).toBe(false);
   });
 });
 

@@ -249,6 +249,8 @@ export function ImageCanvas({
 
   // ── Draw-new-box pointer handlers ─────────────────────────────────────────
   function handleImagePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    // Only the primary button draws (right click opens the context menu).
+    if (e.button !== 0) return;
     if (!drawMode || activeSyllableIdx === null) return;
     const hasBox = boxes[activeSyllableIdx] != null;
     if (hasBox) return;  // SyllableBoxOverlay handles its own pointer events
@@ -299,19 +301,24 @@ export function ImageCanvas({
   }
 
   function handleImagePointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (!drawState.current || !drawState.current.live || activeSyllableIdx === null) {
-      drawState.current = null;
-      setLiveDrawBox(null);
-      return;
-    }
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    const box = drawState.current.live;
-    // Only commit if box is big enough (at least 2% in both dimensions)
+    const box = drawState.current?.live ?? null;
+    const drawing = drawState.current !== null;
+    // Cleared before releasing the capture: the lostpointercapture it causes
+    // must not read as a cancelled gesture.
+    drawState.current = null;
+    setLiveDrawBox(null);
+    if (drawing) (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    if (!box || activeSyllableIdx === null) return;
     // Accept very small selections (0.5% = ~5-10 pixels depending on image size).
     // Rejecting too aggressively frustrates users marking narrow neumes.
     if (box.w >= 0.005 && box.h >= 0.005) {
       onBoxCommit?.(activeSyllableIdx, box);
     }
+  }
+
+  /** pointercancel / lostpointercapture mid-draw: the new box is dropped. */
+  function handleImagePointerCancel() {
+    if (!drawState.current) return;
     drawState.current = null;
     setLiveDrawBox(null);
   }
@@ -349,6 +356,8 @@ export function ImageCanvas({
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
           onPointerUp={handleImagePointerUp}
+          onPointerCancel={handleImagePointerCancel}
+          onLostPointerCapture={handleImagePointerCancel}
           onContextMenu={onContextMenu}
         >
           <img
@@ -432,6 +441,7 @@ export function ImageCanvas({
                 setDraft(null);
                 onBoxCommit?.(activeSyllableIdx, newBox);
               }}
+              onBoxCancel={() => setDraft(null)}
             />
           )}
 

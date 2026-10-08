@@ -142,12 +142,21 @@ describe("useRecortes: goTo", () => {
     expect(result.current.activeSyllable).toBe(4);
   });
 
-  it("sem página que contenha a sílaba: a primeira página", () => {
+  it("sem página que contenha a sílaba: a página de intervalo mais próximo", () => {
     const outside = project([source("B", [line("b1", 0, 1, true), line("b2", 2, 3, true)])]);
     const { result } = setup(outside);
     act(() => result.current.goTo({ sourceId: "B", syllable: 6 }));
-    expect(result.current.activeLineId).toBe("b1");
+    expect(result.current.activeLineId).toBe("b2");
     expect(result.current.activeSyllable).toBe(6);
+  });
+
+  it("mais próximo também antes do intervalo; empate fica com a primeira", () => {
+    const outside = project([source("B", [line("b1", 0, 0, true), line("b2", 4, 6, true)])]);
+    const { result } = setup(outside);
+    act(() => result.current.goTo({ sourceId: "B", syllable: 3 }));
+    expect(result.current.activeLineId).toBe("b2");
+    act(() => result.current.goTo({ sourceId: "B", syllable: 2 }));
+    expect(result.current.activeLineId).toBe("b1");
   });
 
   it("sem sílaba: a primeira página e o início do intervalo", () => {

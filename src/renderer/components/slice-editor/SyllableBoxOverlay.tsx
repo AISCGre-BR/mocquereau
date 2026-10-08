@@ -24,6 +24,7 @@ interface SyllableBoxOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>; // the image wrapper div
   onBoxChange: (newBox: SyllableBox) => void;           // every pointermove: the draft, kept by the canvas
   onBoxCommit: (newBox: SyllableBox) => void;           // end of the gesture (pointerup): written to the project
+  onBoxCancel?: () => void;                             // gesture cancelled (pointercancel, capture lost): drop the draft
 }
 
 // ── Drag state type ───────────────────────────────────────────────────────────
@@ -113,12 +114,15 @@ export function SyllableBoxOverlay({
   containerRef,
   onBoxChange,
   onBoxCommit,
+  onBoxCancel,
 }: SyllableBoxOverlayProps) {
   const dragState = useRef<DragState | null>(null);
 
   // ── Pointer events on the outer div (body drag + handle move relay) ────────
 
   function onOuterPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    // Only the primary button edits (right click opens the context menu).
+    if (e.button !== 0) return;
     // Only respond to direct clicks on the box body (not on handles)
     if (e.target !== e.currentTarget) return;
 
@@ -168,12 +172,15 @@ export function SyllableBoxOverlay({
   function onOuterPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const state = dragState.current;
     if (!state) return;
+    // Cleared before releasing the capture: the lostpointercapture it causes
+    // must not read as a cancelled gesture.
+    dragState.current = null;
 
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 
     const container = containerRef.current;
     if (!container) {
-      dragState.current = null;
+      onBoxCancel?.();
       return;
     }
 
@@ -196,13 +203,20 @@ export function SyllableBoxOverlay({
       finalBox = applyHandleDelta(state.startBox, state.handleId!, dx, dy);
     }
 
-    dragState.current = null;
     onBoxCommit(finalBox);
+  }
+
+  /** pointercancel / lostpointercapture mid-gesture: nothing is written. */
+  function onOuterPointerCancel() {
+    if (!dragState.current) return;
+    dragState.current = null;
+    onBoxCancel?.();
   }
 
   // ── Pointer events on individual handles ──────────────────────────────────
 
   function onHandlePointerDown(e: React.PointerEvent<HTMLDivElement>, handleId: HandleId) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -236,6 +250,8 @@ export function SyllableBoxOverlay({
       onPointerDown={onOuterPointerDown}
       onPointerMove={onOuterPointerMove}
       onPointerUp={onOuterPointerUp}
+      onPointerCancel={onOuterPointerCancel}
+      onLostPointerCapture={onOuterPointerCancel}
     >
       {label && <span className="sc-box__tag pointer-events-none">{label}</span>}
       {HANDLES.map((h) => (
