@@ -412,6 +412,10 @@ export function ImageCanvas({
                   e.stopPropagation();
                   onActivateSyllable?.(idx);
                 }}
+                // Focusable boxes are buttons for the editor keys too
+                // (isOutsideEditorKeys): Tab moves focus on, Enter/Space activate.
+                role={showAllBoxes ? 'button' : undefined}
+                data-box-tabstop={showAllBoxes ? '' : undefined}
                 aria-label={t('imageCanvas.clickToEdit', { syllable: syllableTextAt(idx) })}
                 tabIndex={showAllBoxes ? 0 : undefined}
                 onKeyDown={(e) => {

@@ -47,10 +47,18 @@ function coveredByOtherPages(
   return covered;
 }
 
-/** Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas). */
+/**
+ * Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas):
+ * controles da casca, controles nativos e as caixas não ativas focáveis da folha
+ * (data-box-tabstop), onde Tab segue o foco e Enter/Espaço as ativam.
+ */
 export function isOutsideEditorKeys(target: Element): boolean {
   if (target.tagName === "BUTTON" || target.tagName === "SELECT") return true;
-  return target.closest("[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist],[role=tree],[role=slider]") !== null;
+  return (
+    target.closest(
+      "[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist],[role=tree],[role=slider],[data-box-tabstop]",
+    ) !== null
+  );
 }
 
 function sameBox(a: SyllableBox | null | undefined, b: SyllableBox | null | undefined): boolean {
@@ -77,6 +85,10 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     onOpenSourceHandled?.();
   }, [openSourceId, onOpenSourceHandled]);
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
+  // The Recortes dialogs live in the provider (the menu opens them): leaving
+  // the view closes them, so they do not reappear when it mounts again.
+  const setDialog = recortes.setDialog;
+  useEffect(() => () => setDialog(null), [setDialog]);
   const [sheetMenu, setSheetMenu] = useState<{ x: number; y: number } | null>(null);
 
   const words = project?.text.words;
@@ -128,12 +140,24 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     writeBoxes({ ...viewBoxes, [idx]: box }, meta, grown);
   }
 
-  function deleteBox(idx: number) {
-    if (viewBoxes[idx] == null) return;
-    writeBoxes({ ...viewBoxes, [idx]: null });
-  }
-
   const sheetMenuItems = recortesMenuItems(commands.state, commands, t);
+
+  function sheetMenuAnchor(): { x: number; y: number } | null {
+    const box = document.querySelector<HTMLElement>("[data-image-wrapper] [data-box-overlay]");
+    if (box) {
+      const r = box.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    const sheet = document.querySelector<HTMLElement>("[data-image-wrapper]");
+    if (!sheet) return null;
+    const r = sheet.getBoundingClientRect();
+    const view = document.querySelector<HTMLElement>("[data-canvas-scroller]")?.getBoundingClientRect() ?? r;
+    const left = Math.max(r.left, view.left);
+    const right = Math.min(r.right, view.right);
+    const top = Math.max(r.top, view.top);
+    const bottom = Math.min(r.bottom, view.bottom);
+    return { x: (left + right) / 2, y: (top + bottom) / 2 };
+  }
   const platform = window.mocquereau?.platform ?? "";
 
   function setRange(next: SyllableRange) {
@@ -146,17 +170,28 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
 
   function toggleGap(idx: number) {
     if (!activeSource || !activeLine) return;
-    const gaps = activeLine.gaps.includes(idx)
-      ? activeLine.gaps.filter((g) => g !== idx)
-      : [...activeLine.gaps, idx];
+    const adding = !activeLine.gaps.includes(idx);
+    const gaps = adding ? [...activeLine.gaps, idx].sort((a, b) => a - b) : activeLine.gaps.filter((g) => g !== idx);
+    if (adding && viewBoxes[idx] != null) {
+      // "Sem neuma nesta página" on a boxed syllable: the box goes in the same
+      // undo step (a box and a gap for one syllable would contradict).
+      const { [idx]: _dropped, ...boxes } = viewBoxes;
+      dispatch({
+        type: "UPDATE_LINE_BOXES",
+        payload: { sourceId: activeSource.id, lineId: activeLine.id, syllableBoxes: boxes, gaps, confirmed: hasAnyBox(boxes) },
+      });
+      return;
+    }
     dispatch({ type: "SET_LINE_GAPS", payload: { sourceId: activeSource.id, lineId: activeLine.id, gaps } });
   }
 
+  /** Ctrl+[ / Ctrl+] on the sheet: each quarter turn is its own undo step, like the panel's. */
   function handleUpdateAdjustments(partial: Partial<ImageAdjustments>) {
     if (!activeSource || !activeLine) return;
     dispatch({
       type: "UPDATE_LINE_ADJUSTMENTS",
       payload: { sourceId: activeSource.id, lineId: activeLine.id, adjustments: partial },
+      meta: { coalesceKey: undefined },
     });
   }
 
@@ -188,6 +223,15 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if (target instanceof Element && isOutsideEditorKeys(target)) return;
     if (!range) return;
     const active = recortes.activeSyllable;
+
+    // Tecla Menu / Shift+F10: o menu da folha pelo teclado, no centro da caixa
+    // ativa ou, sem ela, no centro da parte visível da folha.
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault();
+      const at = sheetMenuAnchor();
+      if (at) setSheetMenu(at);
+      return;
+    }
 
     // Ctrl+Enter (Próxima fonte) é atalho do menu Recortes.
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return;
@@ -221,7 +265,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if ((e.key === "Delete" || e.key === "Backspace") && active !== null) {
       if (viewBoxes[active] != null) {
         e.preventDefault();
-        deleteBox(active);
+        commands.removeBox();
       }
       return;
     }
@@ -272,7 +316,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onActivate={recortes.setActiveSyllable}
                 onRangeChange={setRange}
                 onToggleGap={toggleGap}
-                onRemoveBox={deleteBox}
+                onRemoveBox={commands.removeBoxAt}
               />
             </div>
           )}
@@ -296,7 +340,9 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onUpdateAdjustments={handleUpdateAdjustments}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  setSheetMenu({ x: e.clientX, y: e.clientY });
+                  // Already opened from the keyboard (Menu key): keep it where it is.
+                  const at = { x: e.clientX, y: e.clientY };
+                  setSheetMenu((open) => open ?? at);
                 }}
               />
             ) : (

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "../i18n";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
 import { RecortesView, isOutsideEditorKeys } from "./RecortesView";
 import {
@@ -286,6 +287,39 @@ describe("RecortesView: gesto cancelado", () => {
   });
 });
 
+describe("RecortesView: diálogos do provider", () => {
+  it("desmontar a vista fecha o diálogo aberto pelo menu Recortes", () => {
+    const ref: { recortes?: RecortesContextValue; setShow?: (on: boolean) => void; load?: () => void } = {};
+    function Grab() {
+      ref.recortes = useRecortesContext();
+      return null;
+    }
+    function Harness() {
+      const [state, dispatch, history] = useProjectReducer();
+      const [show, setShow] = useState(true);
+      ref.setShow = setShow;
+      ref.load = () => dispatch({ type: "SET_PROJECT", payload: projectWith() });
+      if (!state.project) return null;
+      return (
+        <ProjectContext.Provider value={{ state, dispatch, history }}>
+          <RecortesProvider>
+            <Grab />
+            {show && <RecortesView />}
+          </RecortesProvider>
+        </ProjectContext.Provider>
+      );
+    }
+    const utils = render(<Harness />);
+    act(() => ref.load!());
+    act(() => ref.recortes!.setDialog("clearPage"));
+    expect(utils.getByRole("dialog", { name: "Limpar esta página?" })).toBeTruthy();
+    act(() => ref.setShow!(false));
+    expect(ref.recortes!.dialog).toBeNull();
+    act(() => ref.setShow!(true));
+    expect(utils.queryByRole("dialog")).toBeNull();
+  });
+});
+
 describe("RecortesView: intervalo de uma sílaba", () => {
   it("{0,0} é mostrado e gravado como está; clicar numa sílaba estende a partir dele", () => {
     const v = mount(projectWith([mkSource("A", [mkLine("line-1", { syllableRange: { start: 0, end: 0 } })])]));
@@ -325,6 +359,20 @@ describe("RecortesView: faixa de sílabas", () => {
     fireEvent.contextMenu(syl(0));
     fireEvent.click(v.getByRole("menuitem", { name: "Remover caixa" }));
     expect(v.line().syllableBoxes![0]).toBeNull();
+  });
+
+  it("marcar sem neuma numa sílaba com caixa remove a caixa no mesmo passo de desfazer", () => {
+    const v = mount(projectWith());
+    const syl = (i: number) => v.container.querySelector(`[data-syllable="${i}"]`) as HTMLElement;
+    fireEvent.contextMenu(syl(0));
+    fireEvent.click(v.getByRole("menuitemcheckbox", { name: "Sem neuma nesta página" }));
+    expect(v.line().gaps).toEqual([0]);
+    expect(0 in v.line().syllableBoxes!).toBe(false);
+    expect(resolveCellState(v.ref.state!.project!.sources[0], 0).kind).toBe("gap");
+    act(() => v.ref.history!.undo());
+    expect(v.line().gaps).toEqual([]);
+    expect(v.line().syllableBoxes![0]).toEqual(BOX);
+    expect(v.ref.history!.canUndo).toBe(false);
   });
 
   it("Tab numa alça focada move o foco (não é roubado pelo atalho do editor)", () => {
@@ -435,12 +483,27 @@ describe("RecortesView: teclas globais não roubam as da casca", () => {
       <div role="tree"><div role="treeitem" id="ti">x</div></div>
       <div role="slider" id="sl" tabindex="0"></div>
       <button id="b">ok</button><select id="s"></select>
+      <div role="button" data-box-tabstop id="bx" tabindex="0"></div>
       <div id="canvas"></div>`;
-    for (const id of ["m", "tb", "d", "tl", "mi", "ti", "sl", "b", "s"]) {
+    for (const id of ["m", "tb", "d", "tl", "mi", "ti", "sl", "b", "s", "bx"]) {
       expect(isOutsideEditorKeys(document.getElementById(id)!)).toBe(true);
     }
     expect(isOutsideEditorKeys(document.getElementById("canvas")!)).toBe(false);
     document.body.innerHTML = "";
+  });
+
+  it("Tab numa caixa não ativa focada segue o foco (sem armadilha); Enter a ativa", () => {
+    const v = mount(projectWith([mkSource("A", [mkLine("line-1", { syllableBoxes: { 0: BOX, 2: BOX } })])]));
+    const other = v.container.querySelector("[data-box-tabstop]") as HTMLElement;
+    expect(other.getAttribute("role")).toBe("button");
+    expect(other.getAttribute("aria-label")).toContain("na");
+    other.focus();
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    act(() => void other.dispatchEvent(tab));
+    expect(tab.defaultPrevented).toBe(false);
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    fireEvent.keyDown(other, { key: "Enter" });
+    expect(v.ref.recortes!.activeSyllable).toBe(2);
   });
 
   it.each([
@@ -519,6 +582,26 @@ describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Remover caixa/ }));
     expect(v.line().syllableBoxes![0]).toBeNull();
     expect(v.queryByRole("menu")).toBeNull();
+  });
+
+  it("tecla Menu ou Shift+F10 abrem o menu da folha no centro da caixa ativa", () => {
+    const v = mount(projectWith());
+    v.key({ key: "ContextMenu" });
+    const menu = v.getByRole("menu", { name: "Recortes" });
+    expect([menu.style.left, menu.style.top]).toEqual(["100px", "50px"]);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(v.queryByRole("menu")).toBeNull();
+    v.key({ key: "F10", shiftKey: true });
+    expect(v.getByRole("menu", { name: "Recortes" })).toBeTruthy();
+  });
+
+  it("sem caixa ativa, o menu da folha abre no centro da folha", () => {
+    const v = mount(projectWith());
+    v.key({ key: "Tab" }); // sílaba 1, sem caixa
+    v.key({ key: "F10", shiftKey: true });
+    const menu = v.getByRole("menu", { name: "Recortes" });
+    expect([menu.style.left, menu.style.top]).toEqual(["100px", "50px"]);
+    expect(within(menu).getByRole("menuitem", { name: /Remover caixa/ }).hasAttribute("disabled")).toBe(true);
   });
 
   it("Limpar página… pede confirmação e limpa só a página ativa (caixas, gaps e recortes do intervalo)", () => {

@@ -35,7 +35,10 @@ export function useRecortesContext(): RecortesContextValue {
 
 export interface RecortesCommands {
   state: RecortesMenuState;
+  /** Removes the active syllable's box (menu, Delete). */
   removeBox(): void;
+  /** Removes the box of syllable `idx` on the active page: the one path for every removal. */
+  removeBoxAt(idx: number): void;
   /** Opens the confirmation; clearActivePage does the clearing. */
   clearPage(): void;
   clearActivePage(): void;
@@ -57,9 +60,9 @@ export function useRecortesCommands(): RecortesCommands {
   const hasActiveBox = active !== null && viewBoxes[active] != null;
   const pageHasWork = !!line && (hasAnyBox(line.syllableBoxes) || line.gaps.length > 0 || line.confirmed);
 
-  function removeBox() {
-    if (!source || !line || active === null || viewBoxes[active] == null) return;
-    const boxes = { ...viewBoxes, [active]: null };
+  function removeBoxAt(idx: number) {
+    if (!source || !line || viewBoxes[idx] == null) return;
+    const boxes = { ...viewBoxes, [idx]: null };
     dispatch({
       type: "UPDATE_LINE_BOXES",
       payload: { sourceId: source.id, lineId: line.id, syllableBoxes: boxes, confirmed: hasAnyBox(boxes) },
@@ -86,7 +89,10 @@ export function useRecortesCommands(): RecortesCommands {
       canRealign: !!line && hasAnyBox(line.syllableBoxes),
       hasNextSource: sourceIdx >= 0 && sourceIdx < sources.length - 1,
     },
-    removeBox,
+    removeBox: () => {
+      if (active !== null) removeBoxAt(active);
+    },
+    removeBoxAt,
     clearPage: () => {
       if (pageHasWork) recortes.setDialog("clearPage");
     },
