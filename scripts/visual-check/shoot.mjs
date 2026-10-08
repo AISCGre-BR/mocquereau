@@ -170,7 +170,8 @@ const SCREENS = {
     await openFixtureProject(page);
     await page.keyboard.press("Control+3");
     await settle(page);
-    await page.getByText("Confirmada").first().click();
+    // Primeira página confirmada da fonte ativa, na barra lateral.
+    await page.locator("[role=treeitem][data-line-id]").filter({ has: page.locator("[data-confirmed]") }).first().click();
     await settle(page, 3000);
   },
   tabela: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+4"); await settle(page, 5000); },

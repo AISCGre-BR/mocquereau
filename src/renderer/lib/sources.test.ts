@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveUnsetRanges, suggestRangeForNewPage } from "./sources";
+import { groupSourcesByLevel1, resolveUnsetRanges, suggestRangeForNewPage } from "./sources";
 import { createNewProject } from "../hooks/useProject";
 import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "./models";
 
@@ -45,5 +45,27 @@ describe("resolveUnsetRanges", () => {
   it("text with one syllable or none: nothing to resolve", () => {
     const p0 = project([line("a", 0, 0)], 1);
     expect(resolveUnsetRanges(p0)).toBe(p0);
+  });
+});
+
+describe("groupSourcesByLevel1", () => {
+  const classification = createNewProject("T", "").classification;
+  const [v0, v1] = classification[0].values;
+  const src = (id: string, order: number, cls: string | null): ManuscriptSource => ({
+    ...source([]), id, order, metadata: { ...source([]).metadata, siglum: id, classes: [cls, null, null] },
+  });
+
+  it("groups by the level-1 value in classification order, the sources without one last", () => {
+    const groups = groupSourcesByLevel1(
+      [src("none", 1, null), src("b1", 2, v1.id), src("a1", 3, v0.id), src("b2", 4, v1.id), src("gone", 5, "x.y")],
+      classification,
+    );
+    expect(groups.map((g) => g.value?.id ?? null)).toEqual([v0.id, v1.id, null]);
+    expect(groups.map((g) => g.sources.map((s) => s.id))).toEqual([["a1"], ["b1", "b2"], ["none", "gone"]]);
+  });
+
+  it("orders each group by source.order", () => {
+    const groups = groupSourcesByLevel1([src("late", 3, v0.id), src("early", 1, v0.id)], classification);
+    expect(groups[0].sources.map((s) => s.id)).toEqual(["early", "late"]);
   });
 });

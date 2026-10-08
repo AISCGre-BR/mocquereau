@@ -260,16 +260,17 @@ describe("RecortesView: atalhos", () => {
 });
 
 describe("RecortesView: teclas globais não roubam as da casca", () => {
-  it("isOutsideEditorKeys reconhece menus, toolbar, diálogo, abas, botões e selects", () => {
+  it("isOutsideEditorKeys reconhece menus, toolbar, diálogo, abas, árvore, botões e selects", () => {
     document.body.innerHTML = `
       <div role="menubar"><span id="m">Arquivo</span></div>
       <div role="toolbar"><span id="tb">x</span></div>
       <div role="dialog"><span id="d">x</span></div>
       <div role="tablist"><span id="tl">x</span></div>
       <div role="menu"><div id="mi">x</div></div>
+      <div role="tree"><div role="treeitem" id="ti">x</div></div>
       <button id="b">ok</button><select id="s"></select>
       <div id="canvas"></div>`;
-    for (const id of ["m", "tb", "d", "tl", "mi", "b", "s"]) {
+    for (const id of ["m", "tb", "d", "tl", "mi", "ti", "b", "s"]) {
       expect(isOutsideEditorKeys(document.getElementById(id)!)).toBe(true);
     }
     expect(isOutsideEditorKeys(document.getElementById("canvas")!)).toBe(false);

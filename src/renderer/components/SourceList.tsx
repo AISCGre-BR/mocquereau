@@ -10,11 +10,10 @@ import {
 } from "lucide-react";
 import { useProject } from "../hooks/useProject";
 import { fileToDataUrl, resizeImageIfNeeded } from "../lib/image-utils";
-import type { ManuscriptSource, StoredImage, GuerangerManuscript } from "../lib/models";
+import type { ManuscriptSource, StoredImage } from "../lib/models";
 import { SourceModal } from "./SourceModal";
 import { appendLineConsumingFolioHint } from "../lib/tableUtils";
-import { suggestRangeForNewPage } from "../lib/sources";
-import { emptyClasses } from "@shared/classification";
+import { createEmptySource, guerangerToSource, suggestRangeForNewPage } from "../lib/sources";
 import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -22,42 +21,6 @@ import { useTranslation } from "react-i18next";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function createEmptySource(): ManuscriptSource {
-  return {
-    id: crypto.randomUUID(),
-    order: 0,
-    metadata: {
-      siglum: "",
-      library: "",
-      city: "",
-      century: "",
-      classes: emptyClasses(),
-    },
-    lines: [],
-    syllableCuts: {},
-  };
-}
-
-function guerangerToSource(gm: GuerangerManuscript, order: number): ManuscriptSource {
-  return {
-    id: crypto.randomUUID(),
-    order,
-    metadata: {
-      siglum: gm.siglum || "",
-      library: gm.library || "",
-      city: gm.city || "",
-      century: gm.century || "",
-      classes: emptyClasses(),
-      folioHint: gm.folio || undefined,
-      cantusId: gm.cantusId || undefined,
-      sourceUrl: gm.sourceUrl || undefined,
-      iiifManifest: gm.iiifManifest || undefined,
-    },
-    lines: [],
-    syllableCuts: {},
-  };
-}
 
 function getFirstImage(source: ManuscriptSource): StoredImage | null {
   return source.lines[0]?.image ?? null;

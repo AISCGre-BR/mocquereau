@@ -10,22 +10,16 @@ import { SlidersHorizontal } from "lucide-react";
 import { useProject } from "../hooks/useProject";
 import type { HistoryMeta } from "../history/history";
 import { useRecortes, type SyllableRange } from "../hooks/useRecortes";
-import { SourceSidebar } from "../components/slice-editor/SourceSidebar";
-import { LineSidebar } from "../components/slice-editor/LineSidebar";
+import { SourceTree } from "../components/sources/SourceTree";
+import { useAddPage, type AddPage } from "../components/sources/useAddPage";
+import { ResizeImageDialog } from "../components/sources/ResizeImageDialog";
+import { SourceModal } from "../components/SourceModal";
 import { SyllableRangeBar } from "../components/slice-editor/SyllableRangeBar";
 import { ImageCanvas } from "../components/slice-editor/ImageCanvas";
 import { RealignBoxesDialog } from "../components/slice-editor/RealignBoxesDialog";
 import { flattenSyllables } from "../lib/sliceUtils";
-import { appendLineConsumingFolioHint } from "../lib/tableUtils";
-import { suggestRangeForNewPage } from "../lib/sources";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
-import type {
-  ImageAdjustments,
-  ManuscriptLine,
-  ManuscriptSource,
-  StoredImage,
-  SyllableBox,
-} from "../lib/models";
+import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
 
 /** Global syllable indices confirmed by OTHER pages of the source. */
 function computeCoveredSyllables(source: ManuscriptSource, excludeLineId: string | null): number[] {
@@ -40,7 +34,7 @@ function computeCoveredSyllables(source: ManuscriptSource, excludeLineId: string
 /** Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas). */
 export function isOutsideEditorKeys(target: Element): boolean {
   if (target.tagName === "BUTTON" || target.tagName === "SELECT") return true;
-  return target.closest("[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist]") !== null;
+  return target.closest("[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist],[role=tree]") !== null;
 }
 
 function sameBox(a: SyllableBox | null | undefined, b: SyllableBox | null | undefined): boolean {
@@ -53,13 +47,16 @@ export function RecortesView() {
   const { t } = useTranslation();
   const project = state.project;
   const recortes = useRecortes(project);
-  const [awaitingNewLine, setAwaitingNewLine] = useState(false);
+  // Provisional until the Source dialog (Task 3): the old SourceModal.
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
   const [hoveredSyllable, setHoveredSyllable] = useState<number | null>(null);
   const [showRealign, setShowRealign] = useState(false);
 
   const words = project?.text.words;
   const total = useMemo(() => (words ? flattenSyllables(words).length : 0), [words]);
   const activeSource = project?.sources.find((s) => s.id === recortes.activeSourceId) ?? null;
+  const editingSource = project?.sources.find((s) => s.id === editingSourceId) ?? null;
   const activeLine = activeSource?.lines.find((l) => l.id === recortes.activeLineId) ?? null;
   const hasImage = !!activeLine?.image;
   // Boxes in the frame the user sees, derived from the project (memo per line:
@@ -124,41 +121,6 @@ export function RecortesView() {
     });
   }
 
-  // ── Pages ─────────────────────────────────────────────────────────────────
-
-  function applyImageToSource(source: ManuscriptSource, ipcResult: { dataUrl: string; width: number; height: number }) {
-    const storedImage: StoredImage = {
-      dataUrl: ipcResult.dataUrl,
-      width: ipcResult.width,
-      height: ipcResult.height,
-      mimeType: "image/png",
-    };
-    const newLine: ManuscriptLine = {
-      id: crypto.randomUUID(),
-      image: storedImage,
-      syllableRange: suggestRangeForNewPage(source, total),
-      dividers: [],
-      syllableBoxes: {},
-      gaps: [],
-      confirmed: false,
-    };
-    dispatch({ type: "UPDATE_SOURCE", payload: appendLineConsumingFolioHint(source, newLine) });
-    recortes.selectLine(source.id, newLine.id);
-  }
-
-  function handleRemoveLine(lineId: string) {
-    if (!activeSource) return;
-    const removed = activeSource.lines.find((l) => l.id === lineId);
-    if (!removed) return;
-    const syllableCuts = { ...activeSource.syllableCuts };
-    for (let i = removed.syllableRange.start; i <= removed.syllableRange.end; i++) delete syllableCuts[i];
-    // The selection falls back by itself when the active page disappears.
-    dispatch({
-      type: "UPDATE_SOURCE",
-      payload: { ...activeSource, lines: activeSource.lines.filter((l) => l.id !== lineId), syllableCuts },
-    });
-  }
-
   function handleClear() {
     if (!activeSource) return;
     const lines = activeSource.lines.map((l) => ({
@@ -183,16 +145,16 @@ export function RecortesView() {
 
   const pasteRef = useRef<() => void>(() => {});
   pasteRef.current = () => {
-    if (!activeSource) return;
-    const source = activeSource;
-    void window.mocquereau.readClipboardImage().then((result) => {
-      if (!result) return;
-      setAwaitingNewLine(false);
-      applyImageToSource(source, result);
-    });
+    if (activeSource) void addPage.paste(activeSource.id);
   };
   useEffect(() => {
-    const handler = () => pasteRef.current();
+    const handler = (e: ClipboardEvent) => {
+      // Text pasted into a field (the Fólio dialog, the range inputs) is not a page.
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (target instanceof Element && target.closest("[role=dialog]")) return;
+      pasteRef.current();
+    };
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
   }, []);
@@ -280,33 +242,7 @@ export function RecortesView() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 focus:outline-none">
-        <SourceSidebar
-          sources={project.sources}
-          activeSourceId={recortes.activeSourceId}
-          totalSyllableCount={total}
-          onSelectSource={(id) => {
-            setAwaitingNewLine(false);
-            recortes.selectSource(id);
-          }}
-        />
-
-        {activeSource && (
-          <LineSidebar
-            lines={activeSource.lines}
-            activeLineId={recortes.activeLineId}
-            words={project.text.words}
-            totalSyllableCount={total}
-            onSelectLine={(lineId) => {
-              setAwaitingNewLine(false);
-              recortes.selectLine(activeSource.id, lineId);
-            }}
-            onAddLine={() => setAwaitingNewLine(true)}
-            onRemoveLine={handleRemoveLine}
-            onUpdateMetadata={(lineId, folio, label) =>
-              dispatch({ type: "UPDATE_LINE_METADATA", payload: { sourceId: activeSource.id, lineId, folio, label } })
-            }
-          />
-        )}
+        <SourceTree recortes={recortes} onEditSource={setEditingSourceId} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex flex-shrink-0 items-center justify-between border-b border-rule-soft bg-surface px-4 py-2">
@@ -449,7 +385,7 @@ export function RecortesView() {
           )}
 
           <div className="min-h-0 flex-1">
-            {hasImage && !awaitingNewLine ? (
+            {hasImage ? (
               <ImageCanvas
                 image={activeLine!.image}
                 syllableBoxes={viewBoxes}
@@ -469,17 +405,22 @@ export function RecortesView() {
                 onRealign={hasAnyBox(activeLine?.syllableBoxes) ? () => setShowRealign(true) : undefined}
               />
             ) : (
-              <DropZone
-                activeSource={activeSource}
-                onImageLoaded={(source, result) => {
-                  setAwaitingNewLine(false);
-                  applyImageToSource(source, result);
-                }}
-              />
+              <DropZone activeSource={activeSource} addPage={addPage} />
             )}
           </div>
         </div>
         <RealignBoxesDialog open={showRealign} line={activeLine} onClose={() => setShowRealign(false)} />
+        <ResizeImageDialog addPage={addPage} />
+        {editingSource && (
+          <SourceModal
+            source={editingSource}
+            onSave={(updated) => {
+              dispatch({ type: "UPDATE_SOURCE", payload: updated });
+              setEditingSourceId(null);
+            }}
+            onClose={() => setEditingSourceId(null)}
+          />
+        )}
       </div>
     </div>
   );
@@ -487,33 +428,12 @@ export function RecortesView() {
 
 // ── DropZone ──────────────────────────────────────────────────────────────────
 
-function DropZone({
-  onImageLoaded,
-  activeSource,
-}: {
-  onImageLoaded: (source: ManuscriptSource, result: { dataUrl: string; width: number; height: number }) => void;
-  activeSource: ManuscriptSource | null;
-}) {
+function DropZone({ activeSource, addPage }: { activeSource: ManuscriptSource | null; addPage: AddPage }) {
   const { t } = useTranslation();
   function handleImageDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
-    if (!activeSource) return;
     const file = e.dataTransfer.files[0];
-    if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const img = new Image();
-      img.onload = () => onImageLoaded(activeSource, { dataUrl, width: img.naturalWidth, height: img.naturalHeight });
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function handleUploadClick() {
-    if (!activeSource) return;
-    const result = await window.mocquereau.openImageFile();
-    if (result) onImageLoaded(activeSource, result);
+    if (activeSource && file) void addPage.dropFile(activeSource.id, file);
   }
 
   return (
@@ -527,7 +447,7 @@ function DropZone({
       <button
         type="button"
         className="rounded bg-rubric px-3 py-1.5 text-sm text-on-rubric hover:bg-rubric-soft"
-        onClick={handleUploadClick}
+        onClick={() => activeSource && void addPage.openFile(activeSource.id)}
       >
         {t("sliceEditor.dropZone.selectFile")}
       </button>

@@ -2,8 +2,61 @@
 //
 // Source/page helpers shared by the views that add pages.
 
-import type { ManuscriptSource, MocquereauProject } from "./models";
+import type { GuerangerManuscript, ManuscriptSource, MocquereauProject } from "./models";
 import { hasAnyBox } from "@shared/box-frame";
+import { emptyClasses, type Classification } from "@shared/classification";
+
+export function createEmptySource(): ManuscriptSource {
+  return {
+    id: crypto.randomUUID(),
+    order: 0,
+    metadata: { siglum: "", library: "", city: "", century: "", classes: emptyClasses() },
+    lines: [],
+    syllableCuts: {},
+  };
+}
+
+export function guerangerToSource(gm: GuerangerManuscript, order: number): ManuscriptSource {
+  return {
+    id: crypto.randomUUID(),
+    order,
+    metadata: {
+      siglum: gm.siglum || "",
+      library: gm.library || "",
+      city: gm.city || "",
+      century: gm.century || "",
+      classes: emptyClasses(),
+      folioHint: gm.folio || undefined,
+      cantusId: gm.cantusId || undefined,
+      sourceUrl: gm.sourceUrl || undefined,
+      iiifManifest: gm.iiifManifest || undefined,
+    },
+    lines: [],
+    syllableCuts: {},
+  };
+}
+
+export interface SourceGroup {
+  /** Level-1 class value; null for the sources without one (last, no header). */
+  value: { id: string; name: string } | null;
+  sources: ManuscriptSource[];
+}
+
+/**
+ * Sources grouped by their level-1 class, in the order of the values in the
+ * classification; sources without a known value come last. Within a group,
+ * the project order.
+ */
+export function groupSourcesByLevel1(sources: ManuscriptSource[], classification: Classification): SourceGroup[] {
+  const ordered = [...sources].sort((a, b) => a.order - b.order);
+  const groups: SourceGroup[] = classification[0].values
+    .map((v) => ({ value: { id: v.id, name: v.name }, sources: ordered.filter((s) => s.metadata.classes[0] === v.id) }))
+    .filter((g) => g.sources.length > 0);
+  const known = new Set(classification[0].values.map((v) => v.id));
+  const rest = ordered.filter((s) => !s.metadata.classes[0] || !known.has(s.metadata.classes[0]));
+  if (rest.length > 0) groups.push({ value: null, sources: rest });
+  return groups;
+}
 
 function syllableTotal(project: MocquereauProject): number {
   return project.text.words.reduce((n, w) => n + w.syllables.length, 0);
