@@ -83,3 +83,35 @@ describe('appendLineConsumingFolioHint', () => {
     expect(out.metadata).toBe(s.metadata);
   });
 });
+
+describe('resolveCellState — overlapping pages', () => {
+  const IMG = { dataUrl: 'data:,', width: 200, height: 100, mimeType: 'image/png' };
+  const BOX = { x: 0, y: 0, w: 0.25, h: 0.5 };
+  const line = (id: string, start: number, end: number, extra: Partial<ManuscriptSource['lines'][number]> = {}) => ({
+    id, image: IMG, syllableRange: { start, end }, dividers: [], gaps: [], confirmed: true, syllableBoxes: {}, ...extra,
+  });
+  const src = (lines: ManuscriptSource['lines']): ManuscriptSource => ({
+    id: 's1', order: 1, metadata: { siglum: 'A', library: '', city: '', century: '', classes: [null, null, null] },
+    lines, syllableCuts: {},
+  });
+
+  it('falls through to the next page covering the syllable when the first has no entry there', () => {
+    const s = src([line('l1', 0, 5, { syllableBoxes: { 0: BOX } }), line('l2', 3, 5, { syllableBoxes: { 4: BOX } })]);
+    const st = resolveCellState(s, 4);
+    expect(st.kind).toBe('filled');
+    if (st.kind === 'filled') expect(st.image).toBe(s.lines[1].image);
+    expect(resolveCellState(s, 5).kind).toBe('unfilled');
+  });
+
+  it('a gap on the first covering page wins (no fall-through)', () => {
+    const s = src([line('l1', 0, 5, { gaps: [4] }), line('l2', 3, 5, { syllableBoxes: { 4: BOX } })]);
+    expect(resolveCellState(s, 4).kind).toBe('gap');
+  });
+
+  it('a box on the first covering page wins over a later one', () => {
+    const first = { x: 0.5, y: 0, w: 0.1, h: 0.1 };
+    const s = src([line('l1', 0, 5, { syllableBoxes: { 4: first } }), line('l2', 3, 5, { syllableBoxes: { 4: BOX } })]);
+    const st = resolveCellState(s, 4);
+    expect(st.kind === 'filled' && st.box).toEqual(first);
+  });
+});

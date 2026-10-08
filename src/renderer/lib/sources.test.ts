@@ -21,15 +21,26 @@ function project(lines: ManuscriptLine[], syllables = 6): MocquereauProject {
 }
 
 describe("suggestRangeForNewPage", () => {
-  it("starts after the last confirmed page and runs to the end of the text", () => {
-    const s = source([line("a", 0, 2, { confirmed: true }), line("b", 3, 3)]);
+  it("starts after the highest boxed syllable of the source's pages and runs to the end", () => {
+    const s = source([line("a", 0, 2, { confirmed: true, syllableBoxes: { 0: BOX, 2: BOX } }), line("b", 3, 3)]);
     expect(suggestRangeForNewPage(s, 6)).toEqual({ start: 3, end: 5 });
   });
-  it("first page: the whole text", () => {
+  it("the highest box wins over page order and over a confirmed range end", () => {
+    const s = source([
+      line("a", 0, 5, { confirmed: true, syllableBoxes: { 0: BOX, 1: BOX } }),
+      line("b", 2, 5, { syllableBoxes: { 3: BOX, 4: null } }),
+    ]);
+    expect(suggestRangeForNewPage(s, 6)).toEqual({ start: 4, end: 5 });
+  });
+  it("no box anywhere: starts at 0", () => {
+    expect(suggestRangeForNewPage(source([line("a", 0, 5, { confirmed: true, gaps: [0] })]), 6)).toEqual({ start: 0, end: 5 });
     expect(suggestRangeForNewPage(source([]), 6)).toEqual({ start: 0, end: 5 });
   });
-  it("everything confirmed: stays inside the text", () => {
-    expect(suggestRangeForNewPage(source([line("a", 0, 5, { confirmed: true })]), 6)).toEqual({ start: 5, end: 5 });
+  it("last syllable boxed: stays inside the text", () => {
+    expect(suggestRangeForNewPage(source([line("a", 0, 5, { confirmed: true, syllableBoxes: { 5: BOX } })]), 6)).toEqual({
+      start: 5,
+      end: 5,
+    });
   });
 });
 
@@ -41,6 +52,12 @@ describe("resolveUnsetRanges", () => {
   it("{0,0} with a box is a real one-syllable range and stays", () => {
     const p0 = project([line("a", 0, 0, { syllableBoxes: { 0: BOX } }), line("b", 1, 3)]);
     expect(resolveUnsetRanges(p0)).toBe(p0);
+  });
+  it("{0,0} with a gap or confirmed is a real one-syllable range and stays", () => {
+    const withGap = project([line("a", 0, 0, { gaps: [0] })]);
+    expect(resolveUnsetRanges(withGap)).toBe(withGap);
+    const confirmed = project([line("a", 0, 0, { confirmed: true })]);
+    expect(resolveUnsetRanges(confirmed)).toBe(confirmed);
   });
   it("text with one syllable or none: nothing to resolve", () => {
     const p0 = project([line("a", 0, 0)], 1);

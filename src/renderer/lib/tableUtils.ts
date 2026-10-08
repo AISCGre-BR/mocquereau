@@ -11,41 +11,44 @@ export type CellState =
   | { kind: 'unfilled' };
 
 /**
- * Resolves the display state for cell (source, syllableIdx).
- *
- * Strategy (per CONTEXT.md code_context):
- *   1. Find the ManuscriptLine whose syllableRange covers syllableIdx.
- *   2. If line exists and syllableBoxes[syllableIdx] === null → gap.
- *   3. If line exists and syllableBoxes[syllableIdx] is a box → filled.
- *   4. If no line covers this syllable → unfilled (pending work).
- *
- * Falls back to syllableCuts for Phase 4/5 compat (no syllableBoxes).
+ * The page that decides cell (source, syllableIdx): the first page, in page
+ * order, whose range covers the syllable and that has a box or a gap for it
+ * there. A page that covers the syllable but has nothing for it does not
+ * decide: the next covering page is consulted. Null when no page decides.
+ * Shared by the Tabela (resolveCellState) and the DOCX export.
+ */
+export function resolveCellLine(
+  source: ManuscriptSource,
+  syllableIdx: number,
+): { kind: 'filled'; line: ManuscriptLine; box: SyllableBox } | { kind: 'gap'; line: ManuscriptLine } | null {
+  for (const line of source.lines) {
+    const { start, end } = line.syllableRange;
+    if (syllableIdx < start || syllableIdx > end) continue;
+    if (line.syllableBoxes) {
+      // Spec R1: boxes are stored in line.boxFrame; show them in the current view.
+      const entry = boxesInView(line)[syllableIdx];
+      if (entry === null) return { kind: 'gap', line };
+      if (entry !== undefined) return { kind: 'filled', line, box: entry };
+    }
+    if (line.gaps.includes(syllableIdx)) return { kind: 'gap', line };
+    // In range, no box and no gap here: the next covering page may have it.
+  }
+  return null;
+}
+
+/**
+ * Resolves the display state for cell (source, syllableIdx): the deciding
+ * page (resolveCellLine), else the Phase 4/5 syllableCuts, else unfilled.
  */
 export function resolveCellState(
   source: ManuscriptSource,
   syllableIdx: number,
 ): CellState {
-  // Phase 5.1+ path: look up via syllableBoxes on lines
-  for (const line of source.lines) {
-    const { start, end } = line.syllableRange;
-    if (syllableIdx < start || syllableIdx > end) continue;
+  const hit = resolveCellLine(source, syllableIdx);
+  if (hit?.kind === 'gap') return { kind: 'gap' };
+  if (hit?.kind === 'filled') return { kind: 'filled', image: hit.line.image, box: hit.box };
 
-    // Line covers this syllable
-    if (line.syllableBoxes) {
-      // Spec R1: boxes are stored in line.boxFrame; show them in the current view.
-      const entry = boxesInView(line)[syllableIdx];
-      if (entry === null) return { kind: 'gap' };
-      if (entry !== undefined) return { kind: 'filled', image: line.image, box: entry };
-      // entry === undefined: syllable is in range but no box drawn yet
-      // check gaps[] for backward-compat
-    }
-    // Fall back: check gaps array
-    if (line.gaps.includes(syllableIdx)) return { kind: 'gap' };
-    // In range, not a gap, no box → unfilled
-    return { kind: 'unfilled' };
-  }
-
-  // No line covers this index — check syllableCuts as Phase 4/5 fallback
+  // No page decides — check syllableCuts as Phase 4/5 fallback
   if (syllableIdx in source.syllableCuts) {
     const cut = source.syllableCuts[syllableIdx];
     if (cut === null) return { kind: 'gap' };

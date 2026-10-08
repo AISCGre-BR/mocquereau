@@ -1,9 +1,9 @@
 // src/renderer/lib/docx-collect.ts
 
 import { boxesInView } from '@shared/box-frame';
-import type { MocquereauProject, DocxExportPayload, DocxCellData } from './models';
+import type { MocquereauProject, DocxExportPayload, DocxCellData, StoredImage } from './models';
 import { flattenSyllables, computeSyllableCuts } from './sliceUtils';
-import { firstFolio, isWordBoundary } from './tableUtils';
+import { firstFolio, isWordBoundary, resolveCellLine } from './tableUtils';
 
 /**
  * Converts a data URL (base64 PNG/JPEG) to an ArrayBuffer.
@@ -46,39 +46,29 @@ export async function collectDocxCrops(
 
   const rows = await Promise.all(
     project.sources.map(async source => {
-      // Merge all line crops into a flat map: syllableIdx → StoredImage | null
-      const mergedCuts: Record<number, import('./models').StoredImage | null> = {};
-
+      // Crops of every page with boxes, in the frame the user sees (spec R1).
+      // Per-line imageAdjustments are baked in (Phase 10 / IMG-06), so the
+      // DOCX export reflects what the user sees in Recortes and the Tabela.
+      const cutsByLine = new Map<string, Record<number, StoredImage | null>>();
       for (const line of source.lines) {
-        if (!line.syllableBoxes) continue; // Phase 4/5 compat — skip lines without boxes
-        // Phase 10 / IMG-06: pass per-line imageAdjustments so the canvas crops
-        // bake in brightness/contrast/saturation/grayscale/invert/rotation/flip
-        // — the DOCX export reflects what the user sees in SliceEditor & TablePreview.
-        const lineCuts = await computeSyllableCuts(
-          line.image,
-          boxesInView(line), // spec R1: boxes in the frame the crop is rendered in
-          line.syllableRange,
-          line.imageAdjustments,
+        if (!line.syllableBoxes) continue; // Phase 4/5 compat — lines without boxes have no crops
+        cutsByLine.set(
+          line.id,
+          await computeSyllableCuts(line.image, boxesInView(line), line.syllableRange, line.imageAdjustments),
         );
-        // Merge: only include syllables that actually have a box or are explicit gaps.
-        // Syllables in range without a box entry should stay "unfilled", not be treated as gap.
-        for (const [idxStr, cut] of Object.entries(lineCuts)) {
-          const idx = Number(idxStr);
-          const hasBoxEntry = idx in line.syllableBoxes;
-          // Only merge if the entry is defined (box or explicit null=gap). Skip undefined
-          // entries that computeSyllableCuts auto-added as null for the whole range.
-          if (hasBoxEntry) {
-            mergedCuts[idx] = cut;
-          }
-        }
       }
 
-      // Also fold in syllableCuts (Phase 4/5 backward-compat) for indices not in mergedCuts
-      for (const [idxStr, cut] of Object.entries(source.syllableCuts)) {
-        const idx = Number(idxStr);
-        if (!(idx in mergedCuts)) {
-          mergedCuts[idx] = cut;
-        }
+      // Each syllable resolves exactly like a Tabela cell (resolveCellLine):
+      // the first covering page with a box or gap for it decides; else the
+      // Phase 4/5 syllableCuts; else unfilled.
+      const mergedCuts: Record<number, StoredImage | null> = {};
+      for (let idx = 0; idx < totalSyllables; idx++) {
+        const hit = resolveCellLine(source, idx);
+        if (hit?.kind === 'gap') mergedCuts[idx] = null;
+        else if (hit?.kind === 'filled') {
+          const cut = cutsByLine.get(hit.line.id)?.[idx];
+          if (cut) mergedCuts[idx] = cut;
+        } else if (idx in source.syllableCuts) mergedCuts[idx] = source.syllableCuts[idx];
       }
 
       // Build cells array (one entry per global syllable index)

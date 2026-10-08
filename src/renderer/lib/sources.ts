@@ -63,23 +63,30 @@ function syllableTotal(project: MocquereauProject): number {
 }
 
 /**
- * Range for a page added to `source` (D-06): it starts after the last
- * confirmed page and runs to the end of the text.
+ * Range for a page added to `source` (D-06): it starts after the highest
+ * syllable boxed on any of the source's pages (0 when none is) and runs to the
+ * end of the text.
  */
 export function suggestRangeForNewPage(
   source: ManuscriptSource,
   totalSyllables: number,
 ): { start: number; end: number } {
   const last = Math.max(0, totalSyllables - 1);
-  const lastConfirmed = [...source.lines].reverse().find((l) => l.confirmed);
-  const start = Math.min(last, lastConfirmed ? lastConfirmed.syllableRange.end + 1 : 0);
+  let highest = -1;
+  for (const l of source.lines) {
+    for (const [k, box] of Object.entries(l.syllableBoxes ?? {})) {
+      if (box != null) highest = Math.max(highest, Number(k));
+    }
+  }
+  const start = Math.max(0, Math.min(last, highest + 1));
   return { start, end: last };
 }
 
 /**
- * Load-time fix (silent): pages saved without a range ({0,0} and no box, as
- * the Fontes view used to add them) get the whole text, so {0,0} only means
- * "syllable 0" from now on. Returns the same project when nothing changes.
+ * Load-time fix (silent): pages saved without a range ({0,0}, no box, no gap,
+ * not confirmed, as the Fontes view used to add them) get the whole text, so
+ * {0,0} only means "syllable 0" from now on. Returns the same project when
+ * nothing changes.
  */
 export function resolveUnsetRanges(project: MocquereauProject): MocquereauProject {
   const total = syllableTotal(project);
@@ -89,7 +96,7 @@ export function resolveUnsetRanges(project: MocquereauProject): MocquereauProjec
     let sourceChanged = false;
     const lines = s.lines.map((l) => {
       const r = l.syllableRange;
-      if (r.start !== 0 || r.end !== 0 || hasAnyBox(l.syllableBoxes)) return l;
+      if (r.start !== 0 || r.end !== 0 || hasAnyBox(l.syllableBoxes) || l.gaps.length > 0 || l.confirmed) return l;
       sourceChanged = true;
       return { ...l, syllableRange: { start: 0, end: total - 1 } };
     });
