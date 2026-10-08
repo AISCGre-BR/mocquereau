@@ -105,6 +105,14 @@ export type ProjectAction =
     }
   | {
       /**
+       * "Aplicar às outras páginas": every other page of the source takes the
+       * adjustments of `fromLineId`, as one undo step.
+       */
+      type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE";
+      payload: { sourceId: string; fromLineId: string };
+    }
+  | {
+      /**
        * Declares which frame the line's stored boxes are in (realignment of
        * legacy lines whose boxes predate the current rotation). The boxes are
        * not rewritten: boxesInView reinterprets them. An array applies several
@@ -160,6 +168,28 @@ function isAllDefaultAdjustments(a: ImageAdjustments): boolean {
     a.flipH === false &&
     a.flipV === false
   );
+}
+
+/**
+ * The line with `partial` merged into its adjustments (rotation normalized;
+ * all-default drops the field). Spec R1 (S6/S7): boxes stay in the frame they
+ * were drawn in (line.boxFrame) and consumers read them through boxesInView, so
+ * a rotation is a plain adjustment update; a line with boxes but no boxFrame
+ * yet has them in the frame that was current until now: pin it.
+ */
+function withAdjustments(line: ManuscriptLine, partial: Partial<ImageAdjustments>): ManuscriptLine {
+  const current: ImageAdjustments = line.imageAdjustments ?? { ...ADJ_DEFAULT };
+  const mergedRaw: ImageAdjustments = { ...current, ...partial };
+  const merged: ImageAdjustments = { ...mergedRaw, rotation: normalizeRotation(mergedRaw.rotation) };
+  const pinFrame = hasAnyBox(line.syllableBoxes) && !line.boxFrame ? frameOf(current) : undefined;
+  let next: ManuscriptLine;
+  if (isAllDefaultAdjustments(merged)) {
+    const { imageAdjustments: _drop, ...rest } = line;
+    next = rest as ManuscriptLine;
+  } else {
+    next = { ...line, imageAdjustments: merged };
+  }
+  return pinFrame ? { ...next, boxFrame: pinFrame } : next;
 }
 
 // ── Line helpers ─────────────────────────────────────────────────────────────
@@ -411,36 +441,23 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (!state.project) return state;
       const { sourceId, lineId, adjustments } = action.payload;
       const src = state.project.sources.find((s) => s.id === sourceId);
-      if (!src) return state;
-      const tgt = src.lines.find((l) => l.id === lineId);
-      if (!tgt) return state;
-      const current: ImageAdjustments = tgt.imageAdjustments ?? { ...ADJ_DEFAULT };
-      const mergedRaw: ImageAdjustments = { ...current, ...adjustments };
-      // Phase 11 / IMG-07: normaliza rotation no merge (idempotente; barato).
-      const merged: ImageAdjustments = {
-        ...mergedRaw,
-        rotation: normalizeRotation(mergedRaw.rotation),
-      };
-      // Spec R1 (S6/S7): boxes stay in the frame they were drawn in
-      // (line.boxFrame); consumers read them through boxesInView. A rotation
-      // is a plain adjustment update. A line with boxes but no boxFrame yet
-      // has them in the frame that was current until now: pin it.
-      const pinFrame = hasAnyBox(tgt.syllableBoxes) && !tgt.boxFrame ? frameOf(current) : undefined;
-      const sources = state.project.sources.map((s) => {
-        if (s.id !== sourceId) return s;
-        const lines = s.lines.map((l) => {
-          if (l.id !== lineId) return l;
-          let next: ManuscriptLine;
-          if (isAllDefaultAdjustments(merged)) {
-            const { imageAdjustments: _drop, ...rest } = l;
-            next = rest as ManuscriptLine;
-          } else {
-            next = { ...l, imageAdjustments: merged };
-          }
-          return pinFrame ? { ...next, boxFrame: pinFrame } : next;
-        });
-        return { ...s, lines };
-      });
+      if (!src || !src.lines.some((l) => l.id === lineId)) return state;
+      const sources = state.project.sources.map((s) =>
+        s.id !== sourceId ? s : { ...s, lines: s.lines.map((l) => (l.id === lineId ? withAdjustments(l, adjustments) : l)) },
+      );
+      return { ...state, project: { ...state.project, sources }, isDirty: true };
+    }
+
+    case "COPY_LINE_ADJUSTMENTS_TO_SOURCE": {
+      if (!state.project) return state;
+      const { sourceId, fromLineId } = action.payload;
+      const src = state.project.sources.find((s) => s.id === sourceId);
+      const from = src?.lines.find((l) => l.id === fromLineId);
+      if (!src || !from || src.lines.length < 2) return state;
+      const adjustments: ImageAdjustments = { ...ADJ_DEFAULT, ...from.imageAdjustments };
+      const sources = state.project.sources.map((s) =>
+        s.id !== sourceId ? s : { ...s, lines: s.lines.map((l) => (l.id === fromLineId ? l : withAdjustments(l, adjustments))) },
+      );
       return { ...state, project: { ...state.project, sources }, isDirty: true };
     }
 
@@ -571,6 +588,8 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
         coalesceKey: `SET_LINE_RANGE:${action.payload.lineId}`,
         focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId },
       };
+    case "COPY_LINE_ADJUSTMENTS_TO_SOURCE":
+      return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.fromLineId } };
     case "UPDATE_LINE_ADJUSTMENTS":
       return {
         coalesceKey: `UPDATE_LINE_ADJUSTMENTS:${action.payload.lineId}:${sortedKeys(action.payload.adjustments)}`,

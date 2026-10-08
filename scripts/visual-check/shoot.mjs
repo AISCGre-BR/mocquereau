@@ -174,6 +174,15 @@ const SCREENS = {
     await page.locator("[role=treeitem][data-line-id]").filter({ has: page.locator("[data-confirmed]") }).first().click();
     await settle(page, 3000);
   },
+  "recortes-imagem": async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+3");
+    await settle(page);
+    await page.locator("[role=treeitem][data-line-id]").filter({ has: page.locator("[data-confirmed]") }).first().click();
+    await settle(page, 3000);
+    await page.getByRole("button", { name: "Imagem" }).click();
+    await settle(page, 600);
+  },
   "fonte-dialog": async (page) => {
     await openFixtureProject(page);
     await page.keyboard.press("Control+3");

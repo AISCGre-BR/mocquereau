@@ -21,6 +21,8 @@ import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
+import { RecortesTools } from "./components/recortes/RecortesTools";
+import { RecortesProvider, useRecortesCommands } from "./hooks/RecortesContext";
 import { toSupportedLang, type SupportedLang } from "./i18n";
 
 const HOMEPAGE = "https://github.com/AISCGre-BR/mocquereau";
@@ -31,9 +33,11 @@ export function App() {
   const { t } = useTranslation();
   return (
     <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
-      <Toaster dismissLabel={t("toast.dismiss")}>
-        <Workbench />
-      </Toaster>
+      <RecortesProvider>
+        <Toaster dismissLabel={t("toast.dismiss")}>
+          <Workbench />
+        </Toaster>
+      </RecortesProvider>
     </ProjectContext.Provider>
   );
 }
@@ -61,6 +65,7 @@ function Workbench() {
     setHistoryEpoch((n) => n + 1);
   }
   const file = useProjectFile({ onOpened: () => setView("texto") });
+  const recortes = useRecortesCommands();
 
   // "Salvar" no diálogo de fechar a janela: o main pede, o renderer salva (gravando
   // antes as edições pendentes). O project:save iniciado aqui é o que o main aguarda.
@@ -95,6 +100,7 @@ function Workbench() {
       language,
       canUndo: history?.canUndo ?? false,
       canRedo: history?.canRedo ?? false,
+      recortes: recortes.state,
     },
     {
       newProject: file.newProject,
@@ -113,6 +119,10 @@ function Workbench() {
       openWebsite: () => void window.mocquereau.openExternal(HOMEPAGE),
       reportIssue: () => void window.mocquereau.openExternal(`${HOMEPAGE}/issues`),
       openExample: () => void file.openExample(),
+      removeBox: recortes.removeBox,
+      clearPage: recortes.clearPage,
+      realignBoxes: recortes.realignBoxes,
+      nextSource: recortes.nextSource,
       clearRecent: () => {
         if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
         void window.mocquereau
@@ -142,6 +152,7 @@ function Workbench() {
             view={view}
             onViewChange={setView}
             platform={platform}
+            tools={view === "recortes" ? <RecortesTools /> : undefined}
             primaryAction={
               view === "tabela" ? (
                 <Button

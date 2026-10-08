@@ -682,3 +682,43 @@ describe("projectReducer — line range and gaps (D6)", () => {
     expect(doc.history.past[0].focus).toEqual({ sourceId: "S1", lineId: "L1" });
   });
 });
+
+describe("projectReducer — COPY_LINE_ADJUSTMENTS_TO_SOURCE", () => {
+  const adj: ImageAdjustments = { brightness: 120, contrast: 100, saturation: 100, grayscale: 0, invert: false, rotation: 90, flipH: false, flipV: false };
+  const BOX = { x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
+  function state(lines: ManuscriptLine[], other: ManuscriptLine[] = [mkLine("O1")]) {
+    const src = (id: string, ls: ManuscriptLine[]): ManuscriptSource => ({
+      id,
+      order: 1,
+      metadata: { siglum: id, library: "", city: "", century: "", classes: [null, null, null] },
+      lines: ls,
+      syllableCuts: {},
+    });
+    return { ...initialStateForTest, project: { ...createNewProject("T", ""), sources: [src("S1", lines), src("S2", other)] } };
+  }
+
+  it("copia os ajustes da página para as outras páginas da fonte, e só dessa fonte", () => {
+    const next = projectReducer(state([mkLine("L1", { imageAdjustments: adj }), mkLine("L2"), mkLine("L3", { imageAdjustments: { ...adj, invert: true } })]), {
+      type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE",
+      payload: { sourceId: "S1", fromLineId: "L1" },
+    });
+    expect(next.project!.sources[0].lines.map((l) => l.imageAdjustments)).toEqual([adj, adj, adj]);
+    expect(next.project!.sources[1].lines[0].imageAdjustments).toBeUndefined();
+  });
+
+  it("página de origem sem ajustes limpa os das outras; caixas sem frame ficam presas ao frame anterior", () => {
+    const next = projectReducer(state([mkLine("L1"), mkLine("L2", { imageAdjustments: adj, syllableBoxes: { 0: BOX } })]), {
+      type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE",
+      payload: { sourceId: "S1", fromLineId: "L1" },
+    });
+    const l2 = next.project!.sources[0].lines[1];
+    expect(l2.imageAdjustments).toBeUndefined();
+    expect(l2.boxFrame).toEqual({ rotation: 90, flipH: false, flipV: false });
+    expect(boxesInView(l2)[0]).not.toEqual(BOX); // vistas no frame atual (sem giro), as caixas giram de volta
+  });
+
+  it("fonte de uma página só não muda", () => {
+    const s = state([mkLine("L1", { imageAdjustments: adj })]);
+    expect(projectReducer(s, { type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE", payload: { sourceId: "S1", fromLineId: "L1" } })).toBe(s);
+  });
+});

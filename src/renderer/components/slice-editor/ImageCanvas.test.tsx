@@ -85,13 +85,6 @@ describe("ImageCanvas: controles de giro", () => {
       target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
     });
 
-  it("botões giram 90° para os dois lados", () => {
-    const { getByRole, onUpdate } = setupRot(0);
-    fireEvent.click(getByRole("button", { name: /Girar 90° à direita/ }));
-    fireEvent.click(getByRole("button", { name: /Girar 90° à esquerda/ }));
-    expect(onUpdate.mock.calls.map(([p]) => p.rotation)).toEqual([90, 270]);
-  });
-
   it("Ctrl+] / Ctrl+[ giram; ignora campo de texto e menu aberto", () => {
     const { onUpdate } = setupRot(90);
     key({ key: "]", ctrlKey: true });
@@ -110,22 +103,12 @@ describe("ImageCanvas: controles de giro", () => {
     input.remove();
   });
 
-  it("Endireitar abre o popover; slider mantém o quarto de volta; zerar e Esc", () => {
-    const { getByRole, queryByRole, onUpdate } = setupRot(92);
-    expect(queryByRole("dialog")).toBeNull();
-    fireEvent.click(getByRole("button", { name: "Endireitar (giro fino)" }));
-    expect(getByRole("dialog")).toBeTruthy();
-    fireEvent.change(getByRole("slider"), { target: { value: "-3.5" } });
-    expect(onUpdate).toHaveBeenLastCalledWith({ rotation: 86.5 });
-    fireEvent.click(getByRole("button", { name: "Zerar ângulo fino" }));
-    expect(onUpdate).toHaveBeenLastCalledWith({ rotation: 90 });
-    key({ key: "Escape" });
-    expect(queryByRole("dialog")).toBeNull();
-  });
-
-  it("sem onUpdateAdjustments não mostra os controles de giro", () => {
-    const { container } = setup(1);
+  it("o controle flutuante tem só o zoom: sem botões de girar nem endireitar", () => {
+    const { container, queryByRole } = setupRot(0);
     expect(container.querySelectorAll(".sc-zoom")).toHaveLength(1);
+    const buttons = Array.from(container.querySelectorAll(".sc-zoom button")).map((b) => b.getAttribute("aria-label"));
+    expect(buttons).toEqual([expect.stringMatching(/^Diminuir zoom/), expect.stringMatching(/100%/), expect.stringMatching(/^Aumentar zoom/)]);
+    expect(queryByRole("button", { name: /Girar|Endireitar/ })).toBeNull();
   });
 });
 
@@ -166,7 +149,7 @@ describe("ImageCanvas: atalhos Ctrl+= / Ctrl+- / Ctrl+0", () => {
   });
 });
 
-describe("ImageCanvas: etiquetas das caixas e painel Ajustes", () => {
+describe("ImageCanvas: etiquetas das caixas e modo desenhar", () => {
   function setupBoxes(extra: Record<string, unknown> = {}) {
     return render(
       <ImageCanvas
@@ -182,31 +165,48 @@ describe("ImageCanvas: etiquetas das caixas e painel Ajustes", () => {
     );
   }
 
-  it("caixa não ativa: etiqueta só aparece no hover/foco e fica fora da caixa (sc-box__tag)", () => {
+  it("só a caixa ativa mostra a etiqueta; as outras só no foco pelo teclado, não no hover", () => {
     const { container } = setupBoxes();
+    const active = container.querySelector("[data-box-overlay]") as HTMLElement;
+    expect(active.querySelector(".sc-box__tag")?.textContent).toBeTruthy();
     const box = container.querySelector("[data-image-wrapper] > div.group") as HTMLElement;
     expect(box).not.toBeNull();
+    expect(box.getAttribute("title")).toBeNull();
+    expect(box.tabIndex).toBe(0);
     const label = box.querySelector("[data-box-label]") as HTMLElement;
     expect(label.className).toContain("sc-box__tag");
     expect(label.className).toContain("opacity-0");
-    expect(label.className).toContain("group-hover:opacity-100");
-    expect(label.className).toContain("group-focus:opacity-100");
-    expect(label.className).not.toMatch(/\btop-0\b/);
+    expect(label.className).toContain("group-focus-visible:opacity-100");
+    expect(label.className).not.toMatch(/group-hover/);
   });
 
-  it("painel Ajustes fica fora do contêiner rolável, com max-height e rolagem própria", () => {
-    const { container } = setupBoxes({
-      panelOpen: true,
-      onUpdateAdjustments: vi.fn(),
-      onClosePanel: vi.fn(),
-    });
-    const panel = container.querySelector("[data-image-adjustments-panel]") as HTMLElement;
-    const scroller = container.querySelector("[data-canvas-scroller]") as HTMLElement;
-    expect(panel).not.toBeNull();
-    expect(scroller.contains(panel)).toBe(false);
-    expect(panel.className).toContain("sc-panel");
-    expect(panel.className).toContain("overflow-y-auto");
-    expect(panel.style.maxHeight).toBe("calc(100% - 16px)");
+  it("com Desenhar desligado o clique na folha não começa caixa", () => {
+    const commit = vi.fn();
+    const props = {
+      image: IMAGE,
+      syllableBoxes: {},
+      activeSyllableIdx: 0,
+      syllableRange: { start: 0, end: 1 },
+      zoom: 1,
+      onZoomChange: vi.fn(),
+      onBoxCommit: commit,
+    };
+    Object.assign(HTMLElement.prototype, { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() });
+    const { container, rerender } = render(<ImageCanvas {...props} drawMode={false} />);
+    const wrapper = container.querySelector("[data-image-wrapper]") as HTMLElement;
+    wrapper.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} });
+    const drag = () => {
+      for (const [type, x] of [["pointerdown", 10], ["pointermove", 40], ["pointerup", 40]] as const) {
+        act(() => void wrapper.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: x })));
+      }
+    };
+    expect(wrapper.className).not.toContain("cursor-crosshair");
+    drag();
+    expect(commit).not.toHaveBeenCalled();
+    rerender(<ImageCanvas {...props} drawMode />);
+    expect(wrapper.className).toContain("cursor-crosshair");
+    drag();
+    expect(commit).toHaveBeenCalledOnce();
   });
 });
 

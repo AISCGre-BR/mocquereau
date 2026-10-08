@@ -2,14 +2,15 @@
 //
 // Vista Recortes. O projeto é a fonte única das caixas, do intervalo e dos gaps
 // (spec D6): a vista os lê a cada render e grava no fim de cada gesto. O estado
-// efêmero (seleção, sílaba ativa, zoom, alternâncias) fica em useRecortes.
+// efêmero (seleção, sílaba ativa, zoom, alternâncias) fica no RecortesProvider,
+// que a barra de ferramentas e o menu Recortes também leem.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SlidersHorizontal } from "lucide-react";
 import { useProject } from "../hooks/useProject";
 import type { HistoryMeta } from "../history/history";
-import { useRecortes, type SyllableRange } from "../hooks/useRecortes";
+import type { SyllableRange } from "../hooks/useRecortes";
+import { useRecortesCommands, useRecortesContext } from "../hooks/RecortesContext";
 import { SourceTree } from "../components/sources/SourceTree";
 import { useAddPage, type AddPage } from "../components/sources/useAddPage";
 import { ResizeImageDialog } from "../components/sources/ResizeImageDialog";
@@ -17,6 +18,11 @@ import { SourceDialog } from "../components/sources/SourceDialog";
 import { SyllableStrip } from "../components/recortes/SyllableStrip";
 import { ImageCanvas } from "../components/slice-editor/ImageCanvas";
 import { RealignBoxesDialog } from "../components/slice-editor/RealignBoxesDialog";
+import { Dialog } from "../ui/Dialog";
+import { Button } from "../ui/Button";
+import { MenuItem, MenuSeparator, MenuSurface } from "../ui/Menu";
+import { recortesMenuItems } from "../shell/menus";
+import { formatAccelerator } from "../shell/accelerator";
 import { flattenSyllables } from "../lib/sliceUtils";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
@@ -56,10 +62,11 @@ export function RecortesView() {
   const { state, dispatch } = useProject();
   const { t } = useTranslation();
   const project = state.project;
-  const recortes = useRecortes(project);
+  const recortes = useRecortesContext();
+  const commands = useRecortesCommands();
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
-  const [showRealign, setShowRealign] = useState(false);
+  const [sheetMenu, setSheetMenu] = useState<{ x: number; y: number } | null>(null);
 
   const words = project?.text.words;
   const total = useMemo(() => (words ? flattenSyllables(words).length : 0), [words]);
@@ -103,6 +110,9 @@ export function RecortesView() {
     writeBoxes({ ...viewBoxes, [idx]: null });
   }
 
+  const sheetMenuItems = recortesMenuItems(commands.state, commands, t);
+  const platform = window.mocquereau?.platform ?? "";
+
   function setRange(next: SyllableRange) {
     if (!activeSource || !activeLine) return;
     dispatch({
@@ -125,26 +135,6 @@ export function RecortesView() {
       type: "UPDATE_LINE_ADJUSTMENTS",
       payload: { sourceId: activeSource.id, lineId: activeLine.id, adjustments: partial },
     });
-  }
-
-  function handleClear() {
-    if (!activeSource) return;
-    const lines = activeSource.lines.map((l) => ({
-      ...l,
-      dividers: [],
-      gaps: [],
-      syllableBoxes: {},
-      confirmed: false,
-    }));
-    dispatch({ type: "UPDATE_SOURCE", payload: { ...activeSource, syllableCuts: {}, lines } });
-    recortes.setActiveSyllable(null);
-  }
-
-  function nextSource() {
-    if (!project) return;
-    const idx = project.sources.findIndex((s) => s.id === recortes.activeSourceId);
-    const next = project.sources[idx + 1];
-    if (next) recortes.selectSource(next.id);
   }
 
   // ── Paste (Ctrl+V reads the clipboard through main) ──────────────────────
@@ -176,12 +166,10 @@ export function RecortesView() {
     if (!range) return;
     const active = recortes.activeSyllable;
 
+    // Ctrl+Enter (Próxima fonte) é atalho do menu Recortes.
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return;
     if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
       e.preventDefault();
-      if (e.key === "Enter" && e.ctrlKey) {
-        nextSource();
-        return;
-      }
       // Tab/Enter avança a sílaba ativa; além do fim, estende o intervalo da página.
       if (active === null) {
         recortes.setActiveSyllable(range.start);
@@ -248,46 +236,9 @@ export function RecortesView() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 focus:outline-none">
-        <SourceTree recortes={recortes} onEditSource={setEditingSourceId} />
+        <SourceTree onEditSource={setEditingSourceId} />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex flex-shrink-0 items-center justify-between border-b border-rule-soft bg-surface px-4 py-2">
-            <span className="truncate text-sm font-medium text-ink-soft">
-              {activeSource?.metadata.siglum ?? t("sliceEditor.noSourceSelected")}
-            </span>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-ink-muted">{t("sliceEditor.autoSaved")}</span>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 rounded border border-rubric bg-rubric-wash px-3 py-1.5 text-xs text-rubric hover:bg-rubric-wash disabled:opacity-40"
-                onClick={() => recortes.setImagePanelOpen(!recortes.imagePanelOpen)}
-                disabled={!hasImage}
-                title={t("sliceEditor.adjustmentsTitle")}
-                aria-pressed={recortes.imagePanelOpen}
-              >
-                <SlidersHorizontal size={14} />
-                {t("sliceEditor.adjustments")}
-              </button>
-              <button
-                type="button"
-                className="rounded border border-warning bg-orpiment-wash px-3 py-1.5 text-xs text-warning hover:bg-orpiment-wash disabled:opacity-40"
-                onClick={() => activeSyllable !== null && deleteBox(activeSyllable)}
-                disabled={!hasImage || activeSyllable === null || viewBoxes[activeSyllable] == null}
-                title={t("sliceEditor.removeActiveBoxTitle")}
-              >
-                {t("sliceEditor.removeBox")}
-              </button>
-              <button
-                type="button"
-                className="rounded border border-danger bg-rubric-wash px-3 py-1.5 text-xs text-danger hover:bg-rubric-wash"
-                onClick={handleClear}
-                disabled={!hasImage}
-              >
-                {t("sliceEditor.clearAll")}
-              </button>
-            </div>
-          </div>
-
           {hasImage && activeLine && (
             <div className="flex-shrink-0 px-4 pt-3">
               <SyllableStrip
@@ -317,18 +268,65 @@ export function RecortesView() {
                 words={project.text.words}
                 showAllBoxes={recortes.showAll}
                 sameSizeMode={recortes.sameSize}
+                drawMode={recortes.drawMode}
                 adjustments={activeLine?.imageAdjustments}
-                panelOpen={recortes.imagePanelOpen}
                 onUpdateAdjustments={handleUpdateAdjustments}
-                onClosePanel={() => recortes.setImagePanelOpen(false)}
-                onRealign={hasAnyBox(activeLine?.syllableBoxes) ? () => setShowRealign(true) : undefined}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setSheetMenu({ x: e.clientX, y: e.clientY });
+                }}
               />
             ) : (
               <DropZone activeSource={activeSource} addPage={addPage} />
             )}
           </div>
         </div>
-        <RealignBoxesDialog open={showRealign} line={activeLine} onClose={() => setShowRealign(false)} />
+        {sheetMenu && (
+          <MenuSurface
+            aria-label={t("shell.view.recortes")}
+            className="fixed z-[130]"
+            style={{ left: sheetMenu.x, top: sheetMenu.y }}
+            onClose={() => setSheetMenu(null)}
+          >
+            {sheetMenuItems.map((item, i) =>
+              item === "separator" ? (
+                <MenuSeparator key={`sep-${i}`} />
+              ) : (
+                <MenuItem
+                  key={item.id}
+                  label={item.label}
+                  shortcut={item.accelerator ? formatAccelerator(item.accelerator, platform) : undefined}
+                  disabled={item.disabled}
+                  onSelect={item.onSelect}
+                />
+              ),
+            )}
+          </MenuSurface>
+        )}
+        <RealignBoxesDialog open={recortes.dialog === "realign"} line={activeLine} onClose={() => recortes.setDialog(null)} />
+        <Dialog
+          open={recortes.dialog === "clearPage"}
+          title={t("recortes.clearPage.title")}
+          onClose={() => recortes.setDialog(null)}
+          actions={
+            <>
+              <Button variant="elevated" data-autofocus onClick={() => recortes.setDialog(null)}>
+                {t("recortes.clearPage.cancel")}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  recortes.setDialog(null);
+                  commands.clearActivePage();
+                }}
+              >
+                {t("recortes.clearPage.confirm")}
+              </Button>
+            </>
+          }
+        >
+          {t("recortes.clearPage.body")}
+        </Dialog>
         <ResizeImageDialog addPage={addPage} />
         {editingSourceId && <SourceDialog sourceId={editingSourceId} onClose={() => setEditingSourceId(null)} />}
       </div>

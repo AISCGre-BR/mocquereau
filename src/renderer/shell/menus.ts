@@ -15,9 +15,25 @@ export interface MenuState {
   language: SupportedLang;
   canUndo: boolean;
   canRedo: boolean;
+  /** Recortes menu state (only shown in the Recortes view). Absent: all disabled. */
+  recortes?: RecortesMenuState;
 }
 
-export interface MenuActions {
+export interface RecortesMenuState {
+  canRemoveBox: boolean;
+  canClearPage: boolean;
+  canRealign: boolean;
+  hasNextSource: boolean;
+}
+
+export interface RecortesMenuActions {
+  removeBox: () => void;
+  clearPage: () => void;
+  realignBoxes: () => void;
+  nextSource: () => void;
+}
+
+export interface MenuActions extends RecortesMenuActions {
   newProject: () => void;
   open: () => void;
   save: () => void;
@@ -38,6 +54,25 @@ export interface MenuActions {
 }
 
 const THEMES: readonly ThemePreference[] = ["system", "light", "dark"];
+
+const NO_RECORTES: RecortesMenuState = { canRemoveBox: false, canClearPage: false, canRealign: false, hasNextSource: false };
+
+/** Items of the Recortes menu; the sheet's context menu shows the same ones. */
+export function recortesMenuItems(
+  state: RecortesMenuState | undefined,
+  actions: RecortesMenuActions,
+  t: (key: string) => string,
+): Array<MenuCommand | "separator"> {
+  const s = state ?? NO_RECORTES;
+  return [
+    { id: "recortes.removeBox", label: t("recortes.menu.removeBox"), accelerator: "Delete", disabled: !s.canRemoveBox, onSelect: actions.removeBox },
+    { id: "recortes.clearPage", label: t("recortes.menu.clearPage"), disabled: !s.canClearPage, onSelect: actions.clearPage },
+    "separator",
+    { id: "recortes.realign", label: t("recortes.menu.realign"), disabled: !s.canRealign, onSelect: actions.realignBoxes },
+    "separator",
+    { id: "recortes.nextSource", label: t("recortes.menu.nextSource"), accelerator: "Ctrl+Enter", nativeInTextInput: true, disabled: !s.hasNextSource, onSelect: actions.nextSource },
+  ];
+}
 
 export function buildMenus(state: MenuState, actions: MenuActions, t: (key: string) => string): MenuDefinition[] {
   const noProject = !state.hasProject;
@@ -135,6 +170,9 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         },
       ],
     },
+    ...(state.hasProject && state.view === "recortes"
+      ? [{ id: "recortes", label: t("shell.view.recortes"), items: recortesMenuItems(state.recortes, actions, t) }]
+      : []),
     {
       id: "help",
       label: t("shell.menu.help"),

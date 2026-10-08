@@ -37,7 +37,6 @@ const SAME_AS_EN: Record<string, "*" | readonly Translated[]> = {
   "sourceTree.folio.folio": ["it", "es", "de", "pl"],
   "sourceDialog.link": ["it", "de", "pl"],
   "sourceList.imageButton": ["it", "es"],
-  "imageAdjustmentsPanel.color": ["es"],
   "sourceList.progressHeader": ["es"],
   "exportDialog.title": ["de"],
   "sourceModal.siglum": ["pl"],

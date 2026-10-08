@@ -10,7 +10,7 @@ import {
   type DocumentAction,
   type ProjectState,
 } from "../../hooks/useProject";
-import { useRecortes, type RecortesState } from "../../hooks/useRecortes";
+import { RecortesProvider, useRecortesContext, type RecortesContextValue } from "../../hooks/RecortesContext";
 import { syllabifyText } from "../../lib/syllabify";
 import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "../../lib/models";
 
@@ -54,15 +54,21 @@ function projectWith(sources: ManuscriptSource[]): MocquereauProject {
 }
 
 function mount(project: MocquereauProject, onEditSource = vi.fn()) {
-  const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; recortes?: RecortesState } = {};
+  const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; recortes?: RecortesContextValue } = {};
+  function Probe() {
+    ref.recortes = useRecortesContext();
+    return null;
+  }
   function Harness() {
     const [state, dispatch, history] = useProjectReducer();
-    const recortes = useRecortes(state.project);
-    Object.assign(ref, { state, dispatch, recortes });
+    Object.assign(ref, { state, dispatch });
     if (!state.project) return null;
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
-        <SourceTree recortes={recortes} onEditSource={onEditSource} />
+        <RecortesProvider>
+          <Probe />
+          <SourceTree onEditSource={onEditSource} />
+        </RecortesProvider>
       </ProjectContext.Provider>
     );
   }

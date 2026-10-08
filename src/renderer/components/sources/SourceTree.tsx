@@ -1,14 +1,14 @@
 // src/renderer/components/sources/SourceTree.tsx
 //
 // Sidebar of the Recortes view: sources grouped by their level-1 class, each
-// with its pages nested under it. Selection lives in useRecortes; every page
+// with its pages nested under it. Selection lives in the RecortesProvider; every page
 // added here (button, dropped file) goes through useAddPage.
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, ChevronRight, ChevronUp, Plus } from "lucide-react";
 import { useProject } from "../../hooks/useProject";
-import type { RecortesState } from "../../hooks/useRecortes";
+import { useRecortesContext } from "../../hooks/RecortesContext";
 import { flattenSyllables } from "../../lib/sliceUtils";
 import { createEmptySource, groupSourcesByLevel1, guerangerToSource } from "../../lib/sources";
 import { sourceProgress } from "../../lib/recent-meta";
@@ -22,7 +22,6 @@ import { useAddPage } from "./useAddPage";
 import { ResizeImageDialog } from "./ResizeImageDialog";
 
 export interface SourceTreeProps {
-  recortes: RecortesState;
   onEditSource(id: string): void;
 }
 
@@ -45,8 +44,9 @@ function caption(source: ManuscriptSource): string {
   return [source.metadata.city, source.metadata.century].map((p) => p.trim()).filter(Boolean).join(", ");
 }
 
-export function SourceTree({ recortes, onEditSource }: SourceTreeProps) {
+export function SourceTree({ onEditSource }: SourceTreeProps) {
   const { state, dispatch } = useProject();
+  const recortes = useRecortesContext();
   const { t } = useTranslation();
   const project = state.project;
   const words = project?.text.words;

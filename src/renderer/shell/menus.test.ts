@@ -24,6 +24,10 @@ function actions(): MenuActions {
     reportIssue: vi.fn(),
     openExample: vi.fn(),
     clearRecent: vi.fn(),
+    removeBox: vi.fn(),
+    clearPage: vi.fn(),
+    realignBoxes: vi.fn(),
+    nextSource: vi.fn(),
   };
 }
 
@@ -163,5 +167,33 @@ describe("buildMenus", () => {
     find(sem, "file.clearRecent").onSelect();
     expect(a.clearRecent).toHaveBeenCalledTimes(1);
     expect(() => find(buildMenus(base, a, t), "file.clearRecent")).toThrow();
+  });
+
+  it("menu Recortes só existe na vista Recortes, entre Exibir e Ajuda", () => {
+    expect(buildMenus(base, actions(), t).some((m) => m.id === "recortes")).toBe(false);
+    expect(buildMenus({ ...base, view: "recortes", hasProject: false }, actions(), t).some((m) => m.id === "recortes")).toBe(false);
+    expect(buildMenus({ ...base, view: "recortes" }, actions(), t).map((m) => m.id)).toEqual(["file", "edit", "view", "recortes", "help"]);
+  });
+
+  it("menu Recortes: itens, atalhos, estados e ações", () => {
+    const a = actions();
+    const recortes = { canRemoveBox: true, canClearPage: true, canRealign: false, hasNextSource: true };
+    const menus = buildMenus({ ...base, view: "recortes", recortes }, a, t);
+    const menu = menus.find((m) => m.id === "recortes")!;
+    expect(menu.label).toBe("shell.view.recortes");
+    expect(flat(menu.items).map((i) => [i.id, i.label, i.accelerator, i.disabled])).toEqual([
+      ["recortes.removeBox", "recortes.menu.removeBox", "Delete", false],
+      ["recortes.clearPage", "recortes.menu.clearPage", undefined, false],
+      ["recortes.realign", "recortes.menu.realign", undefined, true],
+      ["recortes.nextSource", "recortes.menu.nextSource", "Ctrl+Enter", false],
+    ]);
+    for (const id of ["recortes.removeBox", "recortes.clearPage", "recortes.realign", "recortes.nextSource"]) find(menus, id).onSelect();
+    expect(a.removeBox).toHaveBeenCalledOnce();
+    expect(a.clearPage).toHaveBeenCalledOnce();
+    expect(a.realignBoxes).toHaveBeenCalledOnce();
+    expect(a.nextSource).toHaveBeenCalledOnce();
+    // Sem estado do Recortes, tudo desabilitado.
+    const bare = buildMenus({ ...base, view: "recortes" }, a, t).find((m) => m.id === "recortes")!;
+    expect(flat(bare.items).every((i) => i.disabled)).toBe(true);
   });
 });

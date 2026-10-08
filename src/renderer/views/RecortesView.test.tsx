@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "../i18n";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
 import { RecortesView, isOutsideEditorKeys } from "./RecortesView";
 import {
   ProjectContext,
@@ -13,6 +13,7 @@ import {
   type ProjectState,
 } from "../hooks/useProject";
 import { syllabifyText } from "../lib/syllabify";
+import { RecortesProvider } from "../hooks/RecortesContext";
 import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "../lib/models";
 
 const BOX = { x: 0.1, y: 0.1, w: 0.2, h: 0.5 };
@@ -57,7 +58,9 @@ function mount(project: MocquereauProject) {
     if (!state.project) return null;
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
-        <RecortesView />
+        <RecortesProvider>
+          <RecortesView />
+        </RecortesProvider>
       </ProjectContext.Provider>
     );
   }
@@ -288,15 +291,10 @@ describe("RecortesView: atalhos", () => {
     expect(v.line().syllableRange).toEqual({ start: 1, end: 4 });
   });
 
-  it("Ctrl+Enter vai para a próxima fonte", () => {
-    const v = mount(
-      projectWith([
-        mkSource("A", [mkLine("a1")]),
-        mkSource("B", [mkLine("b1", { syllableRange: { start: 1, end: 2 }, confirmed: false, syllableBoxes: {} })]),
-      ]),
-    );
+  it("Ctrl+Enter é do menu Recortes (Próxima fonte): a vista não avança a sílaba", () => {
+    const v = mount(projectWith([mkSource("A", [mkLine("a1", { syllableRange: { start: 0, end: 0 } })])]));
     v.key({ key: "Enter", ctrlKey: true });
-    expect(v.shownRange()).toEqual(["1", "2"]);
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 0 });
   });
 
   it("Delete remove a caixa ativa na hora e desconfirma a página vazia", () => {
@@ -376,9 +374,11 @@ describe("RecortesView: largura presa à vista", () => {
     const state = { ...initialStateForTest, project: projectWith() };
     const { container } = render(
       <ProjectContext.Provider value={{ state, dispatch: vi.fn() }}>
-        <div className="flex">
-          <RecortesView />
-        </div>
+        <RecortesProvider>
+          <div className="flex">
+            <RecortesView />
+          </div>
+        </RecortesProvider>
       </ProjectContext.Provider>,
     );
     const root = (container.firstChild as HTMLElement).firstChild as HTMLElement;
@@ -404,5 +404,71 @@ describe("RecortesView: diálogo Fonte", () => {
     const { getByRole, container } = mount(projectWith());
     fireEvent.doubleClick(container.querySelector('[data-source-id="A"]')!);
     expect((getByRole("textbox", { name: "Sigla" }) as HTMLInputElement).value).toBe("A");
+  });
+});
+
+describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
+  function openSheetMenu(v: ReturnType<typeof mount>) {
+    fireEvent.contextMenu(v.wrapper(), { clientX: 20, clientY: 20 });
+    return v.getByRole("menu", { name: "Recortes" });
+  }
+
+  it("mostra os itens do menu Recortes; Remover caixa remove a caixa ativa", () => {
+    const v = mount(projectWith());
+    const menu = openSheetMenu(v);
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual([
+      "Remover caixaDelete",
+      "Limpar página…",
+      "Realinhar caixas…",
+      "Próxima fonteCtrl+Enter",
+    ]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Remover caixa/ }));
+    expect(v.line().syllableBoxes![0]).toBeNull();
+    expect(v.queryByRole("menu")).toBeNull();
+  });
+
+  it("Limpar página… pede confirmação e limpa só a página ativa (caixas, gaps e recortes do intervalo)", () => {
+    const src = mkSource("A", [
+      mkLine("a1", { syllableRange: { start: 0, end: 1 }, gaps: [1], syllableBoxes: { 0: BOX } }),
+      mkLine("a2", { syllableRange: { start: 2, end: 4 }, syllableBoxes: { 2: BOX } }),
+    ]);
+    src.syllableCuts = { 0: { dataUrl: "x" }, 3: { dataUrl: "y" } } as never;
+    const v = mount(projectWith([src]));
+    fireEvent.click(within(openSheetMenu(v)).getByRole("menuitem", { name: "Limpar página…" }));
+    const dialog = v.getByRole("dialog", { name: "Limpar esta página?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(v.line(0, 0).syllableBoxes).toEqual({ 0: BOX });
+
+    fireEvent.click(within(openSheetMenu(v)).getByRole("menuitem", { name: "Limpar página…" }));
+    fireEvent.click(within(v.getByRole("dialog")).getByRole("button", { name: "Limpar" }));
+    expect(v.line(0, 0)).toMatchObject({ syllableBoxes: {}, gaps: [], confirmed: false });
+    expect(v.line(0, 1).syllableBoxes).toEqual({ 2: BOX });
+    expect(v.line(0, 1).confirmed).toBe(true);
+    expect(Object.keys(v.ref.state!.project!.sources[0].syllableCuts)).toEqual(["3"]);
+    act(() => v.ref.history!.undo());
+    expect(v.line(0, 0).syllableBoxes).toEqual({ 0: BOX });
+  });
+
+  it("Realinhar caixas… abre o diálogo; Próxima fonte vai à fonte seguinte", () => {
+    const v = mount(
+      projectWith([
+        mkSource("A", [mkLine("a1")]),
+        mkSource("B", [mkLine("b1", { syllableRange: { start: 1, end: 2 }, confirmed: false, syllableBoxes: {} })]),
+      ]),
+    );
+    fireEvent.click(within(openSheetMenu(v)).getByRole("menuitem", { name: "Realinhar caixas…" }));
+    expect(v.getByRole("dialog", { name: /Realinhar/ })).toBeTruthy();
+    fireEvent.click(within(v.getByRole("dialog")).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(openSheetMenu(v)).getByRole("menuitem", { name: /Próxima fonte/ }));
+    expect(v.shownRange()).toEqual(["1", "2"]);
+    // Na última fonte, sem caixas: Remover, Limpar, Realinhar e Próxima ficam desabilitados.
+    const items = within(openSheetMenu(v)).getAllByRole("menuitem") as HTMLButtonElement[];
+    expect(items.map((i) => i.disabled)).toEqual([true, true, true, true]);
+  });
+
+  it("a barra antiga (sigla, Ajustes, Limpar tudo) saiu da vista", () => {
+    const v = mount(projectWith());
+    expect(v.queryByText("Alterações salvas automaticamente")).toBeNull();
+    expect(v.queryByRole("button", { name: /Limpar tudo|Ajustes/ })).toBeNull();
   });
 });

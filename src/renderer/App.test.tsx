@@ -310,5 +310,26 @@ describe("App", () => {
     expect(container.querySelector("[data-image-wrapper]")).toBe(sheet);
     expect(sheet.querySelector("[data-box-overlay]")).not.toBeNull();
   });
+
+  it("Recortes: ferramentas na barra e menu Recortes só nessa vista; Ctrl+Enter vai à próxima fonte", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const project = projectWithBox();
+    const second = { ...project.sources[0], id: "src-2", metadata: { ...project.sources[0].metadata, siglum: "B" } };
+    second.lines = [{ ...second.lines[0], id: "line-2", syllableBoxes: {}, confirmed: false }];
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: { ...project, sources: [project.sources[0], second] }, filePath: null });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    expect(screen.queryByRole("button", { name: "Desenhar caixa" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Recortes" })).toBeNull();
+    ctrl("3");
+    expect(screen.getByRole("button", { name: "Desenhar caixa" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Imagem/ })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Recortes" })).toBeTruthy();
+    expect(container.querySelector("[data-box-overlay]")).not.toBeNull();
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+    expect(container.querySelector("[data-box-overlay]")).toBeNull();
+    expect(container.querySelector('[role=treeitem][aria-selected=true][data-line-id="line-2"]')).not.toBeNull();
+  });
 });
 
