@@ -113,6 +113,14 @@ describe('collectDocxCrops', () => {
     expect(payload.rawText).toBe('Sanc-tus Do-mi-nus');
   });
 
+  it('empty title: the payload carries the same fallback as the Tabela', async () => {
+    const { collectDocxCrops } = await import('./docx-collect');
+    const base = makeProject({ sources: [] });
+    const project = { ...base, meta: { ...base.meta, title: '   ' } };
+    const payload = await collectDocxCrops(project, undefined, { untitled: 'Sem título' });
+    expect(payload.title).toBe('Sem título');
+  });
+
   it('wordBoundaries has length equal to syllables count', async () => {
     const { collectDocxCrops } = await import('./docx-collect');
     const project = makeProject({ sources: [] });

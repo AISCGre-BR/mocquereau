@@ -29,10 +29,12 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
  *
  * @param project  Complete project state
  * @param onProgress  Optional callback(processedCells, totalCells) for UI feedback
+ * @param options.untitled  Title used when the piece has none, the same the Tabela shows (t('file.untitled'))
  */
 export async function collectDocxCrops(
   project: MocquereauProject,
   onProgress?: (done: number, total: number) => void,
+  options: { untitled?: string } = {},
 ): Promise<DocxExportPayload> {
   const syllables = flattenSyllables(project.text.words);
   const totalSyllables = syllables.length;
@@ -117,7 +119,7 @@ export async function collectDocxCrops(
   );
 
   return {
-    title: project.meta.title,
+    title: project.meta.title.trim() || options.untitled || project.meta.title,
     author: project.meta.author,
     rawText: project.text.raw,
     syllables,

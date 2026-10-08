@@ -225,6 +225,18 @@ describe('buildGroupRow', () => {
     expect(xml).toContain('<w:gridSpan w:val="7"/>');
     expect(xml).toContain('Alfa');
   });
+
+  it('matches the Tabela label: bold, size 16, colour 6f604f, no small caps', async () => {
+    const doc = new Document({
+      sections: [{ children: [new Table({ rows: [buildGroupRow('Alfa', 7)] })] }],
+    });
+    const zip = await JSZip.loadAsync(await Packer.toBuffer(doc));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml).not.toContain('<w:smallCaps/>');
+    expect(xml).toContain('<w:b/>');
+    expect(xml).toContain('<w:sz w:val="16"/>');
+    expect(xml).toContain('<w:color w:val="6f604f"/>');
+  });
 });
 
 describe('buildDocument', () => {

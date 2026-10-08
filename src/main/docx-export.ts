@@ -217,17 +217,6 @@ function buildDataCell(cell: DocxCellData): TableCell {
       : Buffer.from(new Uint8Array(buf));
     const dims = scaleToFit(cell.cropWidth, cell.cropHeight);
 
-    // DEBUG: inspect the buffer
-    const firstBytes = Array.from(nodeBuffer.slice(0, 8))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join(' ');
-    const isValidPng =
-      nodeBuffer[0] === 0x89 &&
-      nodeBuffer[1] === 0x50 &&
-      nodeBuffer[2] === 0x4e &&
-      nodeBuffer[3] === 0x47;
-    log(`cell buffer: size=${nodeBuffer.length} bytes, first=${firstBytes}, validPng=${isValidPng}, dims=${dims.width}x${dims.height}, cropSrc=${cell.cropWidth}x${cell.cropHeight}`);
-
     const imgId = nextImageId();
     children = [
       new Paragraph({
@@ -325,7 +314,7 @@ export function buildTitleParagraphs(title: string, author: string): Paragraph[]
   return paragraphs;
 }
 
-/** One merged cell spanning the whole table width, naming a group of sources. */
+/** One merged cell spanning the whole table width, naming a group of sources (styled like the Tabela label). */
 export function buildGroupRow(name: string, span: number): TableRow {
   const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
   return new TableRow({
@@ -334,7 +323,7 @@ export function buildGroupRow(name: string, span: number): TableRow {
         columnSpan: span,
         children: [
           new Paragraph({
-            children: [new TextRun({ text: name, size: 16, color: '6f604f', smallCaps: true })],
+            children: [new TextRun({ text: name, size: 16, bold: true, color: '6f604f' })],
           }),
         ],
         borders: { top: none, bottom: none, left: none, right: none },
