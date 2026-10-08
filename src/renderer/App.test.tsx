@@ -63,6 +63,22 @@ const wait = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout
 const ctrl = (key: string) => fireEvent.keyDown(window, { key, ctrlKey: true });
 const tab = (name: string) => screen.getByRole("tab", { name });
 
+/** Percorre o guia de criação já aberto (título vazio, modo padrão) e cria o projeto. */
+async function finishGuide(text = "Puer natus est") {
+  fireEvent.click(await screen.findByRole("button", { name: "Continuar" }));
+  fireEvent.change(screen.getByPlaceholderText("Cole ou digite o texto litúrgico"), { target: { value: text } });
+  fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Criar projeto" }));
+  await screen.findByPlaceholderText("Título");
+}
+
+/** Novo projeto na tela inicial, passando pelo guia. */
+async function createViaGuide() {
+  fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+  await finishGuide();
+}
+
 describe("App", () => {
   it("abre na Welcome, sem toolbar; Ctrl+2 sem projeto não faz nada", async () => {
     render(<App />);
@@ -75,8 +91,7 @@ describe("App", () => {
 
   it("Novo projeto leva ao Texto; Ctrl+2 e Ctrl+4 trocam de vista; não há Avançar/Voltar", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
-    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
+    await createViaGuide();
     expect(tab("Texto").getAttribute("aria-selected")).toBe("true");
     ctrl("2");
     expect(tab("Fontes").getAttribute("aria-selected")).toBe("true");
@@ -88,15 +103,54 @@ describe("App", () => {
     }
   });
 
-  it("criar projeto e só trocar de vista não marca '— Editado'", async () => {
+  it("projeto criado com texto marca '— Editado' (ainda não está em arquivo); trocar de vista não cria passo", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
-    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
+    await createViaGuide();
     await wait(350);
+    expect(screen.getByText("— Editado")).toBeTruthy();
     ctrl("4");
     ctrl("1");
     await wait(350);
-    expect(screen.queryByText("— Editado")).toBeNull();
+    // Nada a desfazer: trocar de vista não editou o projeto.
+    ctrl("z");
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Sem título");
+    expect(screen.getByText("— Editado")).toBeTruthy();
+  });
+
+  it("abrir outro logo depois de criar pelo guia pergunta antes de descartar", async () => {
+    render(<App />);
+    await createViaGuide();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    ctrl("o");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(window.mocquereau.openProject).not.toHaveBeenCalled();
+  });
+
+  it("Novo projeto abre o guia sem toolbar, com o título da janela; Cancelar volta à tela inicial", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
+    expect(screen.getByPlaceholderText("Título da peça")).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByText("Novo projeto", { selector: ".sc-menubar__title span" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(await screen.findByRole("button", { name: "Novo projeto" })).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Título da peça")).toBeNull();
+  });
+
+  it("Ctrl+N com projeto editado confirma o descarte; Cancelar no guia volta ao projeto intacto", async () => {
+    render(<App />);
+    await createViaGuide();
+    fireEvent.change(screen.getByPlaceholderText("Título"), { target: { value: "Puer natus est" } });
+    await wait(350);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    ctrl("n");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(screen.getByPlaceholderText("Título da peça")).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Puer natus est");
+    expect(screen.getByText("— Editado")).toBeTruthy();
+    expect(tab("Texto").getAttribute("aria-selected")).toBe("true");
   });
 
   it("Exibir > Vigília aplica o tema escuro e persiste", async () => {
@@ -112,8 +166,8 @@ describe("App", () => {
       .fn()
       .mockResolvedValue({ project: createNewProject("Sanctus VIII", "Solesmes"), filePath: "/p/sanctus.mocquereau.json" });
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
-    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
+    await createViaGuide();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     ctrl("4");
     ctrl("o");
     expect(await screen.findByDisplayValue("Sanctus VIII")).toBeTruthy();
@@ -122,46 +176,44 @@ describe("App", () => {
 
   it("Editar > Desfazer (Ctrl+Z fora de campos) volta o título; dentro do campo o Ctrl+Z é do campo", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
-    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
-    const titleInput = screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement;
+    await createViaGuide();
+    const titleInput = screen.getByPlaceholderText("Título") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Puer natus est" } });
     await wait(350);
     expect(screen.getByText("— Editado")).toBeTruthy();
     // Dentro do campo: o app não intercepta.
     fireEvent.keyDown(titleInput, { key: "z", ctrlKey: true });
-    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Puer natus est");
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Puer natus est");
     ctrl("z");
-    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Sem título");
-    expect(screen.queryByText("— Editado")).toBeNull();
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Sem título");
+    // O projeto criado pelo guia continua editado: nunca foi gravado.
+    expect(screen.getByText("— Editado")).toBeTruthy();
     fireEvent.keyDown(window, { key: "y", ctrlKey: true });
-    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Puer natus est");
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Puer natus est");
   });
 
   it("título digitado e Ctrl+N antes de 300 ms: pergunta antes de descartar; Cancelar mantém o título", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
-    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
+    await createViaGuide();
     await wait(350);
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
+    fireEvent.change(screen.getByPlaceholderText("Título"), { target: { value: "Puer natus est" } });
     ctrl("n");
     expect(confirm).toHaveBeenCalledOnce();
-    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Puer natus est");
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Puer natus est");
     expect(screen.getByText("— Editado")).toBeTruthy();
   });
 
   it("título digitado e Ctrl+N confirmado: o título não vaza para o projeto novo", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
-    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
+    await createViaGuide();
     await wait(350);
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
+    fireEvent.change(screen.getByPlaceholderText("Título"), { target: { value: "Puer natus est" } });
     ctrl("n");
+    await finishGuide();
     await wait(350);
-    expect((screen.getByPlaceholderText("Ex.: Sanctus XVII") as HTMLInputElement).value).toBe("Sem título");
-    expect(screen.queryByText("— Editado")).toBeNull();
+    expect((screen.getByPlaceholderText("Título") as HTMLInputElement).value).toBe("Sem título");
   });
 
   it("caixa movida no Recortes e Ctrl+N antes de 300 ms: pergunta antes de descartar", async () => {
@@ -208,12 +260,11 @@ describe("App", () => {
 
   it("título digitado: o main sabe que há alterações antes dos 300 ms do debounce", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Novo projeto" }));
-    await screen.findByPlaceholderText("Ex.: Sanctus XVII");
+    await createViaGuide();
     await wait(50);
     const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
     setDirty.mockClear();
-    fireEvent.change(screen.getByPlaceholderText("Ex.: Sanctus XVII"), { target: { value: "Puer natus est" } });
+    fireEvent.change(screen.getByPlaceholderText("Título"), { target: { value: "Puer natus est" } });
     expect(setDirty).toHaveBeenLastCalledWith(true);
   });
 
@@ -221,7 +272,8 @@ describe("App", () => {
     window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
-    const raw = await screen.findByDisplayValue("Puer natus est");
+    fireEvent.doubleClick(await screen.findByTestId("texto-body"));
+    const raw = screen.getByDisplayValue("Puer natus est");
     await wait(50);
     const setDirty = window.mocquereau.setDirty as ReturnType<typeof vi.fn>;
     setDirty.mockClear();

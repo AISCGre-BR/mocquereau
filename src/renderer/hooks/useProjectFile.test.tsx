@@ -5,6 +5,8 @@ import { act, cleanup, renderHook, screen, waitFor } from "@testing-library/reac
 import type { ReactNode } from "react";
 import { ProjectContext, createNewProject, useProject, useProjectReducer } from "./useProject";
 import { AUTOSAVE_DELAY_MS, useProjectFile } from "./useProjectFile";
+import { createPendingEdits } from "./pendingEdits";
+import type { NewProjectDraft } from "../lib/new-project";
 import { makeThumbnail } from "../lib/thumbnail";
 import { Toaster } from "../ui/Toast";
 import type { ManuscriptLine, MocquereauAPI, MocquereauProject } from "../lib/models";
@@ -54,15 +56,18 @@ function withFirstPage(p: MocquereauProject): MocquereauProject {
   return { ...p, sources: [source as never] };
 }
 
+/** Rascunho vazio do guia: cria um projeto "Sem título" sem texto. */
+const BLANK: NewProjectDraft = { title: "", author: "", raw: "", mode: "sung", words: [] };
+
 function setup() {
   return renderHook(() => ({ file: useProjectFile(), ctx: useProject() }), { wrapper: Providers });
 }
 
 describe("useProjectFile", () => {
-  it("newProject cria projeto sem arquivo e incrementa projectEpoch", async () => {
+  it("createProject cria projeto sem arquivo e incrementa projectEpoch", async () => {
     mockApi();
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     expect(result.current.ctx.state.project?.meta.title).toBe("Sem título");
     expect(result.current.ctx.state.currentFilePath).toBeNull();
     expect(result.current.file.projectEpoch).toBe(1);
@@ -73,7 +78,7 @@ describe("useProjectFile", () => {
     lib[0].name = "Notação";
     mockApi({ getClassification: vi.fn().mockResolvedValue(lib) });
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     expect(result.current.ctx.state.project?.classification[0].name).toBe("Notação");
   });
 
@@ -118,7 +123,7 @@ describe("useProjectFile", () => {
   it("a library read failure falls back to the suggested list", async () => {
     mockApi({ getClassification: vi.fn().mockRejectedValue(new Error("io")) });
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     expect(result.current.ctx.state.project?.classification).toEqual(SUGGESTED_CLASSIFICATION);
   });
 
@@ -141,7 +146,7 @@ describe("useProjectFile", () => {
   it("sends recent meta after a successful save", async () => {
     const api = mockApi();
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     await act(async () => {
       await result.current.file.save();
     });
@@ -159,7 +164,7 @@ describe("useProjectFile", () => {
     mk.mockResolvedValue("data:image/jpeg;base64,CACHE");
     const api = mockApi();
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     act(() => {
       result.current.ctx.dispatch({ type: "SET_PROJECT", payload: withFirstPage(result.current.ctx.state.project!) } as never);
     });
@@ -177,7 +182,7 @@ describe("useProjectFile", () => {
   it("a project whose source has no lines array still saves without an error toast", async () => {
     const api = mockApi();
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     act(() => {
       const p = result.current.ctx.state.project!;
       result.current.ctx.dispatch({ type: "SET_PROJECT", payload: { ...p, sources: [{ id: "s" } as never] } } as never);
@@ -196,7 +201,7 @@ describe("useProjectFile", () => {
       openProject: vi.fn().mockResolvedValue({ project: createNewProject("Antigo", ""), filePath: null }),
     });
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     await act(async () => {
       await result.current.file.open();
     });
@@ -207,7 +212,7 @@ describe("useProjectFile", () => {
   it("save sem arquivo pede o caminho, grava, limpa o Editado e confirma com toast", async () => {
     const api = mockApi();
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer natus est" } }));
     expect(result.current.ctx.state.isDirty).toBe(true);
     await act(async () => {
@@ -227,7 +232,7 @@ describe("useProjectFile", () => {
   it("falha ao gravar mostra erro persistente e o projeto continua editado", async () => {
     mockApi({ saveProject: vi.fn().mockRejectedValue(new Error("EACCES: permission denied")) });
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
     await act(async () => {
       expect(await result.current.file.save()).toBe(false);
@@ -276,7 +281,7 @@ describe("useProjectFile", () => {
       openProject: vi.fn().mockResolvedValue({ project: createNewProject("Sanctus VIII", ""), filePath: "/s.mocquereau" }),
     });
     const { result } = renderHook(() => ({ file: useProjectFile({ onOpened }), ctx: useProject() }), { wrapper: Providers });
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     await act(async () => {
       await result.current.file.open();
     });
@@ -358,7 +363,7 @@ describe("useProjectFile", () => {
   it("openExample que falha mostra erro e mantém o projeto", async () => {
     mockApi({ openExample: vi.fn().mockResolvedValue(null) });
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     await act(async () => {
       await result.current.file.openExample();
     });
@@ -370,7 +375,7 @@ describe("useProjectFile", () => {
     let resolveSave: (v: { filePath: string }) => void = () => undefined;
     mockApi({ saveProject: vi.fn(() => new Promise((r) => (resolveSave = r))) });
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
     let pending: Promise<boolean> = Promise.resolve(false);
     act(() => {
@@ -405,7 +410,7 @@ describe("useProjectFile", () => {
       await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
     });
     expect(saveProject).toHaveBeenCalledTimes(1);
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     await act(async () => {
       resolveSave({ filePath: "/a.mocquereau" });
       await Promise.resolve();
@@ -467,7 +472,7 @@ describe("useProjectFile", () => {
     let resolveSave: (v: { filePath: string }) => void = () => undefined;
     mockApi({ saveProject: vi.fn(() => new Promise((r) => (resolveSave = r))) });
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     let saving: Promise<boolean> = Promise.resolve(false);
     act(() => {
       saving = result.current.file.save();
@@ -484,22 +489,127 @@ describe("useProjectFile", () => {
     expect(result.current.ctx.state.currentFilePath).toBeNull();
   });
 
-  it("com alterações, Novo projeto pergunta e respeita o Cancelar", async () => {
+  it("newProject abre o guia (creating) sem trocar o projeto", async () => {
     mockApi();
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    act(() => result.current.file.newProject());
+    expect(result.current.file.creating).toBe(true);
+    expect(result.current.ctx.state.project).toBeNull();
+  });
+
+  it("startNewProject com projeto sujo pede confirmação e não abre o guia se recusado", async () => {
+    mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.createProject(BLANK));
     act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    await act(async () => result.current.file.newProject());
+    act(() => result.current.file.startNewProject());
     expect(confirm).toHaveBeenCalledOnce();
+    expect(result.current.file.creating).toBe(false);
     expect(result.current.ctx.state.project?.meta.title).toBe("Puer");
+    expect(result.current.file.projectEpoch).toBe(1);
+  });
+
+  it("createProject adota o rascunho com texto sem caminho, editado, e fecha o guia", async () => {
+    mockApi();
+    const onOpened = vi.fn();
+    const { result } = renderHook(() => ({ file: useProjectFile({ onOpened }), ctx: useProject() }), {
+      wrapper: Providers,
+    });
+    act(() => result.current.file.startNewProject());
+    const words = [{ original: "Deo", syllables: ["De", "o"] }];
+    await act(async () =>
+      result.current.file.createProject({ title: "Gloria VIII", author: "Gaby", raw: "Deo", mode: "classical", words }),
+    );
+    const s = result.current.ctx.state;
+    expect(s.project?.meta).toMatchObject({ title: "Gloria VIII", author: "Gaby" });
+    expect(s.project?.text).toEqual({ raw: "Deo", words, hyphenationMode: "classical" });
+    expect(s.currentFilePath).toBeNull();
+    // O trabalho do guia ainda não está em arquivo: fechar ou abrir outro precisa perguntar.
+    expect(s.isDirty).toBe(true);
+    expect(result.current.file.creating).toBe(false);
+    expect(onOpened).toHaveBeenCalledOnce();
+  });
+
+  it("createProject sem texto começa limpo", async () => {
+    mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.createProject({ ...BLANK, title: "Puer" }));
+    expect(result.current.ctx.state.isDirty).toBe(false);
+  });
+
+  it("createProject ignora um segundo clique enquanto o primeiro cria", async () => {
+    const waiting: Array<(lib: unknown) => void> = [];
+    const getClassification = vi.fn(() => new Promise((r) => waiting.push(r)));
+    mockApi({ getClassification });
+    const { result } = setup();
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.file.createProject({ ...BLANK, raw: "Deo" });
+      void result.current.file.createProject({ ...BLANK, raw: "Deo" });
+    });
+    await act(async () => {
+      for (const release of waiting) release(cloneClassification(SUGGESTED_CLASSIFICATION));
+      await first;
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(getClassification).toHaveBeenCalledTimes(1);
+    expect(result.current.file.projectEpoch).toBe(1);
+  });
+
+  it("com o guia aberto o autosave não grava o projeto descartado e os flushes de desmontagem são ignorados", async () => {
+    vi.useFakeTimers();
+    const saveProject = vi.fn().mockResolvedValue({ filePath: "/p.mocquereau" });
+    mockApi({
+      saveProject,
+      openProjectByPath: vi.fn().mockResolvedValue({ project: createNewProject("Puer", ""), filePath: "/p.mocquereau" }),
+    });
+    const pending = createPendingEdits();
+    function WithPending({ children }: { children: ReactNode }) {
+      const [state, dispatch, history] = useProjectReducer();
+      return (
+        <Toaster dismissLabel="Dispensar">
+          <ProjectContext.Provider value={{ state, dispatch, history, pending }}>{children}</ProjectContext.Provider>
+        </Toaster>
+      );
+    }
+    const { result } = renderHook(() => ({ file: useProjectFile(), ctx: useProject() }), { wrapper: WithPending });
+    await act(async () => {
+      await result.current.file.openRecent("/p.mocquereau");
+    });
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { author: "A" } }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const epoch = pending.epoch();
+    act(() => result.current.file.startNewProject());
+    expect(result.current.file.creating).toBe(true);
+    expect(pending.epoch()).not.toBe(epoch);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS * 2);
+    });
+    expect(saveProject).not.toHaveBeenCalled();
+  });
+
+  it("cancelNewProject fecha o guia e mantém o projeto aberto intacto", async () => {
+    mockApi();
+    const { result } = setup();
+    await act(async () => result.current.file.createProject(BLANK));
+    act(() => result.current.ctx.dispatch({ type: "SET_META", payload: { title: "Puer" } }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    act(() => result.current.file.startNewProject());
+    expect(result.current.file.creating).toBe(true);
+    act(() => result.current.file.startNewProject()); // Ctrl+N de novo no guia: não pergunta outra vez
+    expect(window.confirm).toHaveBeenCalledOnce();
+    act(() => result.current.file.cancelNewProject());
+    expect(result.current.file.creating).toBe(false);
+    expect(result.current.ctx.state.project?.meta.title).toBe("Puer");
+    expect(result.current.ctx.state.isDirty).toBe(true);
     expect(result.current.file.projectEpoch).toBe(1);
   });
 
   it("fechar volta para sem projeto", async () => {
     mockApi();
     const { result } = setup();
-    await act(async () => result.current.file.newProject());
+    await act(async () => result.current.file.createProject(BLANK));
     act(() => result.current.file.close());
     expect(result.current.ctx.state.project).toBeNull();
   });

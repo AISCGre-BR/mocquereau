@@ -1,7 +1,7 @@
 // src/main/project-io.ts
 //
-// Project IPC on top of document-io. Channel names and payloads are the ones
-// App.tsx and ProjectSetup.tsx already use (wave A2 keeps the UI untouched):
+// Project IPC on top of document-io. Channels and payloads used by the renderer
+// (useProjectFile):
 //   project:save(project, existingPath?)  -> { filePath } | null
 //   project:save-as(project, currentPath?) -> { filePath } | null
 //   project:open()                        -> { project, filePath | null } | null
@@ -191,7 +191,7 @@ export function registerProjectHandlers(hooks: ProjectIoHooks): void {
     return openPath(filePaths[0], hooks);
   });
 
-  // Recent files list. Missing file -> null (ProjectSetup shows its own message).
+  // Recent files list. Missing file -> null (the renderer shows its own message).
   ipcMain.handle('project:open-by-path', async (_event, filePath: unknown) => {
     if (typeof filePath !== 'string' || !existsSync(filePath)) return null;
     return openPath(filePath, hooks);
