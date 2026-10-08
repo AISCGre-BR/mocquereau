@@ -80,11 +80,17 @@ export function mergeClassification(library: Classification, project: Classifica
 /**
  * Edits made in the Classification dialog, carried into the user library:
  * the project's level names, value names and order win for the project's
- * ids; values only the library has stay, after them. Dedupes.
+ * ids; values only the library has stay, after them, except the `removed`
+ * ids (removed in the dialog: they leave the library too; a project that
+ * still uses one gets it back on open, through mergeClassification). Dedupes.
  */
-export function applyClassificationEdits(library: Classification, project: Classification): Classification {
+export function applyClassificationEdits(
+  library: Classification,
+  project: Classification,
+  removed: readonly string[] = [],
+): Classification {
   return project.map((pl, i) => {
-    const seen = new Set<string>();
+    const seen = new Set<string>(removed);
     const values = [];
     for (const v of [...pl.values, ...(library[i]?.values ?? [])]) {
       if (seen.has(v.id)) continue;

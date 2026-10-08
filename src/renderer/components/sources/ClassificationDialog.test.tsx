@@ -113,12 +113,15 @@ describe("ClassificationDialog", () => {
     expect(library[2].values.find((v) => v.name === "Laon (Metz)")).toBeTruthy();
   });
 
-  it("removing an unused value needs no confirmation", () => {
+  it("removing an unused value needs no confirmation and removes it from the library", async () => {
     const { classification } = mount(createNewProject("T", ""));
     const item = within(list("Região")).getByText("Inglesa").closest("li")!;
     fireEvent.contextMenu(item, { clientX: 10, clientY: 10 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Remover…" }));
     expect(classification()[1].values.some((v) => v.id === "regiao.inglesa")).toBe(false);
+    await flush();
+    expect(library[1].values.some((v) => v.id === "regiao.inglesa")).toBe(false);
+    expect(library[1].values.at(-1)!.id).toBe("v-lib-only");
   });
 
   it("removing a value in use confirms with the count, clears it in the sources, one undo step", async () => {
@@ -144,6 +147,8 @@ describe("ClassificationDialog", () => {
       ["tipo.moderna", null, null],
     ]);
     expect(classification()[0].values.some((v) => v.id === "tipo.quadrada")).toBe(false);
+    await flush();
+    expect(library[0].values.some((v) => v.id === "tipo.quadrada")).toBe(false);
     expect(screen.getByRole("dialog", { name: "Classificação" })).toBeTruthy();
     act(() => ref.history!.undo());
     expect(ref.state!.project!.sources[1].metadata.classes[0]).toBe("tipo.quadrada");

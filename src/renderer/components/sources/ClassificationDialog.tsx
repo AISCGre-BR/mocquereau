@@ -71,16 +71,17 @@ export function ClassificationDialog({ onClose }: ClassificationDialogProps) {
   const usersOf = (ref: ValueRef) => project.sources.filter((s) => s.metadata.classes[ref.level] === ref.id).length;
   const focusValue = (id: string) => (focusRequest.current = `[data-value-id="${id}"]`);
 
-  function syncLibrary(next: Classification) {
+  /** `removed`: ids removed here, which leave the user library too. */
+  function syncLibrary(next: Classification, removed: string[] = []) {
     libraryQueue.current = libraryQueue.current
       .then(() => window.mocquereau.getClassification())
-      .then((lib) => window.mocquereau.setClassification(applyClassificationEdits(lib, next)))
+      .then((lib) => window.mocquereau.setClassification(applyClassificationEdits(lib, next, removed)))
       .catch(() => {});
   }
 
-  function commit(next: Classification, meta: HistoryMeta = { coalesceKey: undefined }) {
+  function commit(next: Classification, meta: HistoryMeta = { coalesceKey: undefined }, removed: string[] = []) {
     dispatch({ type: "SET_CLASSIFICATION", payload: next, meta });
-    syncLibrary(next);
+    syncLibrary(next, removed);
   }
 
   // ── Inline edits ──────────────────────────────────────────────────────────
@@ -152,7 +153,12 @@ export function ClassificationDialog({ onClose }: ClassificationDialogProps) {
   function requestRemove(ref: ValueRef) {
     setMenu(null);
     if (usersOf(ref) > 0) setConfirmRemove(ref);
-    else commit(withLevel(classification, ref.level, (l) => ({ ...l, values: l.values.filter((v) => v.id !== ref.id) })));
+    else
+      commit(
+        withLevel(classification, ref.level, (l) => ({ ...l, values: l.values.filter((v) => v.id !== ref.id) })),
+        undefined,
+        [ref.id],
+      );
   }
 
   function confirmRemoval() {
@@ -168,7 +174,7 @@ export function ClassificationDialog({ onClose }: ClassificationDialogProps) {
     });
     // Classificação e fontes juntas: uma entrada de desfazer.
     dispatch({ type: "REPLACE_PROJECT", payload: { ...project!, classification: next, sources } });
-    syncLibrary(next);
+    syncLibrary(next, [ref.id]);
   }
 
   // ── Value rows: keyboard, menu, drag ──────────────────────────────────────
