@@ -134,6 +134,27 @@ describe('collectDocxCrops', () => {
     expect(payload.wordBoundaries[4]).toBe(true);
   });
 
+  it('orders rows by tableRows (grouped by level-1 value) with groupId, and fills groups', async () => {
+    const { collectDocxCrops } = await import('./docx-collect');
+    const [v0, v1] = SUGGESTED_CLASSIFICATION[0].values;
+    const mk = (id: string, order: number, l1: string | null) => ({
+      id, order,
+      metadata: { siglum: id, library: '', city: '', century: '', classes: [l1, null, null] as [string | null, string | null, string | null] },
+      lines: [], syllableCuts: {},
+    });
+    // Stored order differs from table order.
+    const payload = await collectDocxCrops(makeProject({
+      sources: [mk('none', 0, null), mk('b', 1, v1.id), mk('a', 2, v0.id)],
+    }));
+    expect(payload.rows.map((r) => r.meta.siglum)).toEqual(['a', 'b', 'none']);
+    expect(payload.rows.map((r) => r.groupId)).toEqual([v0.id, v1.id, null]);
+    expect(payload.groups).toEqual([
+      { id: v0.id, name: v0.name },
+      { id: v1.id, name: v1.name },
+      { id: null, name: null },
+    ]);
+  });
+
   it('produces one row per source', async () => {
     const { collectDocxCrops } = await import('./docx-collect');
     const project = makeProject({

@@ -62,7 +62,9 @@ export function useRecortesCommands(): RecortesCommands {
 
   function removeBoxAt(idx: number) {
     if (!source || !line || viewBoxes[idx] == null) return;
-    const boxes = { ...viewBoxes, [idx]: null };
+    // Removing a box leaves the syllable pending (key absent), not a gap (null).
+    const boxes = { ...viewBoxes };
+    delete boxes[idx];
     dispatch({
       type: "UPDATE_LINE_BOXES",
       payload: { sourceId: source.id, lineId: line.id, syllableBoxes: boxes, confirmed: hasAnyBox(boxes) },

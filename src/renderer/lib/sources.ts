@@ -58,6 +58,23 @@ export function groupSourcesByLevel1(sources: ManuscriptSource[], classification
   return groups;
 }
 
+export interface TableRowGroup {
+  group: { id: string | null; name: string | null };
+  sources: ManuscriptSource[];
+}
+
+/**
+ * The Tabela / DOCX rows: sources grouped by level-1 class value (in the order
+ * of the values; the group without a known value last), by `order` within a
+ * group. The single source of row order for the table and the export.
+ */
+export function tableRows(project: MocquereauProject): TableRowGroup[] {
+  return groupSourcesByLevel1(project.sources, project.classification).map((g) => ({
+    group: { id: g.value?.id ?? null, name: g.value?.name ?? null },
+    sources: g.sources,
+  }));
+}
+
 function syllableTotal(project: MocquereauProject): number {
   return project.text.words.reduce((n, w) => n + w.syllables.length, 0);
 }

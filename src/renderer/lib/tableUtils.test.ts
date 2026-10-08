@@ -114,4 +114,15 @@ describe('resolveCellState — overlapping pages', () => {
     const st = resolveCellState(s, 4);
     expect(st.kind === 'filled' && st.box).toEqual(first);
   });
+
+  it('a removed box (key absent) is pending and falls through to the next page', () => {
+    const s = src([line('l1', 0, 5, { syllableBoxes: { 1: BOX } }), line('l2', 0, 5, { syllableBoxes: { 4: BOX } })]);
+    expect(resolveCellState(s, 4).kind).toBe('filled');
+    expect(resolveCellState(s, 0).kind).toBe('unfilled');
+  });
+
+  it('a legacy null box is still a gap', () => {
+    const s = src([line('l1', 0, 5, { syllableBoxes: { 4: null } }), line('l2', 0, 5, { syllableBoxes: { 4: BOX } })]);
+    expect(resolveCellState(s, 4).kind).toBe('gap');
+  });
 });

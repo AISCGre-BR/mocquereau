@@ -17,13 +17,10 @@ import {
 } from 'docx';
 import { dialog, ipcMain } from 'electron';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { t } from './i18n';
 import type { DocxExportPayload, DocxCellData } from '../renderer/lib/models';
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
-let debugFirstCellWritten = false;
 function log(...args: unknown[]) {
   // eslint-disable-next-line no-console
   console.log('[docx-export]', ...args);
@@ -230,16 +227,6 @@ function buildDataCell(cell: DocxCellData): TableCell {
       nodeBuffer[2] === 0x4e &&
       nodeBuffer[3] === 0x47;
     log(`cell buffer: size=${nodeBuffer.length} bytes, first=${firstBytes}, validPng=${isValidPng}, dims=${dims.width}x${dims.height}, cropSrc=${cell.cropWidth}x${cell.cropHeight}`);
-
-    // Write first valid buffer to tmp for manual inspection
-    if (!debugFirstCellWritten && isValidPng) {
-      debugFirstCellWritten = true;
-      const debugPath = join(tmpdir(), 'mocquereau-debug-cell.png');
-      writeFile(debugPath, nodeBuffer).then(
-        () => log(`first cell PNG written to ${debugPath} for inspection`),
-        (err) => log('failed to write debug PNG:', err),
-      );
-    }
 
     const imgId = nextImageId();
     children = [
@@ -476,7 +463,6 @@ function buildDocument(payload: DocxExportPayload): Document {
 // ── IPC handler ───────────────────────────────────────────────────────────────
 export function registerDocxExportHandler(): void {
   ipcMain.handle('export:docx', async (_event, payload: DocxExportPayload) => {
-    debugFirstCellWritten = false; // reset for each export
     imageIdCounter = 1000;          // reset unique image ID counter
     try {
       log(`payload received: title="${payload.title}", rows=${payload.rows.length}, syllables=${payload.syllables.length}`);

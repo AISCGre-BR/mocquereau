@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { groupSourcesByLevel1, resolveUnsetRanges, suggestRangeForNewPage } from "./sources";
+import { tableRows, groupSourcesByLevel1, resolveUnsetRanges, suggestRangeForNewPage } from "./sources";
+import { SUGGESTED_CLASSIFICATION } from "@shared/classification";
 import { createNewProject } from "../hooks/useProject";
 import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "./models";
 
@@ -84,5 +85,30 @@ describe("groupSourcesByLevel1", () => {
   it("orders each group by source.order", () => {
     const groups = groupSourcesByLevel1([src("late", 3, v0.id), src("early", 1, v0.id)], classification);
     expect(groups[0].sources.map((s) => s.id)).toEqual(["early", "late"]);
+  });
+});
+
+describe("tableRows", () => {
+  const src = (id: string, order: number, l1: string | null): ManuscriptSource => ({
+    id, order, metadata: { siglum: id, library: "", city: "", century: "", classes: [l1, null, null] },
+    lines: [], syllableCuts: {},
+  });
+  const [v0, v1] = SUGGESTED_CLASSIFICATION[0].values;
+  const proj = (sources: ManuscriptSource[]): MocquereauProject => ({ ...createNewProject("T", ""), sources });
+
+  it("groups follow the value order, the group without value goes last, rows follow `order`", () => {
+    const rows = tableRows(proj([src("n1", 0, null), src("b2", 5, v1.id), src("b1", 2, v1.id), src("a1", 9, v0.id)]));
+    expect(rows.map((r) => r.group)).toEqual([
+      { id: v0.id, name: v0.name },
+      { id: v1.id, name: v1.name },
+      { id: null, name: null },
+    ]);
+    expect(rows.map((r) => r.sources.map((s) => s.id))).toEqual([["a1"], ["b1", "b2"], ["n1"]]);
+  });
+
+  it("an unknown value goes to the group without value", () => {
+    const rows = tableRows(proj([src("x", 0, "valor.inexistente"), src("a1", 1, v0.id)]));
+    expect(rows.map((r) => r.group.id)).toEqual([v0.id, null]);
+    expect(rows[1].sources.map((s) => s.id)).toEqual(["x"]);
   });
 });

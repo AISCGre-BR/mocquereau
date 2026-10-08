@@ -358,7 +358,7 @@ describe("RecortesView: faixa de sílabas", () => {
     expect(v.line().gaps).toEqual([1]);
     fireEvent.contextMenu(syl(0));
     fireEvent.click(v.getByRole("menuitem", { name: "Remover caixa" }));
-    expect(v.line().syllableBoxes![0]).toBeNull();
+    expect(v.line().syllableBoxes![0]).toBeUndefined();
   });
 
   it("marcar sem neuma numa sílaba com caixa remove a caixa no mesmo passo de desfazer", () => {
@@ -442,7 +442,7 @@ describe("RecortesView: atalhos", () => {
   it("Delete remove a caixa ativa na hora e desconfirma a página vazia", () => {
     const v = mount(projectWith());
     v.key({ key: "Delete" });
-    expect(v.line().syllableBoxes![0]).toBeNull();
+    expect(v.line().syllableBoxes![0]).toBeUndefined();
     expect(v.line().confirmed).toBe(false);
     expect(v.wrapper().querySelector("[data-box-overlay]")).toBeNull();
   });
@@ -580,7 +580,7 @@ describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
       "Próxima fonteCtrl+Enter",
     ]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Remover caixa/ }));
-    expect(v.line().syllableBoxes![0]).toBeNull();
+    expect(v.line().syllableBoxes![0]).toBeUndefined();
     expect(v.queryByRole("menu")).toBeNull();
   });
 
