@@ -11,6 +11,7 @@ import { pigmentOf } from "../../ui/pigment";
 import { useTooltip } from "../../ui/Tooltip";
 import { MenuItem, MenuSurface } from "../../ui/Menu";
 import { belowElement } from "../texto/SyllableText";
+import { isLineGap } from "../../lib/syllable-gap";
 
 export interface SyllableRange {
   start: number;
@@ -203,7 +204,7 @@ export function SyllableStrip({
           active={i === activeSyllable}
           inRange={i >= range.start && i <= range.end}
           hasBox={line.syllableBoxes?.[i] != null}
-          gap={line.gaps.includes(i)}
+          gap={isLineGap(line, i)}
           coveredBy={coveredByOthers.get(i)}
           tabStop={i === tabStop}
           onClick={() => activate(i)}
@@ -240,7 +241,7 @@ export function SyllableStrip({
         >
           <MenuItem
             label={t("syllableStrip.noNeume")}
-            checked={line.gaps.includes(menuIndex)}
+            checked={isLineGap(line, menuIndex)}
             disabled={menuIndex < range.start || menuIndex > range.end}
             onSelect={() => onToggleGap(menuIndex)}
           />

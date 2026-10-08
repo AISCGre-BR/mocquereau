@@ -24,6 +24,7 @@ import { MenuItem, MenuSeparator, MenuSurface } from "../ui/Menu";
 import { recortesMenuItems } from "../shell/menus";
 import { formatAccelerator } from "../shell/accelerator";
 import { flattenSyllables } from "../lib/sliceUtils";
+import { planGapToggle } from "../lib/syllable-gap";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
 
@@ -170,19 +171,26 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
 
   function toggleGap(idx: number) {
     if (!activeSource || !activeLine) return;
-    const adding = !activeLine.gaps.includes(idx);
-    const gaps = adding ? [...activeLine.gaps, idx].sort((a, b) => a - b) : activeLine.gaps.filter((g) => g !== idx);
-    if (adding && viewBoxes[idx] != null) {
-      // "Sem neuma nesta página" on a boxed syllable: the box goes in the same
-      // undo step (a box and a gap for one syllable would contradict).
-      const { [idx]: _dropped, ...boxes } = viewBoxes;
+    const plan = planGapToggle(activeSource, activeLine, idx);
+    if (plan.dropBox || plan.dropCut) {
+      // Marking a boxed syllable drops the box; unmarking a legacy gap drops its
+      // null box and null crop. Either way in the same undo step.
+      const { [idx]: _dropped, ...rest } = viewBoxes;
+      const boxes = plan.dropBox ? rest : viewBoxes;
       dispatch({
         type: "UPDATE_LINE_BOXES",
-        payload: { sourceId: activeSource.id, lineId: activeLine.id, syllableBoxes: boxes, gaps, confirmed: hasAnyBox(boxes) },
+        payload: {
+          sourceId: activeSource.id,
+          lineId: activeLine.id,
+          syllableBoxes: boxes,
+          gaps: plan.gaps,
+          confirmed: hasAnyBox(boxes),
+          ...(plan.dropCut ? { dropCuts: [idx] } : {}),
+        },
       });
       return;
     }
-    dispatch({ type: "SET_LINE_GAPS", payload: { sourceId: activeSource.id, lineId: activeLine.id, gaps } });
+    dispatch({ type: "SET_LINE_GAPS", payload: { sourceId: activeSource.id, lineId: activeLine.id, gaps: plan.gaps } });
   }
 
   /** Ctrl+[ / Ctrl+] on the sheet: each quarter turn is its own undo step, like the panel's. */
