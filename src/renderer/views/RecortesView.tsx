@@ -44,7 +44,7 @@ function coveredByOtherPages(
 /** Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas). */
 export function isOutsideEditorKeys(target: Element): boolean {
   if (target.tagName === "BUTTON" || target.tagName === "SELECT") return true;
-  return target.closest("[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist],[role=tree]") !== null;
+  return target.closest("[role=menubar],[role=menu],[role=toolbar],[role=dialog],[role=tablist],[role=tree],[role=slider]") !== null;
 }
 
 function sameBox(a: SyllableBox | null | undefined, b: SyllableBox | null | undefined): boolean {

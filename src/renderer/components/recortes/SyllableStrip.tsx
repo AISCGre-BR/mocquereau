@@ -98,8 +98,9 @@ export function SyllableStrip({
 
   function startDrag(edge: Edge, e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
+    // preventDefault also keeps focus where it was: a mouse drag doesn't pull
+    // the Tab/Enter flow of the editor into the strip.
     e.preventDefault();
-    e.currentTarget.focus();
     // Window listeners, not pointer capture: the handle moves in the DOM as the range changes.
     const move = (ev: globalThis.MouseEvent) => moveEdge(edge, edgeAt(edge, ev.clientX));
     const stop = () => {
@@ -162,6 +163,31 @@ export function SyllableStrip({
     setMenu({ index: i, ...(e.clientX === 0 && e.clientY === 0 ? belowElement(e.currentTarget) : { x: e.clientX, y: e.clientY }) });
   }
 
+  // Roving focus: the strip is one tab stop; arrows move between syllables.
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const tabStop = Math.min(last, Math.max(0, focusIdx ?? activeSyllable ?? range.start));
+  const isInert = (i: number) => coveredByOthers.has(i) && (i < range.start || i > range.end);
+
+  function focusSyllable(i: number) {
+    const to = Math.max(0, Math.min(last, i));
+    setFocusIdx(to);
+    scrollRef.current?.querySelector<HTMLElement>(`[data-syllable="${to}"]`)?.focus();
+  }
+
+  function syllableKey(i: number, e: KeyboardEvent<HTMLElement>) {
+    if (e.key === "ArrowLeft") focusSyllable(i - 1);
+    else if (e.key === "ArrowRight") focusSyllable(i + 1);
+    else if (e.key === "Home") focusSyllable(0);
+    else if (e.key === "End") focusSyllable(last);
+    else if (e.key === "Enter" || e.key === " ") {
+      if (!isInert(i)) activate(i);
+    } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      if (!isInert(i)) setMenu({ index: i, ...belowElement(e.currentTarget) });
+    } else return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   const items: ReactNode[] = [];
   let index = 0;
   for (const [w, word] of words.entries()) {
@@ -179,8 +205,11 @@ export function SyllableStrip({
           hasBox={line.syllableBoxes?.[i] != null}
           gap={line.gaps.includes(i)}
           coveredBy={coveredByOthers.get(i)}
+          tabStop={i === tabStop}
           onClick={() => activate(i)}
           onContextMenu={(e) => openMenu(i, e)}
+          onKeyDown={(e) => syllableKey(i, e)}
+          onFocus={() => setFocusIdx(i)}
         />,
       );
       if (i === range.end) items.push(handle("end"));
@@ -192,7 +221,8 @@ export function SyllableStrip({
     <>
       <div
         ref={scrollRef}
-        role="group"
+        role="toolbar"
+        aria-orientation="horizontal"
         aria-label={t("syllableStrip.label")}
         className="flex h-11 items-end overflow-x-auto overflow-y-hidden whitespace-nowrap rounded-lg bg-surface px-3.5 shadow-elev-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onWheel={(e) => {
@@ -234,22 +264,42 @@ interface SyllableProps {
   hasBox: boolean;
   gap: boolean;
   coveredBy: string | undefined;
+  tabStop: boolean;
   onClick(): void;
   onContextMenu(e: MouseEvent<HTMLElement>): void;
+  onKeyDown(e: KeyboardEvent<HTMLElement>): void;
+  onFocus(): void;
 }
 
-function Syllable({ index, text, wordEnd, active, inRange, hasBox, gap, coveredBy, onClick, onContextMenu }: SyllableProps) {
+function Syllable({
+  index,
+  text,
+  wordEnd,
+  active,
+  inRange,
+  hasBox,
+  gap,
+  coveredBy,
+  tabStop,
+  onClick,
+  onContextMenu,
+  onKeyDown,
+  onFocus,
+}: SyllableProps) {
   const { t } = useTranslation();
   const { anchorProps, tooltip } = useTooltip<HTMLSpanElement>(t("syllableStrip.coveredBy", { folio: coveredBy ?? "" }));
-  // Only what is outside this page's range counts as taken by another page.
-  const covered = coveredBy !== undefined && !inRange;
+  // Also confirmed by another page of the source: shown as taken everywhere,
+  // but inert only outside this page's range (overlapping pages are allowed).
+  const covered = coveredBy !== undefined;
+  const inert = covered && !inRange;
 
   const className = [
     "relative mb-1.5 flex-none select-none rounded-sm px-1 pt-1 pb-1.5 font-serif text-[16px] leading-5",
     wordEnd ? "mr-3" : "",
     active ? "bg-rubric-wash italic text-rubric" : inRange && !hasBox ? "text-ink-muted" : "text-ink",
-    inRange ? "" : "opacity-40",
-    covered ? "cursor-default" : "cursor-pointer",
+    inRange && !covered ? "" : "opacity-40",
+    inert ? "cursor-default" : "cursor-pointer",
+    "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
   ]
     .filter(Boolean)
     .join(" ");
@@ -271,10 +321,21 @@ function Syllable({ index, text, wordEnd, active, inRange, hasBox, gap, coveredB
   return (
     <span
       data-syllable={index}
+      role="button"
+      aria-pressed={active}
+      aria-disabled={inert || undefined}
+      tabIndex={tabStop ? 0 : -1}
       className={className}
       {...(covered ? anchorProps : {})}
-      onClick={covered ? undefined : onClick}
-      onContextMenu={(e) => (covered ? e.preventDefault() : onContextMenu(e))}
+      // A click must not focus the strip, or Tab/Enter would stop driving the editor.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={inert ? undefined : onClick}
+      onContextMenu={(e) => (inert ? e.preventDefault() : onContextMenu(e))}
+      onKeyDown={onKeyDown}
+      onFocus={() => {
+        onFocus();
+        if (covered) anchorProps.onFocus();
+      }}
     >
       {text}
       {underline}

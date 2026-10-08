@@ -98,6 +98,73 @@ describe("SyllableStrip: estados", () => {
   });
 });
 
+describe("SyllableStrip: coberta dentro do intervalo", () => {
+  it("mostra o sinal de coberta (40% e fólio) mas continua clicável", () => {
+    vi.useFakeTimers();
+    try {
+      const v = mount({ coveredByOthers: new Map([[1, "12v"]]) });
+      expect(v.syl(1).className).toContain("opacity-40");
+      expect(v.syl(1).className).toContain("cursor-pointer");
+      fireEvent.click(v.syl(1));
+      expect(v.props.onActivate).toHaveBeenCalledWith(1);
+      fireEvent.contextMenu(v.syl(1));
+      expect(screen.getByRole("menu")).toBeTruthy();
+      fireEvent.mouseEnter(v.syl(1));
+      act(() => void vi.advanceTimersByTime(600));
+      expect(screen.getByRole("tooltip").textContent).toContain("12v");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("SyllableStrip: teclado nas sílabas", () => {
+  it("é uma parada de Tab só, na sílaba ativa", () => {
+    const v = mount();
+    const stops = Array.from(v.container.querySelectorAll("[data-syllable]")).filter((el) => (el as HTMLElement).tabIndex === 0);
+    expect(stops).toEqual([v.syl(2)]);
+  });
+
+  it("setas movem o foco, Enter ativa (e estende fora do intervalo), sem chegar à janela", () => {
+    const v = mount();
+    const winKey = vi.fn();
+    window.addEventListener("keydown", winKey);
+    try {
+      act(() => v.syl(2).focus());
+      fireEvent.keyDown(v.syl(2), { key: "ArrowRight" });
+      expect(document.activeElement).toBe(v.syl(3));
+      expect(v.syl(3).tabIndex).toBe(0);
+      fireEvent.keyDown(v.syl(3), { key: "ArrowRight" });
+      fireEvent.keyDown(v.syl(4), { key: "Enter" });
+      expect(v.props.onRangeChange).toHaveBeenCalledWith({ start: 1, end: 4 });
+      expect(v.props.onActivate).toHaveBeenCalledWith(4);
+      fireEvent.keyDown(v.syl(4), { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(v.syl(3));
+      expect(winKey).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", winKey);
+    }
+  });
+
+  it("Shift+F10 e a tecla de menu abrem o menu da sílaba sob ela", () => {
+    const v = mount();
+    fireEvent.keyDown(v.syl(2), { key: "F10", shiftKey: true });
+    const menu = screen.getByRole("menu");
+    expect(menu.style.left).toBe("80px"); // getBoundingClientRect of syllable 2
+    expect(menu.style.top).toBe("20px");
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.keyDown(v.syl(3), { key: "ContextMenu" });
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Sem neuma nesta página" }));
+    expect(v.props.onToggleGap).toHaveBeenCalledWith(3);
+  });
+
+  it("clicar com o mouse não tira o foco do editor", () => {
+    const v = mount();
+    expect(fireEvent.mouseDown(v.syl(3))).toBe(false);
+  });
+});
+
 describe("SyllableStrip: clique", () => {
   it("dentro do intervalo só ativa", () => {
     const v = mount();

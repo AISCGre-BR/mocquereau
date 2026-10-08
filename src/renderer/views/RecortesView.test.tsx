@@ -230,6 +230,31 @@ describe("RecortesView: faixa de sílabas", () => {
     expect(v.line().syllableBoxes![0]).toBeNull();
   });
 
+  it("Tab numa alça focada move o foco (não é roubado pelo atalho do editor)", () => {
+    const v = mount(projectWith());
+    const activeIdx = () => v.container.querySelector("[data-syllable].italic")?.getAttribute("data-syllable");
+    expect(activeIdx()).toBe("0");
+    act(() => v.endHandle().focus());
+    const notPrevented = fireEvent.keyDown(v.endHandle(), { key: "Tab" });
+    expect(notPrevented).toBe(true);
+    expect(activeIdx()).toBe("0");
+    // Arrows on the handle are its own: they change the range, not the active box.
+    fireEvent.keyDown(v.endHandle(), { key: "ArrowRight" });
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 4 });
+    expect(v.line().syllableBoxes![0]).toEqual(BOX);
+  });
+
+  it("Enter numa sílaba focada da faixa ativa essa sílaba, não avança a do editor", () => {
+    const v = mount(projectWith());
+    const syl = (i: number) => v.container.querySelector(`[data-syllable="${i}"]`) as HTMLElement;
+    act(() => syl(0).focus());
+    fireEvent.keyDown(syl(0), { key: "ArrowRight" });
+    fireEvent.keyDown(syl(1), { key: "ArrowRight" });
+    fireEvent.keyDown(syl(2), { key: "Enter" });
+    expect(syl(2).className).toContain("italic");
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 3 });
+  });
+
   it("sílabas confirmadas por outra página da fonte ficam inertes", () => {
     const v = mount(
       projectWith([
@@ -316,9 +341,10 @@ describe("RecortesView: teclas globais não roubam as da casca", () => {
       <div role="tablist"><span id="tl">x</span></div>
       <div role="menu"><div id="mi">x</div></div>
       <div role="tree"><div role="treeitem" id="ti">x</div></div>
+      <div role="slider" id="sl" tabindex="0"></div>
       <button id="b">ok</button><select id="s"></select>
       <div id="canvas"></div>`;
-    for (const id of ["m", "tb", "d", "tl", "mi", "ti", "b", "s"]) {
+    for (const id of ["m", "tb", "d", "tl", "mi", "ti", "sl", "b", "s"]) {
       expect(isOutsideEditorKeys(document.getElementById(id)!)).toBe(true);
     }
     expect(isOutsideEditorKeys(document.getElementById("canvas")!)).toBe(false);
