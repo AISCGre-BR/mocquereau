@@ -332,17 +332,19 @@ export function ImageCanvas({
   }
 
   return (
-    <div className="relative flex flex-col h-full bg-parchment-deep">
-      {/* Image + boxes area */}
-      <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto">
+    <div className="relative flex flex-col h-full">
+      {/* Image + boxes area: 16 px margins around the sheet, which sits in a
+          card (radius-lg, elev-2). Zoom 1 still fits the sheet to the width. */}
+      <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto p-4">
         {/* Wrapper = AABB do retângulo da imagem rotacionada (axis-aligned com a tela).
             Não recebe rotation transform: só translate+aspect-ratio. As boxes
             são posicionadas em fração desse AABB. */}
         <div
           ref={imageWrapperRef}
           data-image-wrapper
+          data-sheet-card
           className={[
-            'relative mx-auto',
+            'relative mx-auto rounded-lg bg-surface shadow-elev-2',
             drawMode && activeSyllableIdx !== null && boxes[activeSyllableIdx] == null
               ? 'cursor-crosshair'
               : 'cursor-default',
@@ -360,21 +362,25 @@ export function ImageCanvas({
           onLostPointerCapture={handleImagePointerCancel}
           onContextMenu={onContextMenu}
         >
-          <img
-            src={image.dataUrl}
-            alt={t('imageCanvas.manuscriptAlt')}
-            className="block select-none pointer-events-none absolute"
-            draggable={false}
-            style={{
-              left: '50%',
-              top: '50%',
-              width: `${imgWidthPct}%`,
-              height: `${imgHeightPct}%`,
-              transform: `translate(-50%, -50%) ${imageTransform ?? ''}`.trim(),
-              transformOrigin: 'center center',
-              filter: imageFilter || undefined,
-            }}
-          />
+          {/* The card's rounded corners clip the image only: box tags and
+              handles may still reach past the sheet's edge. */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">
+            <img
+              src={image.dataUrl}
+              alt={t('imageCanvas.manuscriptAlt')}
+              className="block select-none pointer-events-none absolute"
+              draggable={false}
+              style={{
+                left: '50%',
+                top: '50%',
+                width: `${imgWidthPct}%`,
+                height: `${imgHeightPct}%`,
+                transform: `translate(-50%, -50%) ${imageTransform ?? ''}`.trim(),
+                transformOrigin: 'center center',
+                filter: imageFilter || undefined,
+              }}
+            />
+          </div>
 
           {/* Non-active boxes — clickable to switch active syllable. Always rendered
               when there's a box (visible styling only when showAllBoxes is on). */}
