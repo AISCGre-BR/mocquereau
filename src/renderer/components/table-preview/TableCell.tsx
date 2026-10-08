@@ -7,6 +7,19 @@ import { buildImageFilter, buildImageTransform, normalizeRotation } from '../../
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 
+/** Where a menu opened from the cell goes, and the cell to refocus when it closes. */
+export interface CellAnchor {
+  x: number;
+  y: number;
+  cell: HTMLElement;
+}
+
+/** Keyboard anchor: below the cell's left edge. */
+function anchorBelow(cell: HTMLElement): CellAnchor {
+  const r = cell.getBoundingClientRect();
+  return { x: r.left, y: r.bottom, cell };
+}
+
 export interface TableCellProps {
   state: CellState;
   /** First syllable of a word (not the first of the text): left border rule-strong, else rule-soft. */
@@ -17,8 +30,12 @@ export interface TableCellProps {
   colWidthPx: number;
   /** Row height in pixels — uniform (D-10). */
   rowHeightPx: number;
-  /** Called when cell is clicked — opens context menu (D-06). */
-  onClick: (e: React.MouseEvent) => void;
+  /** Accessible name: "Recortar <sílaba> em <sigla>" (pending) or the cell actions. */
+  ariaLabel?: string;
+  /** Click, Enter or Space: pending goes to Recortes, otherwise opens the menu (D-06). */
+  onActivate: (anchor: CellAnchor) => void;
+  /** Right click, the ContextMenu key or Shift+F10: opens the menu. */
+  onOpenMenu: (anchor: CellAnchor) => void;
   /** Ajustes visuais da linha de origem do recorte (Phase 10 / IMG-06; expandido em Phase 11 / IMG-07).
    *  Undefined/default → célula renderiza sem filter/transform (idêntico a v0.0.3).
    *
@@ -41,7 +58,9 @@ export function TableCell({
   testId,
   colWidthPx,
   rowHeightPx,
-  onClick,
+  ariaLabel,
+  onActivate,
+  onOpenMenu,
   adjustments,
 }: TableCellProps) {
   const { t } = useTranslation();
@@ -82,7 +101,7 @@ export function TableCell({
       ref={cellRef}
       data-testid={testId}
       className={[
-        'group relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-l border-b border-rule-soft',
+        'group relative flex-shrink-0 flex items-center justify-center cursor-pointer select-none border-l border-b border-rule-soft focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus',
         // Fronteira de palavra: borda esquerda rule-strong; dentro da palavra, rule-soft.
         startsWord ? 'border-l-rule-strong' : '',
         pending ? 'bg-parchment hover:bg-rubric-wash' : '',
@@ -91,7 +110,28 @@ export function TableCell({
         width: colWidthPx,
         height: rowHeightPx,
       }}
-      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      aria-haspopup={state.kind === 'unfilled' ? undefined : 'menu'}
+      onClick={(e) => {
+        e.stopPropagation();
+        onActivate({ x: e.clientX, y: e.clientY, cell: e.currentTarget });
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpenMenu({ x: e.clientX, y: e.clientY, cell: e.currentTarget });
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onActivate(anchorBelow(e.currentTarget));
+        } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+          e.preventDefault();
+          onOpenMenu(anchorBelow(e.currentTarget));
+        }
+      }}
       onMouseEnter={() => state.kind === 'filled' && setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       title={

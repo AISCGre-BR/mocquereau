@@ -37,14 +37,18 @@ export function useTableZoom(): TableZoom {
 
 /**
  * Ctrl+= / Ctrl+- / Ctrl+0 zoom the table. Called by the table itself, so the
- * shortcuts only act while the Tabela view is mounted. preventDefault keeps
- * Electron's page zoom out of the way.
+ * shortcuts only act while the Tabela view is mounted, and not while focus is
+ * in a dialog or an editable element. preventDefault keeps Electron's page
+ * zoom out of the way.
  */
 export function useTableZoomShortcuts(): void {
   const { zoomIn, zoomOut, zoomReset } = useTableZoom();
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      // A dialog (Exportar) or a text field keeps its own keys.
+      const target = e.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, [role=dialog]"))) return;
       if (e.key === "=" || e.key === "+") {
         e.preventDefault();
         zoomIn();

@@ -10,7 +10,9 @@ import { useTableZoom, useTableZoomShortcuts } from '../hooks/useTableZoom';
 import { flattenSyllables } from '../lib/sliceUtils';
 import { resolveCellState, isWordBoundary, firstFolio } from '../lib/tableUtils';
 import { tableRows } from '../lib/sources';
-import { TableCell } from './table-preview/TableCell';
+import { toggleCellGap } from '../lib/syllable-gap';
+import type { MenuCloseReason } from '../ui/Menu';
+import { TableCell, type CellAnchor } from './table-preview/TableCell';
 import { ContextMenu } from './table-preview/ContextMenu';
 import type { ManuscriptSource } from '../lib/models';
 import { useTranslation } from 'react-i18next';
@@ -27,6 +29,15 @@ const BASE_SIGLUM_LINE_HEIGHT = 20;
 const BASE_SYL_FONT_SIZE = 15; // serifa 15
 const BASE_CAPTION_FONT_SIZE = 12; // caption
 const BASE_CAPTION_LINE_HEIGHT = 16;
+
+// Paddings da área (px-8) e do cartão (px-10), fixos em qualquer zoom.
+// O Chromium prende o sticky dentro do padding da área de rolagem; por isso
+// o que é fixo à esquerda usa left = -SCROLL_PAD_X (encosta na borda da área)
+// e se estende para a esquerda por CARD_PAD_X com o fundo do cartão: na
+// rolagem horizontal as células passam por baixo, nunca à esquerda dele.
+const SCROLL_PAD_X = 32;
+const CARD_PAD_X = 40;
+const STICKY_LEFT = { left: -SCROLL_PAD_X, paddingLeft: CARD_PAD_X } as const;
 
 /** Legenda da fonte: "Cidade, Data · f. 12r", sem as partes vazias. */
 export function sourceCaption(source: ManuscriptSource): string {
@@ -46,6 +57,8 @@ interface MenuState {
   y: number;
   sourceId: string;
   syllableIdx: number;
+  /** The cell that opened the menu: it gets the focus back when the menu closes. */
+  cell: HTMLElement;
 }
 
 export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
@@ -85,18 +98,23 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   const sources = groups.flatMap((g) => g.sources);
 
   // ── Context menu handlers ────────────────────────────────────────────────────
-  function handleCellClick(e: React.MouseEvent, sourceId: string, syllableIdx: number, unfilled: boolean) {
-    e.stopPropagation();
+  function openMenu(sourceId: string, syllableIdx: number, anchor: CellAnchor) {
+    setMenu({ x: anchor.x, y: anchor.y, sourceId, syllableIdx, cell: anchor.cell });
+  }
+
+  function handleCellActivate(sourceId: string, syllableIdx: number, unfilled: boolean, anchor: CellAnchor) {
     // Célula pendente: nada a remover nem a marcar além de recortar; vai direto a Recortes.
     if (unfilled) {
       onNavigateToEditor?.(sourceId, syllableIdx);
       return;
     }
-    setMenu({ x: e.clientX, y: e.clientY, sourceId, syllableIdx });
+    openMenu(sourceId, syllableIdx, anchor);
   }
 
-  function closeMenu() {
+  function closeMenu(reason: MenuCloseReason) {
+    const cell = menu?.cell;
     setMenu(null);
+    if (reason !== 'outside') cell?.focus();
   }
 
   function getMenuSource(): ManuscriptSource | undefined {
@@ -125,32 +143,12 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
     dispatch({ type: 'UPDATE_SOURCE', payload: { ...source, syllableCuts: newCuts, lines: newLines } });
   }
 
-  function handleMarkAsGap() {
+  /** "Sem neuma nesta página": the same toggle as Recortes, on the page that decides the cell. */
+  function handleToggleGap() {
     if (!menu) return;
     const source = getMenuSource();
     if (!source) return;
-    // Find the line covering this syllable and toggle its box to null (explicit gap)
-    const newLines = source.lines.map(line => {
-      const { start, end } = line.syllableRange;
-      if (menu.syllableIdx < start || menu.syllableIdx > end) return line;
-      const boxes = { ...(line.syllableBoxes ?? {}) };
-      // If currently a gap (null), unmark it (remove key → unfilled)
-      if (boxes[menu.syllableIdx] === null) {
-        delete boxes[menu.syllableIdx];
-      } else {
-        boxes[menu.syllableIdx] = null;
-      }
-      return { ...line, syllableBoxes: boxes };
-    });
-    // Also update syllableCuts: null = gap
-    const newCuts = { ...source.syllableCuts };
-    const wasGap = newCuts[menu.syllableIdx] === null;
-    if (wasGap) {
-      delete newCuts[menu.syllableIdx];
-    } else {
-      newCuts[menu.syllableIdx] = null;
-    }
-    dispatch({ type: 'UPDATE_SOURCE', payload: { ...source, lines: newLines, syllableCuts: newCuts } });
+    dispatch({ type: 'UPDATE_SOURCE', payload: toggleCellGap(source, menu.syllableIdx) });
   }
 
   // Largura da tabela: coluna de metadados + N colunas de sílaba.
@@ -163,8 +161,11 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   // A área rola; o cabeçalho de sílabas e a coluna de metadados ficam fixos nela.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto px-8 py-7">
-        <div className="flex w-max flex-col gap-5 rounded-lg bg-surface px-10 pt-9 pb-10 shadow-elev-2">
+      <div className="min-h-0 flex-1 overflow-auto py-7" style={{ paddingInline: SCROLL_PAD_X }}>
+        <div
+          className="flex w-max flex-col gap-5 rounded-lg bg-surface pt-9 pb-10 shadow-elev-2"
+          style={{ paddingInline: CARD_PAD_X }}
+        >
           <div>
             <h1 className="m-0 font-serif text-doc-title font-semibold text-ink">{title}</h1>
             {author && (
@@ -174,19 +175,22 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
             )}
           </div>
 
-          <div style={{ width: tableWidth }}>
+          {/* A tabela começa na borda do cartão: a coluna fixa cobre o padding (ver STICKY_LEFT). */}
+          <div style={{ width: CARD_PAD_X + tableWidth, marginLeft: -CARD_PAD_X }}>
             {/* ── Cabeçalho: uma linha de sílabas, fixa no topo ── */}
-            <div className="sticky top-0 z-20 flex border-b border-rule bg-surface">
+            <div className="sticky top-0 z-20 flex bg-surface">
               <div
-                className="sticky left-0 z-30 flex-shrink-0 bg-surface"
-                style={{ width: METADATA_COL_WIDTH, height: HEADER_ROW_HEIGHT }}
-              />
+                className="sticky z-30 box-content flex-shrink-0 bg-surface"
+                style={{ ...STICKY_LEFT, width: METADATA_COL_WIDTH, height: HEADER_ROW_HEIGHT }}
+              >
+                <div className="h-full border-b border-rule" />
+              </div>
               {syllables.map((syl, idx) => (
                 <div
                   key={idx}
                   data-testid={`syllable-header-${idx}`}
                   className={[
-                    'flex flex-shrink-0 items-center justify-center overflow-hidden border-l border-rule-soft font-serif text-ink',
+                    'flex flex-shrink-0 items-center justify-center overflow-hidden border-b border-l border-rule-soft border-b-rule font-serif text-ink',
                     startsWord(idx) ? 'border-l-rule-strong' : '',
                   ].join(' ')}
                   style={{ width: COL_WIDTH, height: HEADER_ROW_HEIGHT }}
@@ -207,7 +211,9 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                 {/* ── Linha do grupo (só para grupos com nome) ── */}
                 {group.group.name !== null && (
                   <div data-testid={`group-row-${group.group.id}`} className="pt-4 pb-1.5">
-                    <span className="sticky left-0 inline-block text-caption font-semibold text-ink-muted">{group.group.name}</span>
+                    <span className="sticky inline-block text-caption font-semibold text-ink-muted" style={STICKY_LEFT}>
+                      {group.group.name}
+                    </span>
                   </div>
                 )}
 
@@ -225,24 +231,26 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                     <div key={source.id} data-testid={`source-row-${source.id}`} className="flex">
                       {/* ── Metadados, fixos à esquerda ── */}
                       <div
-                        className="sticky left-0 z-10 flex flex-shrink-0 flex-col justify-center border-b border-rule-soft bg-surface pr-4"
-                        style={{ width: METADATA_COL_WIDTH, height: ROW_HEIGHT }}
+                        className="sticky z-10 box-content flex-shrink-0 bg-surface"
+                        style={{ ...STICKY_LEFT, width: METADATA_COL_WIDTH, height: ROW_HEIGHT }}
                       >
-                        <span
-                          className="truncate font-serif font-medium text-ink"
-                          style={{
-                            fontSize: scale(BASE_SIGLUM_FONT_SIZE),
-                            lineHeight: `${scale(BASE_SIGLUM_LINE_HEIGHT)}px`,
-                          }}
-                          title={source.metadata.siglum}
-                        >
-                          {source.metadata.siglum}
-                        </span>
-                        {caption && (
-                          <span className="truncate text-ink-muted" style={captionStyle} title={caption}>
-                            {caption}
+                        <div className="flex h-full flex-col justify-center border-b border-rule-soft pr-4">
+                          <span
+                            className="truncate font-serif font-medium text-ink"
+                            style={{
+                              fontSize: scale(BASE_SIGLUM_FONT_SIZE),
+                              lineHeight: `${scale(BASE_SIGLUM_LINE_HEIGHT)}px`,
+                            }}
+                            title={source.metadata.siglum}
+                          >
+                            {source.metadata.siglum}
                           </span>
-                        )}
+                          {caption && (
+                            <span className="truncate text-ink-muted" style={captionStyle} title={caption}>
+                              {caption}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* ── Células ── */}
@@ -256,7 +264,12 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                             startsWord={startsWord(idx)}
                             colWidthPx={COL_WIDTH}
                             rowHeightPx={ROW_HEIGHT}
-                            onClick={(e) => handleCellClick(e, source.id, idx, cellState.kind === 'unfilled')}
+                            ariaLabel={t(cellState.kind === 'unfilled' ? 'tableCell.cropAt' : 'tableCell.actions', {
+                              syllable: syllables[idx],
+                              siglum: source.metadata.siglum,
+                            })}
+                            onActivate={(anchor) => handleCellActivate(source.id, idx, cellState.kind === 'unfilled', anchor)}
+                            onOpenMenu={(anchor) => openMenu(source.id, idx, anchor)}
                             adjustments={adjustmentsForSyllable(idx)}
                           />
                         );
@@ -283,7 +296,7 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
             isGap={cellState.kind === 'gap'}
             onEditInEditor={handleEditInEditor}
             onRemoveCrop={handleRemoveCrop}
-            onMarkAsGap={handleMarkAsGap}
+            onToggleGap={handleToggleGap}
             onClose={closeMenu}
           />
         );
