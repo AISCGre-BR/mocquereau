@@ -675,7 +675,7 @@ describe("projectReducer — line range and gaps (D6)", () => {
       doc = reduce(doc, {
         type: "UPDATE_LINE_BOXES",
         payload: { sourceId: "S1", lineId: "L1", syllableBoxes: { 2: { ...B, x }, 7: B } },
-        meta: { coalesceKey: "UPDATE_LINE_BOXES:L1:nudge" },
+        meta: { coalesceKey: "UPDATE_LINE_BOXES:L1:2:nudge" },
       });
     }
     expect(doc.history.past).toHaveLength(1);

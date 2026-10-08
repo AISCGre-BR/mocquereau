@@ -46,7 +46,6 @@ interface ImageCanvasProps {
   onActivateSyllable?: (syllableIdx: number) => void;
   /** End of a gesture (draw, move, resize): the box goes to the project. */
   onBoxCommit?: (syllableIdx: number, box: SyllableBox) => void;
-  onBoxDelete?: (syllableIdx: number) => void;
   words?: SyllabifiedWord[];
   showAllBoxes?: boolean;
   sameSizeMode?: boolean;
@@ -66,7 +65,6 @@ export function ImageCanvas({
   onZoomChange,
   onActivateSyllable,
   onBoxCommit,
-  onBoxDelete,
   words,
   showAllBoxes = false,
   sameSizeMode = false,
@@ -123,11 +121,18 @@ export function ImageCanvas({
   const [liveDrawBox, setLiveDrawBox] = useState<SyllableBox | null>(null);
 
   // Draft of the active box while it is moved or resized: lives here until the
-  // pointer goes up, then the box is committed to the project (spec D6).
-  const [draft, setDraft] = useState<{ idx: number; box: SyllableBox } | null>(null);
-  useEffect(() => setDraft(null), [activeSyllableIdx]);
+  // pointer goes up, then the box is committed to the project (spec D6). It only
+  // counts over the very boxes it was drawn on: another page, an undo or another
+  // syllable makes it stale, so it never draws over the wrong page.
+  const [draft, setDraft] = useState<{
+    base: Record<number, SyllableBox | null>;
+    idx: number;
+    box: SyllableBox;
+  } | null>(null);
   const boxes =
-    draft && draft.idx === activeSyllableIdx ? { ...syllableBoxes, [draft.idx]: draft.box } : syllableBoxes;
+    draft && draft.base === syllableBoxes && draft.idx === activeSyllableIdx
+      ? { ...syllableBoxes, [draft.idx]: draft.box }
+      : syllableBoxes;
 
   // Resolve syllable text for a given global idx (used by box overlay labels/titles)
   function syllableTextAt(globalIdx: number): string {
@@ -441,14 +446,10 @@ export function ImageCanvas({
               syllableIdx={activeSyllableIdx}
               label={syllableTextAt(activeSyllableIdx)}
               containerRef={imageWrapperRef}
-              onBoxChange={(newBox) => setDraft({ idx: activeSyllableIdx, box: newBox })}
+              onBoxChange={(newBox) => setDraft({ base: syllableBoxes, idx: activeSyllableIdx, box: newBox })}
               onBoxCommit={(newBox) => {
                 setDraft(null);
                 onBoxCommit?.(activeSyllableIdx, newBox);
-              }}
-              onDeleteBox={() => {
-                setDraft(null);
-                onBoxDelete?.(activeSyllableIdx);
               }}
             />
           )}

@@ -1,9 +1,10 @@
 // src/renderer/components/slice-editor/SyllableBoxOverlay.tsx
 //
 // Renders a single selected bounding box with 8 resize handles.
-// Handles pointer-based drag-to-move and drag-to-resize, plus keyboard nudge/delete.
-// While dragging only onBoxChange fires (a local draft); the project is written
-// once, on onBoxCommit (spec D6).
+// Handles pointer-based drag-to-move and drag-to-resize. While dragging only
+// onBoxChange fires (a local draft); the project is written once, on
+// onBoxCommit (spec D6). Delete and the arrow nudge are window shortcuts of the
+// Recortes view (one path, with the per-box nudge coalescing), not of this box.
 // All coordinates are fractions of the container dimensions (0.0–1.0).
 
 import React, { useRef } from 'react';
@@ -22,8 +23,7 @@ interface SyllableBoxOverlayProps {
   label?: string;                                       // texto da sílaba na etiqueta
   containerRef: React.RefObject<HTMLDivElement | null>; // the image wrapper div
   onBoxChange: (newBox: SyllableBox) => void;           // every pointermove: the draft, kept by the canvas
-  onBoxCommit: (newBox: SyllableBox) => void;           // end of the gesture (pointerup, nudge): written to the project
-  onDeleteBox: () => void;                              // called on Delete/Backspace keydown
+  onBoxCommit: (newBox: SyllableBox) => void;           // end of the gesture (pointerup): written to the project
 }
 
 // ── Drag state type ───────────────────────────────────────────────────────────
@@ -113,7 +113,6 @@ export function SyllableBoxOverlay({
   containerRef,
   onBoxChange,
   onBoxCommit,
-  onDeleteBox,
 }: SyllableBoxOverlayProps) {
   const dragState = useRef<DragState | null>(null);
 
@@ -222,45 +221,6 @@ export function SyllableBoxOverlay({
     };
   }
 
-  // ── Keyboard handling ──────────────────────────────────────────────────────
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      onDeleteBox();
-      return;
-    }
-
-    const arrowKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
-    if (!arrowKeys.includes(e.key)) return;
-
-    e.preventDefault();
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const offW = container.offsetWidth;
-    const offH = container.offsetHeight;
-    const pixels = e.shiftKey ? 10 : 1;
-    let dxPx = 0;
-    let dyPx = 0;
-    switch (e.key) {
-      case 'ArrowLeft':  dxPx = -pixels; break;
-      case 'ArrowRight': dxPx = +pixels; break;
-      case 'ArrowUp':    dyPx = -pixels; break;
-      case 'ArrowDown':  dyPx = +pixels; break;
-    }
-    const dxFrac = dxPx / offW;
-    const dyFrac = dyPx / offH;
-
-    let { x, y, w, h } = box;
-    x += dxFrac;
-    y += dyFrac;
-
-    const newBox = clampBox({ x, y, w, h });
-    onBoxCommit(newBox);
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -276,7 +236,6 @@ export function SyllableBoxOverlay({
       onPointerDown={onOuterPointerDown}
       onPointerMove={onOuterPointerMove}
       onPointerUp={onOuterPointerUp}
-      onKeyDown={onKeyDown}
     >
       {label && <span className="sc-box__tag pointer-events-none">{label}</span>}
       {HANDLES.map((h) => (

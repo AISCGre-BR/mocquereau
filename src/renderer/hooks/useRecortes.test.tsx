@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { effectiveRange, useRecortes } from "./useRecortes";
+import { useRecortes } from "./useRecortes";
 import { createNewProject } from "./useProject";
 import { syllabifyText } from "../lib/syllabify";
 import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "../lib/models";
@@ -70,9 +70,12 @@ describe("useRecortes: seleção inicial", () => {
     expect(result.current.activeSyllable).toBeNull();
   });
 
-  it("intervalo {0,0} legado vale como o texto inteiro", () => {
-    expect(effectiveRange(line("x", 0, 0), 7)).toEqual({ start: 0, end: 6 });
-    expect(effectiveRange(line("x", 2, 4), 7)).toEqual({ start: 2, end: 4 });
+  it("intervalo {0,0} é uma sílaba só (sem caso especial por render)", () => {
+    const { result } = setup(project([source("A", [line("a1", 0, 0), line("a2", 1, 6)])]));
+    expect(result.current.activeLineId).toBe("a1");
+    expect(result.current.activeSyllable).toBe(0);
+    act(() => result.current.goTo({ sourceId: "A", syllable: 3 }));
+    expect(result.current.activeLineId).toBe("a2");
   });
 });
 

@@ -13,6 +13,7 @@ import { fileToDataUrl, resizeImageIfNeeded } from "../lib/image-utils";
 import type { ManuscriptSource, StoredImage, GuerangerManuscript } from "../lib/models";
 import { SourceModal } from "./SourceModal";
 import { appendLineConsumingFolioHint } from "../lib/tableUtils";
+import { suggestRangeForNewPage } from "../lib/sources";
 import { emptyClasses } from "@shared/classification";
 import { useTranslation } from "react-i18next";
 
@@ -120,7 +121,7 @@ export function SourceList() {
     const newLine = {
       id: crypto.randomUUID(),
       image,
-      syllableRange: { start: 0, end: 0 },
+      syllableRange: suggestRangeForNewPage(source, totalSyllables),
       dividers: [],
       gaps: [],
       confirmed: false,

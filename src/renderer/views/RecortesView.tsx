@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { SlidersHorizontal } from "lucide-react";
 import { useProject } from "../hooks/useProject";
 import type { HistoryMeta } from "../history/history";
-import { effectiveRange, useRecortes, type SyllableRange } from "../hooks/useRecortes";
+import { useRecortes, type SyllableRange } from "../hooks/useRecortes";
 import { SourceSidebar } from "../components/slice-editor/SourceSidebar";
 import { LineSidebar } from "../components/slice-editor/LineSidebar";
 import { SyllableRangeBar } from "../components/slice-editor/SyllableRangeBar";
@@ -17,6 +17,7 @@ import { ImageCanvas } from "../components/slice-editor/ImageCanvas";
 import { RealignBoxesDialog } from "../components/slice-editor/RealignBoxesDialog";
 import { flattenSyllables } from "../lib/sliceUtils";
 import { appendLineConsumingFolioHint } from "../lib/tableUtils";
+import { suggestRangeForNewPage } from "../lib/sources";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type {
   ImageAdjustments,
@@ -64,7 +65,7 @@ export function RecortesView() {
   // Boxes in the frame the user sees, derived from the project (memo per line:
   // a line object changes whenever its boxes or its frame do).
   const viewBoxes = useMemo(() => (activeLine ? boxesInView(activeLine) : {}), [activeLine]);
-  const range: SyllableRange | null = activeLine ? effectiveRange(activeLine, total) : null;
+  const range: SyllableRange | null = activeLine ? activeLine.syllableRange : null;
   const covered = useMemo(
     () => (activeSource && activeLine ? computeCoveredSyllables(activeSource, activeLine.id) : []),
     [activeSource, activeLine],
@@ -83,7 +84,6 @@ export function RecortesView() {
         sourceId: activeSource.id,
         lineId: activeLine.id,
         syllableBoxes: boxes,
-        syllableRange: range ?? activeLine.syllableRange,
         confirmed: hasAnyBox(boxes),
       },
       ...(meta ? { meta } : {}),
@@ -133,14 +133,10 @@ export function RecortesView() {
       height: ipcResult.height,
       mimeType: "image/png",
     };
-    // D-06: suggested range starts after the last confirmed page.
-    const lastConfirmed = [...source.lines].reverse().find((l) => l.confirmed);
-    const suggestedStart = lastConfirmed ? lastConfirmed.syllableRange.end + 1 : 0;
-    const suggestedEnd = Math.max(suggestedStart, total - 1);
     const newLine: ManuscriptLine = {
       id: crypto.randomUUID(),
       image: storedImage,
-      syllableRange: { start: suggestedStart, end: suggestedEnd },
+      syllableRange: suggestRangeForNewPage(source, total),
       dividers: [],
       syllableBoxes: {},
       gaps: [],
@@ -268,7 +264,7 @@ export function RecortesView() {
       if (e.key === "ArrowDown") y += pixels / rect.height;
       x = Math.max(0, Math.min(1 - box.w, x));
       y = Math.max(0, Math.min(1 - box.h, y));
-      commitBox(active, { ...box, x, y }, { coalesceKey: `UPDATE_LINE_BOXES:${activeLine.id}:nudge` });
+      commitBox(active, { ...box, x, y }, { coalesceKey: `UPDATE_LINE_BOXES:${activeLine.id}:${active}:nudge` });
     }
   };
   useEffect(() => {
@@ -463,7 +459,6 @@ export function RecortesView() {
                 onZoomChange={recortes.setZoom}
                 onActivateSyllable={recortes.setActiveSyllable}
                 onBoxCommit={(idx, box) => commitBox(idx, box)}
-                onBoxDelete={deleteBox}
                 words={project.text.words}
                 showAllBoxes={recortes.showAll}
                 sameSizeMode={recortes.sameSize}

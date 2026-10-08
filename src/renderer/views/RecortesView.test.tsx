@@ -187,6 +187,16 @@ describe("RecortesView: o projeto é a fonte única das caixas (D6)", () => {
   });
 });
 
+describe("RecortesView: intervalo de uma sílaba", () => {
+  it("{0,0} é mostrado e gravado como está; clicar numa sílaba estende a partir dele", () => {
+    const v = mount(projectWith([mkSource("A", [mkLine("line-1", { syllableRange: { start: 0, end: 0 } })])]));
+    const [from, to] = v.getAllByRole("spinbutton") as HTMLInputElement[];
+    expect([from.value, to.value]).toEqual(["0", "0"]);
+    fireEvent.click(v.getByText("na"));
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 2 });
+  });
+});
+
 describe("RecortesView: atalhos", () => {
   it("Tab/Enter avançam a sílaba e estendem o fim do intervalo; param no fim do texto", () => {
     const v = mount(projectWith());
@@ -235,6 +245,17 @@ describe("RecortesView: atalhos", () => {
     act(() => v.ref.dispatch!({ type: "UNDO" }));
     expect(v.line().syllableBoxes![0]).toEqual(BOX);
     expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("setas em outra caixa são outro passo de desfazer", () => {
+    const v = mount(projectWith([mkSource("A", [mkLine("line-1", { syllableBoxes: { 0: BOX, 1: BOX } })])]));
+    v.key({ key: "ArrowRight" }); // caixa 0
+    v.key({ key: "Tab" }); // sílaba 1
+    v.key({ key: "ArrowRight" }); // caixa 1
+    act(() => v.ref.dispatch!({ type: "UNDO" }));
+    expect(v.line().syllableBoxes![1]).toEqual(BOX);
+    expect(v.line().syllableBoxes![0]!.x).toBeCloseTo(0.1 + 1 / 200, 9);
+    expect(v.ref.history!.canUndo).toBe(true);
   });
 });
 

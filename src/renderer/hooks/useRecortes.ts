@@ -5,24 +5,13 @@
 // read from the project; the selection is re-validated against it on every
 // render, so undo/redo or a deletion never leaves it pointing at nothing.
 
-import { useCallback, useMemo, useReducer } from "react";
+import { useCallback, useReducer } from "react";
 import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "../lib/models";
-import { flattenSyllables } from "../lib/sliceUtils";
 import { editorReducer, initialEditorState } from "../components/slice-editor/editorReducer";
 
 export interface SyllableRange {
   start: number;
   end: number;
-}
-
-/**
- * The range a page works on. Pages added without a range ({0,0}, e.g. from the
- * Fontes view) cover the whole text until their range is set.
- */
-export function effectiveRange(line: ManuscriptLine, totalSyllables: number): SyllableRange {
-  const r = line.syllableRange;
-  if (r.start === 0 && r.end === 0) return { start: 0, end: Math.max(0, totalSyllables - 1) };
-  return r;
 }
 
 /** First page still to be done, else the first page. */
@@ -52,7 +41,6 @@ export interface RecortesState {
 
 export function useRecortes(project: MocquereauProject | null): RecortesState {
   const [state, dispatch] = useReducer(editorReducer, initialEditorState);
-  const total = useMemo(() => (project ? flattenSyllables(project.text.words).length : 0), [project]);
 
   // Resolve the stored selection against the project as it is now.
   const sources = project?.sources ?? [];
@@ -70,7 +58,7 @@ export function useRecortes(project: MocquereauProject | null): RecortesState {
   if ((sourceId !== state.activeSourceId || lineId !== state.activeLineId) && !pendingNewLine) {
     dispatch({ type: "SELECT", payload: { sourceId, lineId } });
   } else if (state.followRangeStart && line && storedLine) {
-    dispatch({ type: "SET_ACTIVE_SYLLABLE", payload: effectiveRange(line, total).start });
+    dispatch({ type: "SET_ACTIVE_SYLLABLE", payload: line.syllableRange.start });
   }
 
   const selectSource = useCallback(
@@ -102,7 +90,7 @@ export function useRecortes(project: MocquereauProject | null): RecortesState {
       syllable === undefined
         ? undefined
         : src.lines.find((l) => {
-            const r = effectiveRange(l, total);
+            const r = l.syllableRange;
             return r.start <= syllable && syllable <= r.end;
           });
     const page = containing ?? src.lines[0] ?? null;
@@ -118,7 +106,7 @@ export function useRecortes(project: MocquereauProject | null): RecortesState {
     activeSourceId: sourceId,
     activeLineId: pendingNewLine ? state.activeLineId : lineId,
     activeSyllable:
-      state.followRangeStart && line && !pendingNewLine ? effectiveRange(line, total).start : state.activeSyllableIdx,
+      state.followRangeStart && line && !pendingNewLine ? line.syllableRange.start : state.activeSyllableIdx,
     selectSource,
     selectLine,
     setActiveSyllable,
