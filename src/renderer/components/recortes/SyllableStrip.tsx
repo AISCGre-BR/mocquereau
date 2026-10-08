@@ -53,6 +53,8 @@ export function SyllableStrip({
   rangeRef.current = range;
   const onRangeChangeRef = useRef(onRangeChange);
   onRangeChangeRef.current = onRangeChange;
+  const stopDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDragRef.current?.(), []);
 
   useEffect(() => {
     if (activeSyllable === null) return;
@@ -104,7 +106,10 @@ export function SyllableStrip({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
       window.removeEventListener("pointercancel", stop);
+      stopDragRef.current = null;
     };
+    stopDragRef.current?.();
+    stopDragRef.current = stop;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
