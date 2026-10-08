@@ -1,7 +1,7 @@
 // Edições pendentes das vistas (onda A1).
 //
-// Texto e Recortes guardam cópias locais com debounce de 300 ms antes de
-// despachar para o projeto. Ações que leem ou trocam o documento (Novo, Abrir,
+// O Texto guarda cópias locais com debounce de 300 ms antes de despachar para
+// o projeto (a Recortes grava direto no projeto no fim de cada gesto, spec D6). Ações que leem ou trocam o documento (Novo, Abrir,
 // Fechar, Salvar, Desfazer) precisam antes gravar essas pendências; e o flush
 // que cada vista faz ao desmontar não pode vazar para o projeto seguinte.
 //
@@ -15,7 +15,7 @@
 // - epoch()/bump(): muda sempre que o documento sob as vistas é trocado (novo,
 //   aberto, fechado, desfeito). O flush ao desmontar é ignorado se a época mudou.
 //
-// Na onda B (spec D6) as vistas passam a editar o projeto direto e isto some.
+// Quando o Texto também editar o projeto direto, isto some.
 import { useEffect, useRef } from "react";
 import { useProject } from "./useProject";
 

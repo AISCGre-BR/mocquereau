@@ -4,8 +4,8 @@
 // strings CSS (filter + transform) e para converter coordenadas entre o
 // espaço canônico da imagem original e o espaço visual (pós-rotação/flip).
 //
-// Zero DOM, zero React — só matemática. Consumido por ImageCanvas (SliceEditor),
-// ImageAdjustmentsPanel e TableCell.
+// Zero DOM, zero React — só matemática. Consumido por ImageCanvas (vista
+// Recortes), pelo painel Imagem (ImagePanel) e por TableCell.
 import type { ImageAdjustments, SyllableBox } from "./models";
 
 /** Valor "sem ajuste" — igual byte-a-byte a um projeto v0.0.3 sem o campo. */

@@ -31,7 +31,7 @@ export async function fileToDataUrl(file: File): Promise<StoredImage> {
  * Returns the original image unchanged if its width is already within the limit.
  *
  * IMPORTANT (D-07): This function must NOT be called without explicit user consent.
- * The caller (SourceList) is responsible for showing the resize warning and only
+ * The caller (useAddPage, through ResizeImageDialog) is responsible for showing the resize warning and only
  * invoking this after the user confirms.
  *
  * @param image    The source StoredImage (data URL + dimensions)
