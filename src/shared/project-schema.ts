@@ -24,6 +24,8 @@ export type Classification = [ClassLevel, ClassLevel, ClassLevel];
 /** One ClassValue id (or null) per level. */
 export type SourceClasses = [string | null, string | null, string | null];
 
+export type PageNotation = "adiastematic" | "diastematic";
+
 export interface SyllableBox {
   x: number;
   y: number;
@@ -115,6 +117,10 @@ export interface LineOf<I> {
   syllableBoxes?: Record<number, SyllableBox | null>;
   folio?: string;
   label?: string;
+  /** Notação desta página (S1); ausente = derivada da classificação da fonte. */
+  notationOverride?: PageNotation;
+  /** Áreas da linha de neumas (S7), no referencial visual atual da página, de cima para baixo. */
+  neumeBands?: SyllableBox[];
   imageAdjustments?: ImageAdjustments;
   boxFrame?: BoxFrame;
   confirmed: boolean;

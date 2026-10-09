@@ -193,3 +193,88 @@ export function cropRaster(r: RasterRGBA, box: PxBox): RasterRGBA {
   }
   return { data: out, width: box.w, height: box.h };
 }
+
+/** Grade de reducao de `downscaleGray`: limites de origem [lo[i], hi[i]) de cada celula de destino. */
+function downscaleGrid(n: number, scale: number): { m: number; lo: Int32Array; hi: Int32Array } {
+  if (scale >= 1) {
+    const lo = new Int32Array(n);
+    const hi = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      lo[i] = i;
+      hi[i] = i + 1;
+    }
+    return { m: n, lo, hi };
+  }
+  const m = Math.max(1, Math.round(n * scale));
+  const f = n / m;
+  const lo = new Int32Array(m);
+  const hi = new Int32Array(m);
+  for (let i = 0; i < m; i++) {
+    lo[i] = Math.min(n, Math.floor(i * f));
+    hi[i] = Math.max(lo[i] + 1, Math.min(n, Math.floor((i + 1) * f)));
+  }
+  return { m, lo, hi };
+}
+
+/**
+ * Raster de trabalho de `rect` em UMA passada: canal R, cinza (arredondado por pixel) e validade
+ * (alfa > 0 em >= 50% da celula), reduzidos por media de area na mesma grade de `downscaleGray`.
+ * Equivale a downscaleGray(extractChannel(cropRaster(raster, rect), ...)) e
+ * downscaleMask(alphaMask(...)), sem recorte nem canais intermediarios. Alfa 0 conta 255.
+ */
+export function prepareWork(
+  raster: RasterRGBA,
+  rect: PxBox,
+  scale: number,
+): { r: GrayImage; gray: GrayImage; valid: Mask } {
+  const { data, width: W } = raster;
+  const gx = downscaleGrid(rect.w, scale);
+  const gy = downscaleGrid(rect.h, scale);
+  const w = gx.m;
+  const h = gy.m;
+  const r = new Uint8Array(w * h);
+  const gray = new Uint8Array(w * h);
+  const valid = new Uint8Array(w * h);
+  // coluna de destino de cada coluna de origem (-1: fora de toda celula, por arredondamento)
+  const colOf = new Int32Array(rect.w).fill(-1);
+  for (let x = 0; x < w; x++) for (let xx = gx.lo[x]; xx < gx.hi[x]; xx++) colOf[xx] = x;
+  const sr = new Uint32Array(w);
+  const sg = new Uint32Array(w);
+  const sa = new Uint32Array(w);
+  for (let y = 0; y < h; y++) {
+    sr.fill(0);
+    sg.fill(0);
+    sa.fill(0);
+    const ya = gy.lo[y];
+    const yb = gy.hi[y];
+    for (let yy = ya; yy < yb; yy++) {
+      let p = ((rect.y + yy) * W + rect.x) * 4;
+      for (let xx = 0; xx < rect.w; xx++, p += 4) {
+        const c = colOf[xx];
+        if (c < 0) continue;
+        if (data[p + 3] === 0) {
+          sr[c] += 255;
+          sg[c] += 255;
+          continue;
+        }
+        const rv = data[p];
+        sr[c] += rv;
+        sg[c] += Math.round(0.299 * rv + 0.587 * data[p + 1] + 0.114 * data[p + 2]);
+        sa[c]++;
+      }
+    }
+    const rows = yb - ya;
+    for (let x = 0; x < w; x++) {
+      const area = rows * (gx.hi[x] - gx.lo[x]);
+      const i = y * w + x;
+      r[i] = Math.round(sr[x] / area);
+      gray[i] = Math.round(sg[x] / area);
+      valid[i] = Math.round((sa[x] * 255) / area) >= 128 ? 1 : 0;
+    }
+  }
+  return {
+    r: { data: r, width: w, height: h },
+    gray: { data: gray, width: w, height: h },
+    valid: { data: valid, width: w, height: h },
+  };
+}

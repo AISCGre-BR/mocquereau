@@ -11,6 +11,7 @@ import { useProject } from "../hooks/useProject";
 import type { HistoryMeta } from "../history/history";
 import type { SyllableRange } from "../hooks/useRecortes";
 import { useRecortesCommands, useRecortesContext } from "../hooks/RecortesContext";
+import { useSuggestions, type SuggestNotice } from "../hooks/SuggestionsContext";
 import { SourceTree } from "../components/sources/SourceTree";
 import { useAddPage, type AddPage } from "../components/sources/useAddPage";
 import { ResizeImageDialog } from "../components/sources/ResizeImageDialog";
@@ -27,26 +28,8 @@ import { flattenSyllables } from "../lib/sliceUtils";
 import { planGapToggle } from "../lib/syllable-gap";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
-
-/**
- * Global syllables confirmed by OTHER pages of the source, each with the label
- * of the (first) page that covers it: its folio, else its position.
- */
-function coveredByOtherPages(
-  source: ManuscriptSource,
-  excludeLineId: string | null,
-  pageLabel: string,
-): Map<number, string> {
-  const covered = new Map<number, string>();
-  source.lines.forEach((line, n) => {
-    if (line.id === excludeLineId || !line.confirmed) return;
-    const label = line.folio || `${pageLabel} ${n + 1}`;
-    for (let i = line.syllableRange.start; i <= line.syllableRange.end; i++) {
-      if (!covered.has(i)) covered.set(i, label);
-    }
-  });
-  return covered;
-}
+import { coveredByOtherPages } from "../lib/sources";
+import { focusSheet, focusSheetIfStranded } from "../components/recortes/sheetFocus";
 
 /**
  * Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas):
@@ -79,6 +62,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   const project = state.project;
   const recortes = useRecortesContext();
   const commands = useRecortesCommands();
+  const suggestions = useSuggestions();
+  const suggestedSet = useMemo(() => new Set(Object.keys(suggestions.active).map(Number)), [suggestions.active]);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   useEffect(() => {
     if (!openSourceId) return;
@@ -88,9 +73,17 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
   // The Recortes dialogs live in the provider (the menu opens them): leaving
   // the view closes them, so they do not reappear when it mounts again.
-  const setDialog = recortes.setDialog;
-  useEffect(() => () => setDialog(null), [setDialog]);
+  const { setDialog, setSkippedPages, viewMounted } = recortes;
+  useEffect(() => {
+    viewMounted.current = true;
+    return () => {
+      viewMounted.current = false;
+      setDialog(null);
+      setSkippedPages(null);
+    };
+  }, [setDialog, setSkippedPages, viewMounted]);
   const [sheetMenu, setSheetMenu] = useState<{ x: number; y: number } | null>(null);
+  const [bandMenu, setBandMenu] = useState<{ x: number; y: number; index: number } | null>(null);
 
   const words = project?.text.words;
   const total = useMemo(() => (words ? flattenSyllables(words).length : 0), [words]);
@@ -139,6 +132,19 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
         ? { start: Math.min(range.start, idx), end: Math.max(range.end, idx) }
         : undefined;
     writeBoxes({ ...viewBoxes, [idx]: box }, meta, grown);
+  }
+
+  /** Neume bands of the active page (S7); an empty list removes them. */
+  function writeBands(bands: SyllableBox[]) {
+    if (!activeSource || !activeLine) return;
+    dispatch({ type: "SET_LINE_NEUME_BANDS", payload: { sourceId: activeSource.id, lineId: activeLine.id, bands } });
+  }
+
+  function removeBand(index: number) {
+    const bands = activeLine?.neumeBands ?? [];
+    if (!bands[index]) return;
+    recortes.setActiveBand(null);
+    writeBands(bands.filter((_, i) => i !== index));
   }
 
   const sheetMenuItems = recortesMenuItems(commands.state, commands, t);
@@ -203,6 +209,11 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     });
   }
 
+  function closeSkipped() {
+    recortes.setDialog(null);
+    recortes.setSkippedPages(null);
+  }
+
   // ── Paste (Ctrl+V reads the clipboard through main) ──────────────────────
 
   const pasteRef = useRef<() => void>(() => {});
@@ -227,8 +238,23 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   keyRef.current = (e: KeyboardEvent) => {
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    // Esc descarta as sugestões da página (S6), mesmo com o foco num botão da barra
+    // (o Sugerir); com diálogo ou menu aberto, a tecla é deles.
+    // Com a ferramenta de área ligada, Esc a desliga (S7).
+    if (e.key === "Escape") {
+      if (document.querySelector("[role=dialog],[role=menu]")) return;
+      if (recortes.bandTool) recortes.setBandTool(false);
+      else suggestions.discardPage();
+      return;
+    }
     // Teclas da casca e de controles nativos ficam com eles.
     if (target instanceof Element && isOutsideEditorKeys(target)) return;
+    // Delete com uma área selecionada apaga a área, antes de caixa ou sugestão.
+    if ((e.key === "Delete" || e.key === "Backspace") && recortes.activeBand !== null) {
+      e.preventDefault();
+      removeBand(recortes.activeBand);
+      return;
+    }
     if (!range) return;
     const active = recortes.activeSyllable;
 
@@ -241,10 +267,13 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       return;
     }
 
-    // Ctrl+Enter (Próxima fonte) é atalho do menu Recortes.
+    // Ctrl+Enter (Próxima fonte) e Ctrl+Shift+Enter (Aceitar todas) são atalhos do menu Recortes.
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return;
     if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
       e.preventDefault();
+      // Enter aceita a sugestão da sílaba ativa e avança; Tab só avança (S6).
+      const accepted = e.key === "Enter" && active !== null && active in suggestions.active;
+      if (accepted) suggestions.accept(active);
       // Tab/Enter avança a sílaba ativa; além do fim, estende o intervalo da página.
       if (active === null) {
         recortes.setActiveSyllable(range.start);
@@ -252,6 +281,9 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       }
       const next = active + 1;
       if (next >= total) return;
+      // Accepting at the range end stays put: extending the range too would
+      // discard the page's other suggestions and add a second undo step.
+      if (accepted && next > range.end) return;
       recortes.setActiveSyllable(next);
       if (next > range.end) setRange({ start: range.start, end: next });
       return;
@@ -274,6 +306,9 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       if (viewBoxes[active] != null) {
         e.preventDefault();
         commands.removeBox();
+      } else if (active in suggestions.active) {
+        e.preventDefault();
+        suggestions.reject(active);
       }
       return;
     }
@@ -304,6 +339,15 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // A run that ends with focus stranded on the toolbar or the tree hands it to
+  // the sheet, so Enter accepts instead of clicking Sugerir again.
+  const prevStatus = useRef(suggestions.status);
+  useEffect(() => {
+    const was = prevStatus.current;
+    prevStatus.current = suggestions.status;
+    if (was === "running" && suggestions.status === "idle") focusSheetIfStranded();
+  }, [suggestions.status]);
+
   if (!project) {
     return <div className="flex h-full items-center justify-center text-ink-muted">{t("sliceEditor.empty")}</div>;
   }
@@ -311,11 +355,12 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 focus:outline-none">
-        <SourceTree onEditSource={setEditingSourceId} />
+        <SourceTree onEditSource={setEditingSourceId} onPagePicked={focusSheet} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           {hasImage && activeLine && (
-            <div className="flex-shrink-0 px-4 pt-3">
+            // The strip keeps focus where it is on a click; stranded focus goes to the sheet.
+            <div className="flex-shrink-0 px-4 pt-3" onMouseDown={focusSheetIfStranded}>
               <SyllableStrip
                 words={project.text.words}
                 line={activeLine}
@@ -325,11 +370,15 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onRangeChange={setRange}
                 onToggleGap={toggleGap}
                 onRemoveBox={commands.removeBoxAt}
+                suggested={suggestedSet}
               />
             </div>
           )}
 
-          <div className="min-h-0 flex-1">
+          <div data-recortes-sheet tabIndex={-1} className="relative min-h-0 flex-1 focus:outline-none">
+            {hasImage && suggestions.notice && (
+              <NoticeLine key={`${activeLine?.id}:${suggestions.noticeSeq}`} notice={suggestions.notice} />
+            )}
             {hasImage ? (
               <ImageCanvas
                 image={activeLine!.image}
@@ -340,6 +389,16 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onZoomChange={recortes.setZoom}
                 onActivateSyllable={recortes.setActiveSyllable}
                 onBoxCommit={(idx, box) => commitBox(idx, box)}
+                suggestedBoxes={suggestions.active}
+                neumeBands={activeLine?.neumeBands}
+                bandTool={recortes.bandTool}
+                activeBand={recortes.activeBand}
+                onActivateBand={recortes.setActiveBand}
+                onBandsCommit={(bands, index) => {
+                  writeBands(bands);
+                  recortes.setActiveBand(index);
+                }}
+                onBandContextMenu={(index, at) => setBandMenu({ ...at, index })}
                 words={project.text.words}
                 showAllBoxes={recortes.showAll}
                 sameSizeMode={recortes.sameSize}
@@ -373,11 +432,22 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                   key={item.id}
                   label={item.label}
                   shortcut={item.accelerator ? formatAccelerator(item.accelerator, platform) : undefined}
+                  checked={item.checked}
                   disabled={item.disabled}
                   onSelect={item.onSelect}
                 />
               ),
             )}
+          </MenuSurface>
+        )}
+        {bandMenu && (
+          <MenuSurface
+            aria-label={t("recortes.tools.neumeBand")}
+            className="fixed z-[130]"
+            style={{ left: bandMenu.x, top: bandMenu.y }}
+            onClose={() => setBandMenu(null)}
+          >
+            <MenuItem label={t("recortes.band.delete")} onSelect={() => removeBand(bandMenu.index)} />
           </MenuSurface>
         )}
         <RealignBoxesDialog open={recortes.dialog === "realign"} line={activeLine} onClose={() => recortes.setDialog(null)} />
@@ -404,10 +474,69 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
         >
           {t("recortes.clearPage.body")}
         </Dialog>
+        <Dialog
+          open={recortes.dialog === "suggestSkipped" && !!recortes.skippedPages}
+          title={t("recortes.suggestSource.title")}
+          onClose={closeSkipped}
+          actions={
+            <>
+              <Button variant="elevated" onClick={closeSkipped}>
+                {t("recortes.suggestSource.close")}
+              </Button>
+              <Button
+                variant="filled"
+                data-autofocus
+                onClick={() => {
+                  const skipped = recortes.skippedPages;
+                  closeSkipped();
+                  if (skipped?.lineIds[0]) {
+                    recortes.selectLine(skipped.sourceId, skipped.lineIds[0]);
+                    recortes.setBandTool(true);
+                  }
+                }}
+              >
+                {t("recortes.suggestSource.goFirst")}
+              </Button>
+            </>
+          }
+        >
+          {t("recortes.suggestSource.body", { count: recortes.skippedPages?.lineIds.length ?? 0 })}
+        </Dialog>
         <ResizeImageDialog addPage={addPage} />
         {editingSourceId && <SourceDialog sourceId={editingSourceId} onClose={() => setEditingSourceId(null)} />}
       </div>
     </div>
+  );
+}
+
+// ── NoticeLine ────────────────────────────────────────────────────────────────
+
+const NOTICE_TEXT: Record<SuggestNotice, string> = {
+  needsBand: "recortes.notice.needsBand",
+  none: "recortes.notice.none",
+  error: "recortes.notice.error",
+};
+
+/** One-line hint at the top of the sheet: gone on the next click or key, or after 6 s. */
+function NoticeLine({ notice }: { notice: SuggestNotice }) {
+  const { t } = useTranslation();
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const hide = () => setHidden(true);
+    const timer = window.setTimeout(hide, 6000);
+    window.addEventListener("pointerdown", hide, true);
+    window.addEventListener("keydown", hide, true);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointerdown", hide, true);
+      window.removeEventListener("keydown", hide, true);
+    };
+  }, []);
+  if (hidden) return null;
+  return (
+    <p role="status" className="pointer-events-none absolute inset-x-0 top-2 z-10 text-center text-sm text-ink-muted">
+      {t(NOTICE_TEXT[notice])}
+    </p>
   );
 }
 

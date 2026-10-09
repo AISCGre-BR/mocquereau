@@ -13,7 +13,15 @@ import { flattenSyllables } from "../../lib/sliceUtils";
 import { createEmptySource, groupSourcesByLevel1, guerangerToSource } from "../../lib/sources";
 import { sourceProgress } from "../../lib/recent-meta";
 import type { ManuscriptSource } from "../../lib/models";
-import { MenuItem, MenuSeparator, MenuSurface, type MenuCloseReason } from "../../ui/Menu";
+import type { PageNotation } from "@shared/project-schema";
+
+/** S9: the page's notation (null = automatic, from the source's classification). */
+const NOTATIONS: ReadonlyArray<{ value: PageNotation | null; label: string }> = [
+  { value: null, label: "sourceTree.menu.notationAuto" },
+  { value: "adiastematic", label: "sourceTree.menu.notationAdiastematic" },
+  { value: "diastematic", label: "sourceTree.menu.notationDiastematic" },
+];
+import { MenuItem, MenuSeparator, MenuSubmenu, MenuSurface, type MenuCloseReason } from "../../ui/Menu";
 import { Dialog } from "../../ui/Dialog";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Field";
@@ -23,6 +31,8 @@ import { ResizeImageDialog } from "./ResizeImageDialog";
 
 export interface SourceTreeProps {
   onEditSource(id: string): void;
+  /** A page was picked with the mouse (the keyboard keeps focus in the tree). */
+  onPagePicked?(): void;
 }
 
 /** Expanded/collapsed choices, kept for the session (the view remounts on tab switches). */
@@ -44,7 +54,7 @@ function caption(source: ManuscriptSource): string {
   return [source.metadata.city, source.metadata.century].map((p) => p.trim()).filter(Boolean).join(", ");
 }
 
-export function SourceTree({ onEditSource }: SourceTreeProps) {
+export function SourceTree({ onEditSource, onPagePicked }: SourceTreeProps) {
   const { state, dispatch } = useProject();
   const recortes = useRecortesContext();
   const { t } = useTranslation();
@@ -324,7 +334,10 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
                     "mr-2 mb-0.5 ml-[30px] flex cursor-default items-center gap-2.5 rounded-md px-2 py-[5px] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
                     current ? "bg-rubric-wash" : "hover:bg-ink-wash",
                   ].join(" ")}
-                  onClick={() => select(pageItem)}
+                  onClick={() => {
+                    select(pageItem);
+                    onPagePicked?.();
+                  }}
                 >
                   <img src={line.image.dataUrl} alt="" className="block h-8 w-11 flex-none rounded object-cover shadow-[0_0_0_1px_var(--rule)]" />
                   <span className="min-w-0 flex-1 truncate font-serif text-body text-ink">{line.folio || "—"}</span>
@@ -389,6 +402,18 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
                 if (line) setFolio({ sourceId: item.sourceId, lineId: line.id, folio: line.folio ?? "", label: line.label ?? "" });
               }}
             />
+            <MenuSubmenu label={t("sourceTree.menu.notation")}>
+              {NOTATIONS.map(({ value, label }) => (
+                <MenuItem
+                  key={label}
+                  label={t(label)}
+                  checked={(sourceById(item.sourceId)?.lines.find((l) => l.id === item.lineId)?.notationOverride ?? null) === value}
+                  onSelect={() =>
+                    dispatch({ type: "SET_LINE_NOTATION", payload: { sourceId: item.sourceId, lineId: item.lineId, notation: value } })
+                  }
+                />
+              ))}
+            </MenuSubmenu>
             <MenuSeparator />
             <MenuItem
               label={t("sourceTree.menu.removePage")}

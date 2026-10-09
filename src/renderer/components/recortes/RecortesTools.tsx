@@ -5,7 +5,7 @@
 
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Copy, Eye, Image as ImageIcon, SquareDashed } from "lucide-react";
+import { ChevronDown, Copy, Eye, Image as ImageIcon, RectangleHorizontal, SquareDashed } from "lucide-react";
 import { IconButton } from "../../ui/IconButton";
 import { useProject } from "../../hooks/useProject";
 import { useRecortesContext } from "../../hooks/RecortesContext";
@@ -53,8 +53,17 @@ export function RecortesTools() {
         <IconButton
           label={t("recortes.tools.draw")}
           icon={<SquareDashed {...iconProps} />}
-          pressed={recortes.drawMode}
-          onClick={() => recortes.setDrawMode(!recortes.drawMode)}
+          // The band tool suspends drawing without touching the preference;
+          // Desenhar while it is on goes back to drawing boxes.
+          pressed={recortes.drawMode && !recortes.bandTool}
+          onClick={() => {
+            if (recortes.bandTool) {
+              recortes.setBandTool(false);
+              recortes.setDrawMode(true);
+            } else {
+              recortes.setDrawMode(!recortes.drawMode);
+            }
+          }}
         />
         <IconButton
           label={t("recortes.tools.sameSize")}
@@ -67,6 +76,12 @@ export function RecortesTools() {
           icon={<Eye {...iconProps} />}
           pressed={recortes.showAll}
           onClick={() => recortes.setShowAll(!recortes.showAll)}
+        />
+        <IconButton
+          label={t("recortes.tools.neumeBand")}
+          icon={<RectangleHorizontal {...iconProps} />}
+          pressed={recortes.bandTool}
+          onClick={() => recortes.setBandTool(!recortes.bandTool)}
         />
       </div>
       <span className="sc-toolbar__sep" aria-hidden="true" />

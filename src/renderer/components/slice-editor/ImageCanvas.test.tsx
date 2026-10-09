@@ -239,3 +239,114 @@ describe("ImageCanvas: rascunho do arraste", () => {
     }
   });
 });
+
+describe("ImageCanvas: áreas da linha de neumas (S7)", () => {
+  const RECT100 = { left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} };
+  const BAND = { x: 0.1, y: 0.5, w: 0.5, h: 0.1 };
+
+  function setupBands(extra: Record<string, unknown> = {}) {
+    Object.assign(HTMLElement.prototype, {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+      hasPointerCapture: () => true,
+    });
+    const onBandsCommit = vi.fn();
+    const onBoxCommit = vi.fn();
+    const onActivateBand = vi.fn();
+    const props = {
+      image: IMAGE,
+      syllableBoxes: {},
+      activeSyllableIdx: 0,
+      syllableRange: { start: 0, end: 1 },
+      zoom: 1,
+      onZoomChange: vi.fn(),
+      onBoxCommit,
+      onBandsCommit,
+      onActivateBand,
+      neumeBands: [BAND],
+      drawMode: true,
+      ...extra,
+    };
+    const utils = render(<ImageCanvas {...props} />);
+    const wrapper = utils.container.querySelector("[data-image-wrapper]") as HTMLElement;
+    wrapper.getBoundingClientRect = () => RECT100 as DOMRect;
+    const ev = (el: Element, type: string, x: number, y: number) =>
+      act(() => void el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y })));
+    return { ...utils, props, wrapper, ev, onBandsCommit, onBoxCommit, onActivateBand };
+  }
+
+  it("com a ferramenta, arrastar na folha cria uma área (não uma caixa) e a nova fica ativa", () => {
+    const v = setupBands({ bandTool: true });
+    expect(v.wrapper.className).toContain("cursor-crosshair");
+    v.ev(v.wrapper, "pointerdown", 10, 10);
+    v.ev(v.wrapper, "pointermove", 90, 20);
+    v.ev(v.wrapper, "pointerup", 90, 20);
+    expect(v.onBoxCommit).not.toHaveBeenCalled();
+    expect(v.onBandsCommit).toHaveBeenCalledOnce();
+    const [bands, active] = v.onBandsCommit.mock.calls[0];
+    expect(bands.map((b: { y: number }) => +b.y.toFixed(9))).toEqual([0.1, 0.5]);
+    expect(+bands[0].w.toFixed(9)).toBe(0.8);
+    expect(active).toBe(0);
+  });
+
+  it("desligar a ferramenta no meio do arraste descarta a área", () => {
+    const v = setupBands({ bandTool: true });
+    v.ev(v.wrapper, "pointerdown", 10, 10);
+    v.ev(v.wrapper, "pointermove", 90, 20);
+    v.rerender(<ImageCanvas {...v.props} bandTool={false} />);
+    v.ev(v.wrapper, "pointerup", 90, 20);
+    expect(v.onBandsCommit).not.toHaveBeenCalled();
+    expect(v.onBoxCommit).not.toHaveBeenCalled();
+  });
+
+  it("área menor que o mínimo não é gravada", () => {
+    const v = setupBands({ bandTool: true });
+    v.ev(v.wrapper, "pointerdown", 10, 10);
+    v.ev(v.wrapper, "pointermove", 10.5, 30);
+    v.ev(v.wrapper, "pointerup", 10.5, 30);
+    expect(v.onBandsCommit).not.toHaveBeenCalled();
+  });
+
+  it("áreas aparecem sempre; sem a ferramenta não recebem o ponteiro", () => {
+    const v = setupBands();
+    const band = v.container.querySelector("[data-neume-band]") as HTMLElement;
+    expect(band).not.toBeNull();
+    expect(band.className).toContain("pointer-events-none");
+    expect(band.className).toContain("border-dashed");
+    expect(band.className).toContain("border-rule-strong");
+    expect(band.style.left).toBe("10%");
+    v.rerender(<ImageCanvas {...v.props} bandTool />);
+    expect((v.container.querySelector("[data-neume-band]") as HTMLElement).className).not.toContain("pointer-events-none");
+  });
+
+  it("clicar numa área a seleciona; arrastar a alça e aumenta w e grava a lista inteira", () => {
+    const offW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")!;
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 100 });
+    try {
+      const other = { x: 0, y: 0.8, w: 1, h: 0.1 };
+      const v = setupBands({ bandTool: true, neumeBands: [BAND, other] });
+      const band = v.container.querySelector('[data-neume-band="0"]') as HTMLElement;
+      v.ev(band, "pointerdown", 20, 55);
+      v.ev(band, "pointerup", 20, 55);
+      expect(v.onActivateBand).toHaveBeenCalledWith(0);
+      expect(v.onBandsCommit).not.toHaveBeenCalled();
+      v.rerender(<ImageCanvas {...v.props} bandTool neumeBands={[BAND, other]} activeBand={0} />);
+      const overlay = v.container.querySelector("[data-band-overlay]") as HTMLElement;
+      expect(overlay.querySelectorAll(".sc-box__h")).toHaveLength(8);
+      expect(overlay.className).not.toMatch(/sc-pig-/);
+      const handle = overlay.querySelector('[data-handle="e"]') as HTMLElement;
+      v.ev(handle, "pointerdown", 60, 55);
+      v.ev(overlay, "pointermove", 80, 55);
+      v.ev(overlay, "pointerup", 80, 55);
+      expect(v.onBandsCommit).toHaveBeenCalledOnce();
+      const [bands, active] = v.onBandsCommit.mock.calls[0];
+      expect(bands).toHaveLength(2);
+      expect(+bands[0].w.toFixed(9)).toBe(0.7);
+      expect(bands[1]).toEqual(other);
+      expect(active).toBe(0);
+      expect(v.onBoxCommit).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "offsetWidth", offW);
+    }
+  });
+});

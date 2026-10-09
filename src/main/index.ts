@@ -18,11 +18,13 @@ interface UserPrefs {
   language: string;
   theme: ThemePreference;
   classification?: Classification;
+  /** "Sugestões de neumas" (S8). */
+  suggestionsEnabled?: boolean;
 }
 
 const userPrefs = new Conf<UserPrefs>({
   name: 'user-prefs',
-  defaults: { language: 'pt-BR', theme: 'system' },
+  defaults: { language: 'pt-BR', theme: 'system', suggestionsEnabled: true },
 });
 
 // Barra de título nativa quando o overlay não é confiável (heurística do Linux
@@ -79,9 +81,33 @@ function refreshTitleBarOverlays(): void {
   }
 }
 
+// scripts/smoke-worker.mjs: MOCQUEREAU_SMOKE=worker abre a janela oculta com ?smoke=worker, espera o
+// renderer gravar SMOKE_OK/SMOKE_FAIL no titulo, imprime e sai (0/1). Sem a variavel, nada muda.
+const smokeMode = process.env.MOCQUEREAU_SMOKE === 'worker';
+const SMOKE_TIMEOUT_MS = 30_000;
+
+function watchSmoke(win: BrowserWindow): void {
+  let done = false;
+  const finish = (line: string, code: number) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(`${line}\n`);
+    app.exit(code);
+  };
+  const timer = setTimeout(() => finish('SMOKE_FAIL timeout', 1), SMOKE_TIMEOUT_MS);
+  win.webContents.on('page-title-updated', (_e, title) => {
+    if (!title.startsWith('SMOKE_')) return;
+    clearTimeout(timer);
+    finish(title, title.startsWith('SMOKE_OK') ? 0 : 1);
+  });
+  win.webContents.on('render-process-gone', (_e, d) => finish(`SMOKE_FAIL renderer gone (${d.reason})`, 1));
+  win.webContents.on('did-fail-load', (_e, code, desc) => finish(`SMOKE_FAIL load ${code} ${desc}`, 1));
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1600,
+    show: !smokeMode,
     height: 900,
     icon: join(__dirname, "../../resources/icon.png"),
     ...windowChromeOptions(process.platform, nativeTheme.shouldUseDarkColors, useNativeFrame),
@@ -156,10 +182,11 @@ function createWindow(): void {
       });
   });
 
+  if (smokeMode) watchSmoke(win);
   if (process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    win.loadFile(join(__dirname, "../renderer/index.html"));
+    win.loadFile(join(__dirname, "../renderer/index.html"), smokeMode ? { query: { smoke: 'worker' } } : undefined);
   }
 }
 
@@ -202,6 +229,11 @@ function registerSystemHandlers(): void {
     nativeTheme.themeSource = value;
     refreshTitleBarOverlays();
     return true;
+  });
+  ipcMain.handle("settings:get-suggestions", async () => userPrefs.get('suggestionsEnabled') !== false);
+  ipcMain.handle("settings:set-suggestions", async (_event, value: unknown) => {
+    if (typeof value === "boolean") userPrefs.set('suggestionsEnabled', value);
+    return userPrefs.get('suggestionsEnabled') !== false;
   });
 }
 

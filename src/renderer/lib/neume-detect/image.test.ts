@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   cropRaster,
   alphaMask,
+  downscaleMask,
+  prepareWork,
   contrastScore,
   cropGray,
   downscaleGray,
@@ -11,6 +13,7 @@ import {
   pickChannel,
   upscale2xGray,
 } from './image';
+import { addNoise, createRaster } from './synthetic';
 import type { GrayImage, RasterRGBA } from './types';
 
 function raster(w: number, h: number, px: (x: number, y: number) => [number, number, number, number]): RasterRGBA {
@@ -67,5 +70,26 @@ describe('image', () => {
     const r = { data: new Uint8ClampedArray(4 * 3 * 4), width: 4, height: 3 };
     expect(cropRaster(r, { x: 0, y: 0, w: 4, h: 3 }).data).toBe(r.data);
     expect(cropRaster(r, { x: 1, y: 0, w: 2, h: 3 }).data).not.toBe(r.data);
+  });
+
+  it('prepareWork equivale a recorte + canais + alfa + reducao, inclusive alfa 0 e escala 1', () => {
+    const r = createRaster(37, 23);
+    addNoise(r, 5, 60, 0.05);
+    for (let i = 0; i < 40; i++) r.data[((i * 17) % (37 * 23)) * 4 + 3] = 0;
+    const rect = { x: 3, y: 2, w: 31, h: 19 };
+    for (const scale of [1, 0.5, 0.37]) {
+      const crop = cropRaster(r, rect);
+      const want = {
+        r: downscaleGray(extractChannel(crop, 'r'), scale),
+        gray: downscaleGray(extractChannel(crop, 'gray'), scale),
+        valid: downscaleMask(alphaMask(crop), scale),
+      };
+      const got = prepareWork(r, rect, scale);
+      expect([got.r.width, got.r.height]).toEqual([want.r.width, want.r.height]);
+      expect([got.valid.width, got.valid.height]).toEqual([want.valid.width, want.valid.height]);
+      expect(Array.from(got.r.data)).toEqual(Array.from(want.r.data));
+      expect(Array.from(got.gray.data)).toEqual(Array.from(want.gray.data));
+      expect(Array.from(got.valid.data)).toEqual(Array.from(want.valid.data));
+    }
   });
 });

@@ -253,3 +253,19 @@ describe("SyllableStrip: rolagem", () => {
     expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts).toContain(v.syl(3));
   });
 });
+
+describe("SyllableStrip: sugestões (S3)", () => {
+  it("sílaba sem caixa com sugestão ganha traço tracejado no pigmento; com caixa, o traço cheio de sempre", () => {
+    const v = mount({ suggested: new Set([2, 3]), line: mkLine({ syllableBoxes: { 2: BOX } }), activeSyllable: null });
+    const u3 = v.underline(3)!;
+    expect(u3).not.toBeNull();
+    expect(u3.className).toContain("border-dashed");
+    expect(u3.className).toContain("border-b-2");
+    expect(u3.className).toContain("sc-pig-");
+    expect(u3.className).toContain("border-[var(--pig)]");
+    // Com caixa vence a caixa.
+    expect(v.underline(2)!.className).not.toContain("border-dashed");
+    // Sem sugestão e sem caixa: nada.
+    expect(v.underline(1)).toBeNull();
+  });
+});

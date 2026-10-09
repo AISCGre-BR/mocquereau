@@ -1,7 +1,7 @@
 // src/renderer/lib/models.ts
 
 import type { RecentEntry, RecentMeta } from "@shared/recent";
-import type { BoxFrame, Classification, ImageBytesPayload, ImageRef, SourceMetadata } from "@shared/project-schema";
+import type { BoxFrame, Classification, ImageBytesPayload, PageNotation, ImageRef, SourceMetadata } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
 export interface StoredImage {
@@ -121,6 +121,10 @@ export interface ManuscriptLine {
 
   /** Label livre para identificação da imagem (ex: "início", "variante"). Opcional. */
   label?: string;
+  /** Notação desta página (S1); ausente = derivada da classificação da fonte. */
+  notationOverride?: PageNotation;
+  /** Áreas da linha de neumas (S7), no referencial visual atual da página, de cima para baixo. */
+  neumeBands?: SyllableBox[];
 
   /** Ajustes visuais aplicados em render (CSS filter + transform).
    *  Phase 10 / IMG-06. Opcional — ausência = todos default (sem ajuste). */
@@ -267,6 +271,10 @@ export interface MocquereauAPI {
   setClassification: (c: Classification) => Promise<void>;
   getTheme: () => Promise<ThemePreference>;
   setTheme: (theme: ThemePreference) => Promise<boolean>;
+  /** "Sugestões de neumas" (S8); padrão true. */
+  getSuggestionsEnabled: () => Promise<boolean>;
+  /** Grava a preferência; devolve o valor gravado (não booleano é ignorado). */
+  setSuggestionsEnabled: (on: boolean) => Promise<boolean>;
   platform: string;
 }
 

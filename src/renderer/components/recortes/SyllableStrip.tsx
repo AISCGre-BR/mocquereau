@@ -28,6 +28,8 @@ export interface SyllableStripProps {
   onRangeChange(range: SyllableRange): void;
   onToggleGap(i: number): void;
   onRemoveBox(i: number): void;
+  /** Sílabas com sugestão de neuma na página (S3). */
+  suggested?: ReadonlySet<number>;
 }
 
 type Edge = "start" | "end";
@@ -42,6 +44,7 @@ export function SyllableStrip({
   onRangeChange,
   onToggleGap,
   onRemoveBox,
+  suggested,
 }: SyllableStripProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -204,6 +207,7 @@ export function SyllableStrip({
           active={i === activeSyllable}
           inRange={i >= range.start && i <= range.end}
           hasBox={line.syllableBoxes?.[i] != null}
+          suggested={suggested?.has(i) ?? false}
           gap={isLineGap(line, i)}
           coveredBy={coveredByOthers.get(i)}
           tabStop={i === tabStop}
@@ -263,6 +267,7 @@ interface SyllableProps {
   active: boolean;
   inRange: boolean;
   hasBox: boolean;
+  suggested: boolean;
   gap: boolean;
   coveredBy: string | undefined;
   tabStop: boolean;
@@ -279,6 +284,7 @@ function Syllable({
   active,
   inRange,
   hasBox,
+  suggested,
   gap,
   coveredBy,
   tabStop,
@@ -316,6 +322,10 @@ function Syllable({
         aria-hidden
         className={`${bar} h-[3px] rounded-xs ${active ? "bg-rubric" : `${pigmentOf(index)} bg-[var(--pig)]`}`}
       />
+    );
+  } else if (suggested) {
+    underline = (
+      <span data-underline aria-hidden className={`${bar} border-b-2 border-dashed ${pigmentOf(index)} border-[var(--pig)]`} />
     );
   }
 

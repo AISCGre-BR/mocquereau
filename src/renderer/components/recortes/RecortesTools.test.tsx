@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { RecortesTools } from "./RecortesTools";
 import { RecortesView } from "../../views/RecortesView";
+import { SuggestionsProvider } from "../../hooks/SuggestionsContext";
 import { RecortesProvider } from "../../hooks/RecortesContext";
 import {
   ProjectContext,
@@ -45,10 +46,12 @@ function mount(project: MocquereauProject) {
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
         <RecortesProvider>
-          <div role="toolbar">
-            <RecortesTools />
-          </div>
-          <RecortesView />
+          <SuggestionsProvider>
+            <div role="toolbar">
+              <RecortesTools />
+            </div>
+            <RecortesView />
+          </SuggestionsProvider>
         </RecortesProvider>
       </ProjectContext.Provider>
     );
@@ -109,6 +112,24 @@ describe("RecortesTools: alternâncias", () => {
     expect(others()).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Mostrar todas as caixas" }));
     expect(others()).toHaveLength(0);
+  });
+});
+
+describe("RecortesTools: Marcar linha de neumas (S7)", () => {
+  it("o ícone liga e desliga a ferramenta; ligada, arrastar na folha grava uma área, não uma caixa", () => {
+    const v = mount(projectWith([mkLine("a1")]));
+    const band = screen.getByRole("button", { name: "Marcar linha de neumas" });
+    expect(band.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(band);
+    expect(band.getAttribute("aria-pressed")).toBe("true");
+    const wrapper = v.container.querySelector("[data-image-wrapper]") as HTMLElement;
+    for (const [type, x] of [["pointerdown", 20], ["pointermove", 120], ["pointerup", 120]] as const) {
+      act(() => void wrapper.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: x / 2 })));
+    }
+    expect(v.line().syllableBoxes).toEqual({});
+    expect(v.line().neumeBands).toHaveLength(1);
+    fireEvent.click(band);
+    expect(band.getAttribute("aria-pressed")).toBe("false");
   });
 });
 
