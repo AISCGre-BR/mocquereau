@@ -4,13 +4,14 @@ import { staffMetrics } from './scale';
 import {
   classifySpecialGlyphs,
   findStaves,
+  findStavesRobust,
   isBarLine,
   removalLimit,
   removeStaffLines,
   staffCoverage,
   type Staff,
 } from './staff';
-import { createRaster, drawStaff, fillRect, RED_LINE, staffLineTop, type StaffSpec } from './synthetic';
+import { buildDiastematicLine, createRaster, drawStaff, fillRect, RED_LINE, staffLineTop, type StaffSpec } from './synthetic';
 import { binarizeOtsu } from './threshold';
 import type { Mask, RasterRGBA } from './types';
 
@@ -43,6 +44,27 @@ describe('staff', () => {
     expect(Math.abs(st.x0 - 30)).toBeLessThanOrEqual(2);
     expect(Math.abs(st.x1 - 1170)).toBeLessThanOrEqual(2);
     st.lines.forEach((l, i) => expect(Math.abs(l.mean - center(spec, i, 600))).toBeLessThanOrEqual(1));
+  });
+
+  it('acha pauta inclinada 6° (runs curtas na segunda tentativa) e devolve o ângulo', () => {
+    const r = createRaster(700, 300);
+    drawStaff(r, { x0: 40, x1: 660, yTop: 40, lines: 4, d: 14, t: 2, tiltDeg: 6 });
+    const ink = binarizeOtsu(extractChannel(r, 'gray'), null);
+    const m = staffMetrics(ink)!;
+    expect(findStaves(ink, m)).toEqual([]); // runs >= 3d nao existem a 6 graus
+    const st = findStavesRobust(ink, m);
+    expect(st).toHaveLength(1);
+    expect(st[0].lines).toHaveLength(4);
+    expect(st[0].angleDeg).toBeCloseTo(6, 0);
+  });
+
+  it('pauta reta: mesmo resultado de antes (ângulo 0, mesmas linhas)', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!);
+    expect(st[0].angleDeg).toBe(0);
+    // mesma formula do teste reto acima: centro = topo + (t - 1) / 2
+    st[0].lines.forEach((l, i) => expect(Math.abs(l.mean - (fx.staff.yTop + i * 16 + 0.5))).toBeLessThanOrEqual(0.5));
   });
 
   it('rastreia inclinacao de 1 grau e curvatura leve (+-1 px)', () => {

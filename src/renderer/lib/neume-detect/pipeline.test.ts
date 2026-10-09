@@ -7,6 +7,9 @@ import {
   createRaster,
   fillRect,
   INK,
+  drawText,
+  LIGHT_RED_LINE,
+  RED_LINE,
   fracToPx,
   iou,
   pxToFrac,
@@ -530,5 +533,36 @@ describe('M4a — caneta do texto mais grossa que os neumas', () => {
       expect(truth.some((t) => contains(t, center(c)))).toBe(true);
       expect(specks.some((b) => contains(c, center(b)))).toBe(false);
     }
+  });
+});
+
+describe('M4b — pauta inclinada e vermelha', () => {
+  const center = (b: PxBox) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+  const contains = (b: PxBox, p: { x: number; y: number }) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+  const allNotesFound = (fx: ReturnType<typeof buildDiastematicLine>, res: SuggestResult) => {
+    const cands = res.candidates!.map((c) => fracToPx(c.box, fx.raster.width, fx.raster.height));
+    for (const s of fx.syllables) for (const n of fx.neumes[s.index]) expect(cands.some((c) => contains(c, center(n)))).toBe(true);
+  };
+
+  it('pauta vermelha inclinada 6° com puncta quadrados: modo D e todas as notas', () => {
+    const fx = buildDiastematicLine({ red: true, tiltDeg: 6, width: 800, height: 360, seed: 63 });
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('D');
+    allNotesFound(fx, res);
+  });
+
+  it('pauta vermelho-claro (invisível no cinza binarizado): achada pelo mapa r − g', () => {
+    const fx = buildDiastematicLine({ lineColor: LIGHT_RED_LINE, seed: 64 });
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('D');
+    expect(res.debug.staff?.red).toBe(true);
+    allNotesFound(fx, res);
+  });
+
+  it('rubrica vermelha num adiastemático pedido como D não vira pauta', () => {
+    const fx = buildAdiastematicLine({ seed: 65, words: [['Do', 'mi', 'nus'], ['di', 'xit']] });
+    drawText(fx.raster, 'DOMINUS', 80, 150, 40, 6, RED_LINE); // letras grandes vermelhas
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('A');
   });
 });

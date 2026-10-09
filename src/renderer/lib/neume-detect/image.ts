@@ -217,7 +217,7 @@ function downscaleGrid(n: number, scale: number): { m: number; lo: Int32Array; h
 }
 
 /**
- * Raster de trabalho de `rect` em UMA passada: canal R, cinza (arredondado por pixel) e validade
+ * Raster de trabalho de `rect` em UMA passada: canais R, G, B, cinza (arredondado por pixel) e validade
  * (alfa > 0 em >= 50% da celula), reduzidos por media de area na mesma grade de `downscaleGray`.
  * Equivale a downscaleGray(extractChannel(cropRaster(raster, rect), ...)) e
  * downscaleMask(alphaMask(...)), sem recorte nem canais intermediarios. Alfa 0 conta 255.
@@ -226,23 +226,29 @@ export function prepareWork(
   raster: RasterRGBA,
   rect: PxBox,
   scale: number,
-): { r: GrayImage; gray: GrayImage; valid: Mask } {
+): { r: GrayImage; g: GrayImage; b: GrayImage; gray: GrayImage; valid: Mask } {
   const { data, width: W } = raster;
   const gx = downscaleGrid(rect.w, scale);
   const gy = downscaleGrid(rect.h, scale);
   const w = gx.m;
   const h = gy.m;
   const r = new Uint8Array(w * h);
+  const gc = new Uint8Array(w * h);
+  const bc = new Uint8Array(w * h);
   const gray = new Uint8Array(w * h);
   const valid = new Uint8Array(w * h);
   // coluna de destino de cada coluna de origem (-1: fora de toda celula, por arredondamento)
   const colOf = new Int32Array(rect.w).fill(-1);
   for (let x = 0; x < w; x++) for (let xx = gx.lo[x]; xx < gx.hi[x]; xx++) colOf[xx] = x;
   const sr = new Uint32Array(w);
+  const sgc = new Uint32Array(w);
+  const sbc = new Uint32Array(w);
   const sg = new Uint32Array(w);
   const sa = new Uint32Array(w);
   for (let y = 0; y < h; y++) {
     sr.fill(0);
+    sgc.fill(0);
+    sbc.fill(0);
     sg.fill(0);
     sa.fill(0);
     const ya = gy.lo[y];
@@ -254,12 +260,18 @@ export function prepareWork(
         if (c < 0) continue;
         if (data[p + 3] === 0) {
           sr[c] += 255;
+          sgc[c] += 255;
+          sbc[c] += 255;
           sg[c] += 255;
           continue;
         }
         const rv = data[p];
+        const gv = data[p + 1];
+        const bv = data[p + 2];
         sr[c] += rv;
-        sg[c] += Math.round(0.299 * rv + 0.587 * data[p + 1] + 0.114 * data[p + 2]);
+        sgc[c] += gv;
+        sbc[c] += bv;
+        sg[c] += Math.round(0.299 * rv + 0.587 * gv + 0.114 * bv);
         sa[c]++;
       }
     }
@@ -268,13 +280,24 @@ export function prepareWork(
       const area = rows * (gx.hi[x] - gx.lo[x]);
       const i = y * w + x;
       r[i] = Math.round(sr[x] / area);
+      gc[i] = Math.round(sgc[x] / area);
+      bc[i] = Math.round(sbc[x] / area);
       gray[i] = Math.round(sg[x] / area);
       valid[i] = Math.round((sa[x] * 255) / area) >= 128 ? 1 : 0;
     }
   }
   return {
     r: { data: r, width: w, height: h },
+    g: { data: gc, width: w, height: h },
+    b: { data: bc, width: w, height: h },
     gray: { data: gray, width: w, height: h },
     valid: { data: valid, width: w, height: h },
   };
+}
+
+/** Mapa de vermelhidao (tinta = escuro): 255 - min(255, 2 * max(0, r - g)). */
+export function rednessInk(r: GrayImage, g: GrayImage): GrayImage {
+  const out = new Uint8Array(r.data.length);
+  for (let i = 0; i < out.length; i++) out[i] = 255 - Math.min(255, 2 * Math.max(0, r.data[i] - g.data[i]));
+  return { data: out, width: r.width, height: r.height };
 }

@@ -12,6 +12,7 @@ import {
   cropMask,
   contrastScore,
   prepareWork,
+  rednessInk,
   upscale2xGray,
   upscale2xMask,
 } from './image';
@@ -21,7 +22,7 @@ import { deriveParams, estimateStrokeWidth, staffMetrics, strokeWidthOutside, ty
 import {
   classifySpecialGlyphs,
   cropStaff,
-  findStaves,
+  findStavesRobust,
   isBarLine,
   removeStaffLines,
   staffBottom,
@@ -58,6 +59,8 @@ const now = (): number => (typeof performance !== 'undefined' ? performance.now(
 
 interface Work {
   r: GrayImage;
+  g: GrayImage;
+  b: GrayImage;
   gray: GrayImage;
   valid: Mask;
   /** px do raster = ox + x / sx, oy + y / sy (sx e sy diferem levemente por arredondamento) */
@@ -70,6 +73,8 @@ interface Work {
 function cropWork(w: Work, box: PxBox): Work {
   return {
     r: cropGray(w.r, box),
+    g: cropGray(w.g, box),
+    b: cropGray(w.b, box),
     gray: cropGray(w.gray, box),
     valid: cropMask(w.valid, box),
     ox: w.ox + box.x / w.sx,
@@ -110,13 +115,16 @@ interface InkStage {
   red: boolean;
 }
 
-/** Etapas 1 e 3: binarizacao, manchas, remocao da pauta, rotulagem, barras, filtros. */
 /**
  * Alcance (em u) que salva um ponto de ate u^2 de ser descartado como mancha do pergaminho: ha um
- * componente maior a ate 6u (vaos internos de um grupo de neumas). Escolhido pelo eval (4u a 6u).
+ * componente maior a ate 6u (vaos internos de um grupo de neumas). Escolhido pelo eval (2u a 6u).
  */
 const SPECK_REACH = 6;
 
+/** Pauta achada so no mapa r - g precisa cobrir ao menos esta fracao da largura da faixa. */
+const RED_MIN_EXTENT = 0.5;
+
+/** Etapas 1 e 3: binarizacao, manchas, remocao da pauta, rotulagem, barras, filtros, pontos isolados. */
 function inkStage(
   work: Work,
   p: Params,
@@ -242,6 +250,8 @@ function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; gra
     up = 2;
     work = {
       r: upscale2xGray(work.r),
+      g: upscale2xGray(work.g),
+      b: upscale2xGray(work.b),
       gray: upscale2xGray(work.gray),
       valid: upscale2xMask(work.valid),
       ox: work.ox,
@@ -272,7 +282,8 @@ function analyzeBand(
   let band = selected;
   const prep = buildWork(input.image, band.rect);
   let work = prep.work;
-  const { grayInk, u } = prep;
+  const { grayInk } = prep;
+  let u = prep.u;
   debug.scale = work.sx;
   lap('prepare');
   if (u === 0) {
@@ -286,7 +297,18 @@ function analyzeBand(
   if (input.notation === 'diastematic') {
     const anchorBoxes = () => anchors.map((a) => fracToWork(a.box, work, W, H));
     metrics = staffMetrics(grayInk);
-    const staves = metrics ? findStaves(grayInk, metrics) : [];
+    let staves = metrics ? findStavesRobust(grayInk, metrics) : [];
+    if (!staves.length) {
+      // pauta vermelha clara que some no cinza binarizado: terceira tentativa no mapa r - g
+      const redInk = binarizeOtsu(rednessInk(work.r, work.g), work.valid);
+      const m2 = staffMetrics(redInk);
+      // so linhas longas: rubricas (letras vermelhas grandes) tambem tem tracos horizontais alinhados
+      const s2 = (m2 ? findStavesRobust(redInk, m2) : []).filter((st) => st.x1 - st.x0 >= RED_MIN_EXTENT * redInk.width);
+      if (s2.length) {
+        metrics = m2;
+        staves = s2;
+      }
+    }
     if (staves.length > 1 && band.source === 'staff') {
       // varias pautas e nada indica qual: pedir a faixa em vez de chutar a primeira
       const picked = anchors.length ? pickStaffByAnchors(staves, anchorBoxes()) : null;
@@ -318,6 +340,9 @@ function analyzeBand(
   lap('staff');
   debug.mode = staff ? 'D' : 'A';
   debug.bandSource = band.source;
+  // Notas quadradas cheias (~d) nao sao traco: sem linhas de pauta e texto na medida (pauta vermelha
+  // invisivel no cinza, texto apagado por measureU), a moda vira o tamanho da nota.
+  if (staff && metrics) u = Math.min(u, Math.max(metrics.t, metrics.s / 4));
   debug.strokeWidth = u;
   const p = deriveParams(u, staff ? metrics : null, prep.up);
 

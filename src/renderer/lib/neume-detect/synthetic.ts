@@ -8,6 +8,8 @@ export const PARCHMENT: RGB = [226, 212, 178];
 export const INK: RGB = [45, 35, 30];
 /** R igual ao do pergaminho: a linha some no canal R e aparece no cinza. */
 export const RED_LINE: RGB = [226, 70, 60];
+/** Vermelho claro: some no cinza binarizado, forte em r - g. */
+export const LIGHT_RED_LINE: RGB = [235, 150, 140];
 export const STAIN: RGB = [20, 15, 15];
 
 export function mulberry32(seed: number): () => number {
@@ -317,57 +319,92 @@ export interface DiastematicFixture extends LineFixture {
   bar: PxBox;
 }
 
+export interface DiastematicOptions {
+  seed?: number;
+  red?: boolean;
+  noise?: boolean;
+  u?: number;
+  /** Inclinacao da pauta em graus; notas, clave, barra, custos e texto acompanham. */
+  tiltDeg?: number;
+  /** Cor das linhas da pauta (padrao: red ? RED_LINE : INK). */
+  lineColor?: RGB;
+  width?: number;
+  height?: number;
+  /** false = nao desenha a pauta (so as notas). */
+  staff?: boolean;
+}
+
 /**
  * Linha diastematica: pauta de 4 linhas (t = 2, d = 14, s = 16) de x = 40 a largura - 40, clave de do
  * no inicio, notas quadradas 12 x 12 sobre e entre as linhas (cruzando a pauta), barra de divisao
  * entre a 3a e a 4a silaba, custos no fim e texto 3,5s abaixo da ultima linha.
  * Verdade = x da tinta + max(2, u); y = [linha superior - 0,5s, linha inferior + 0,5s] uniao tinta + pad.
+ * Colunas, barra e custos escalam com width / 1400. Com tiltDeg, tudo em x desce
+ * dy(x) = round(tan(tilt) * (x - x0)); `baseline` e a da primeira coluna.
  */
-export function buildDiastematicLine(opts: { seed?: number; red?: boolean; noise?: boolean; u?: number } = {}): DiastematicFixture {
-  const width = 1400;
-  const height = 240;
+export function buildDiastematicLine(opts: DiastematicOptions = {}): DiastematicFixture {
+  const width = opts.width ?? 1400;
+  const height = opts.height ?? 240;
+  const k = width / 1400;
   const u = opts.u ?? 3;
   const rnd = mulberry32(opts.seed ?? 11);
   const r = createRaster(width, height);
-  const staff: StaffSpec = { x0: 40, x1: width - 40, yTop: 60, lines: 4, d: 14, t: 2, color: opts.red ? RED_LINE : INK };
-  drawStaff(r, staff);
+  const staff: StaffSpec = {
+    x0: 40,
+    x1: width - 40,
+    yTop: 60,
+    lines: 4,
+    d: 14,
+    t: 2,
+    tiltDeg: opts.tiltDeg ?? 0,
+    color: opts.lineColor ?? (opts.red ? RED_LINE : INK),
+  };
+  if (opts.staff !== false) drawStaff(r, staff);
+  const tan = Math.tan(((opts.tiltDeg ?? 0) * Math.PI) / 180);
+  const dy = (x: number) => Math.round(tan * (x - staff.x0));
   const s = staff.d + staff.t;
   const lineCenter = (i: number) => staff.yTop + i * s + (staff.t - 1) / 2;
   // clave de do: haste + dois quadrados, centrada na 2a linha
   const clef = unionBox([
-    fillRect(r, 48, lineCenter(1) - 17, 4, 34),
-    fillRect(r, 52, lineCenter(1) - 13, 10, 8),
-    fillRect(r, 52, lineCenter(1) + 5, 10, 8),
+    fillRect(r, 48, lineCenter(1) - 17 + dy(48), 4, 34),
+    fillRect(r, 52, lineCenter(1) - 13 + dy(52), 10, 8),
+    fillRect(r, 52, lineCenter(1) + 5 + dy(52), 10, 8),
   ]);
   const syllables: SuggestSyllable[] = ['Al', 'le', 'lu', 'ia'].map((text, i) => ({ index: i, text, wordIndex: 0 }));
-  const cols = [140, 430, 720, 1010];
+  const cols = [140, 430, 720, 1010].map((c) => Math.round(c * k));
   const ink: Record<number, PxBox> = {};
   const neumes: Record<number, PxBox[]> = {};
   const truth: Record<number, PxBox> = {};
-  const baseline = Math.round(lineCenter(3) + 3.5 * s);
+  const baseline0 = Math.round(lineCenter(3) + 3.5 * s);
   const xh = 14;
   syllables.forEach((syl, j) => {
     const boxes: PxBox[] = [];
     let x = cols[j];
     const count = 2 + Math.floor(rnd() * 2);
-    for (let k = 0; k < count; k++) {
+    for (let n = 0; n < count; n++) {
       // posicoes: sobre uma linha (cruza) ou num espaco (1 px de folga de cada lado)
       const onLine = rnd() < 0.5;
       const li = Math.floor(rnd() * 4);
       const y = onLine ? Math.round(lineCenter(li) - 6) : staff.yTop + Math.min(li, 2) * s + staff.t + 1;
-      boxes.push(fillRect(r, x, y, 12, 12));
+      boxes.push(fillRect(r, x, y + dy(x), 12, 12));
       x += 12 + 10 + Math.floor(rnd() * 8);
     }
     neumes[syl.index] = boxes;
     ink[syl.index] = unionBox(boxes);
     const pad = Math.max(2, u);
-    const y0 = Math.min(lineCenter(0) - 0.5 * s, ink[syl.index].y - pad);
-    const y1 = Math.max(lineCenter(3) + 0.5 * s, ink[syl.index].y + ink[syl.index].h + pad);
-    truth[syl.index] = { x: ink[syl.index].x - pad, y: y0, w: ink[syl.index].w + 2 * pad, h: y1 - y0 };
-    drawText(r, syl.text, cols[j], baseline, xh, u);
+    const b = ink[syl.index];
+    const y0 = Math.min(lineCenter(0) - 0.5 * s + dy(b.x), b.y - pad);
+    const y1 = Math.max(lineCenter(3) + 0.5 * s + dy(b.x + b.w), b.y + b.h + pad);
+    truth[syl.index] = { x: b.x - pad, y: y0, w: b.w + 2 * pad, h: y1 - y0 };
+    drawText(r, syl.text, cols[j], baseline0 + dy(cols[j]), xh, u);
   });
-  const bar = fillRect(r, 950, staff.yTop - 2, 3, 3 * s + staff.t + 4);
-  const custos = unionBox([fillRect(r, width - 52, lineCenter(1) - 2, 6, 5), fillRect(r, width - 47, lineCenter(1) - 9, 2, 8)]);
+  const barX = Math.round(950 * k);
+  const bar = fillRect(r, barX, staff.yTop - 2 + dy(barX), 3, 3 * s + staff.t + 4);
+  const cX = width - 52;
+  const custos = unionBox([
+    fillRect(r, cX, lineCenter(1) - 2 + dy(cX), 6, 5),
+    fillRect(r, cX + 5, lineCenter(1) - 9 + dy(cX + 5), 2, 8),
+  ]);
   if (opts.noise !== false) addNoise(r, (opts.seed ?? 11) + 1);
-  return { raster: r, syllables, ink, neumes, truth, u, baseline, xHeight: xh, staff, clef, custos, bar };
+  return { raster: r, syllables, ink, neumes, truth, u, baseline: baseline0, xHeight: xh, staff, clef, custos, bar };
 }

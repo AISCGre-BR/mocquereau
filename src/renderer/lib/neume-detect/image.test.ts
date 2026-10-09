@@ -4,6 +4,7 @@ import {
   alphaMask,
   downscaleMask,
   prepareWork,
+  rednessInk,
   contrastScore,
   cropGray,
   downscaleGray,
@@ -81,6 +82,8 @@ describe('image', () => {
       const crop = cropRaster(r, rect);
       const want = {
         r: downscaleGray(extractChannel(crop, 'r'), scale),
+        g: downscaleGray(extractChannel(crop, 'g'), scale),
+        b: downscaleGray(extractChannel(crop, 'b'), scale),
         gray: downscaleGray(extractChannel(crop, 'gray'), scale),
         valid: downscaleMask(alphaMask(crop), scale),
       };
@@ -88,8 +91,16 @@ describe('image', () => {
       expect([got.r.width, got.r.height]).toEqual([want.r.width, want.r.height]);
       expect([got.valid.width, got.valid.height]).toEqual([want.valid.width, want.valid.height]);
       expect(Array.from(got.r.data)).toEqual(Array.from(want.r.data));
+      expect(Array.from(got.g.data)).toEqual(Array.from(want.g.data));
+      expect(Array.from(got.b.data)).toEqual(Array.from(want.b.data));
       expect(Array.from(got.gray.data)).toEqual(Array.from(want.gray.data));
       expect(Array.from(got.valid.data)).toEqual(Array.from(want.valid.data));
     }
+  });
+
+  it('rednessInk: tinta = vermelho (r - g alto), escuro e pergaminho ficam claros', () => {
+    const r = { data: Uint8Array.from([226, 235, 45, 226, 255]), width: 5, height: 1 };
+    const g = { data: Uint8Array.from([70, 150, 35, 212, 0]), width: 5, height: 1 };
+    expect(Array.from(rednessInk(r, g).data)).toEqual([0, 85, 235, 227, 0]);
   });
 });
