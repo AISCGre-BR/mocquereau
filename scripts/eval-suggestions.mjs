@@ -75,11 +75,22 @@ const fileSafe = (s) => s.replace(/[^\w.-]+/g, "_");
 const rows = []; // { project, source, mode, minConf, ious[], wrong, ms[] }
 const raw = { projects: [], skipped: [] };
 const unavailable = new Set();
+const seenPages = []; // { c, name }: first occurrence of each page
+const duplicates = [];
 
-function bucket(project, source, mode, minConf) {
+/** One row per source and mode; pages already seen elsewhere go to their row but not to "todas". */
+function bucket(project, source, mode, minConf, dup) {
   let r = rows.find((x) => x.project === project && x.source === source && x.mode === mode && x.minConf === minConf);
-  if (!r) rows.push((r = { project, source, mode, minConf, ious: [], wrong: 0, ms: [] }));
+  if (!r) rows.push((r = { project, source, mode, minConf, ious: [], wrong: 0, ms: [], uniq: { ious: [], wrong: 0, ms: [] }, dup: false }));
+  r.dup ||= dup;
   return r;
+}
+function add(b, dup, ious, wrong, ms) {
+  for (const t of dup ? [b] : [b, b.uniq]) {
+    t.ious.push(...ious);
+    t.wrong += wrong;
+    if (ms !== undefined) t.ms.push(ms);
+  }
 }
 
 try {
@@ -91,13 +102,22 @@ try {
     } catch (err) {
       fail(`${projPath}: não foi possível ler o JSON (${err.message})`);
     }
-    const { cases, skipped } = await E.loadCases(json, label);
+    // The app's legacy-open ink realignment, with the app's decoder running in Chromium.
+    const loadRaster = async (image) => {
+      const r = await page.evaluate((u) => window.__evalInkRaster(u), image.dataUrl);
+      if (!r) return null;
+      const b = Buffer.from(r.b64, "base64");
+      return { data: new Uint8ClampedArray(b.buffer, b.byteOffset, b.length), width: r.width, height: r.height };
+    };
+    const { cases, skipped } = await E.loadCases(json, label, { loadRaster });
     raw.skipped.push(...skipped);
-    for (const s of skipped) console.error(`pulado: ${s}`);
     const projRaw = { project: label, cases: [] };
     raw.projects.push(projRaw);
 
     for (const c of cases) {
+      const dupOf = seenPages.find((p) => E.samePage(p.c, c))?.name;
+      if (dupOf) duplicates.push(`${label}: ${c.name} = ${dupOf} (mesma imagem e mesmas caixas; fora de "todas")`);
+      else seenPages.push({ c, name: `${label}: ${c.name}` });
       const region = E.caseRegion(c);
       const r = await page.evaluate((a) => window.__evalRaster(a), {
         dataUrl: c.line.image.dataUrl,
@@ -116,10 +136,7 @@ try {
         for (const mc of opts.minConf) {
           const { sugs, ms } = E.runSequential(c, raster, { minConfidence: mc });
           const ious = E.sequentialIous(sugs, c.gt);
-          const b = bucket(label, c.source, "sequential", mc);
-          b.ious.push(...ious);
-          b.wrong += E.wrongCount(sugs, c.gt);
-          b.ms.push(ms);
+          add(bucket(label, c.source, "sequential", mc, !!dupOf), !!dupOf, ious, E.wrongCount(sugs, c.gt), ms);
           caseRaw.modes[`sequential${mc === undefined ? "" : `@${mc}`}`] = { ious, ms, suggestions: Object.fromEntries(sugs) };
         }
       }
@@ -128,9 +145,7 @@ try {
         if (res === null) unavailable.add("candidates");
         else {
           const ious = E.candidateIous(res.cands, zones);
-          const b = bucket(label, c.source, "candidates", undefined);
-          b.ious.push(...ious);
-          b.ms.push(res.ms);
+          add(bucket(label, c.source, "candidates", undefined, !!dupOf), !!dupOf, ious, 0, res.ms);
           caseRaw.modes.candidates = { ious, ms: res.ms, candidates: res.cands };
         }
       }
@@ -139,7 +154,7 @@ try {
         if (Array.isArray(boxes)) {
           const cands = boxes.map(([x, y, w, h]) => E.regionToView({ x: x / r.width, y: y / r.height, w: w / r.width, h: h / r.height }, region));
           const ious = E.candidateIous(cands, zones);
-          bucket(label, c.source, "Othmar", undefined).ious.push(...ious);
+          add(bucket(label, c.source, "Othmar", undefined, !!dupOf), !!dupOf, ious, 0, undefined);
           caseRaw.modes.othmar = { ious };
         }
       }
@@ -174,17 +189,19 @@ function line(name, mode, ious, wrong, ms) {
 }
 const out = ["| fonte | modo | n | achados | IoU≥0,5 | IoU≥0,7 | IoU med | erradas | p95 ms |", "|---|---|---|---|---|---|---|---|---|"];
 const groups = [...new Set(rows.map((r) => `${r.mode}\u0000${r.minConf}`))];
-for (const r of rows) out.push(line(`${r.source} (${r.project})`, modeName(r.mode, r.minConf), r.ious, r.wrong, r.ms));
+for (const r of rows) out.push(line(`${r.source} (${r.project})${r.dup ? " [duplicata]" : ""}`, modeName(r.mode, r.minConf), r.ious, r.wrong, r.ms));
 for (const g of groups) {
   const rs = rows.filter((r) => `${r.mode}\u0000${r.minConf}` === g);
-  out.push(line("todas", modeName(rs[0].mode, rs[0].minConf), rs.flatMap((r) => r.ious), rs.reduce((s, r) => s + r.wrong, 0), rs.flatMap((r) => r.ms)));
+  const u = rs.map((r) => r.uniq);
+  out.push(line("todas", modeName(rs[0].mode, rs[0].minConf), u.flatMap((r) => r.ious), u.reduce((s, r) => s + r.wrong, 0), u.flatMap((r) => r.ms)));
 }
-const table = out.join("\n");
+const notes = [...raw.skipped.map((s) => `skipped: ${s}`), ...duplicates.map((d) => `duplicata: ${d}`)];
+const table = [...out, ...(notes.length ? ["", ...notes] : [])].join("\n");
 console.log(table);
 for (const m of unavailable) console.error(`modo ${m}: o detector ainda não expõe candidatos (ignorado)`);
 
 if (opts.out) await writeFile(opts.out, table + "\n");
 if (opts.json) {
-  const summary = rows.map((r) => ({ project: r.project, source: r.source, mode: r.mode, minConfidence: r.minConf ?? null, ...E.summarize(r.ious), wrong: r.wrong, p95ms: E.p95(r.ms) }));
-  await writeFile(opts.json, JSON.stringify({ summary, ...raw }, null, 1));
+  const summary = rows.map((r) => ({ project: r.project, source: r.source, mode: r.mode, minConfidence: r.minConf ?? null, duplicate: r.dup, ...E.summarize(r.ious), wrong: r.wrong, p95ms: E.p95(r.ms) }));
+  await writeFile(opts.json, JSON.stringify({ summary, duplicates, ...raw }, null, 1));
 }

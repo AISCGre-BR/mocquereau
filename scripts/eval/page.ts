@@ -4,6 +4,7 @@
 // app's own renderSuggestRaster, returned as base64 RGBA (and optionally PNG).
 
 import { loadSuggestImage, renderSuggestRaster } from "../../src/renderer/lib/suggest/raster";
+import { loadRasterForInk } from "../../src/renderer/lib/box-frame-realign";
 import type { BoxFrame } from "@shared/project-schema";
 
 function toB64(u8: Uint8ClampedArray | Uint8Array): string {
@@ -28,4 +29,10 @@ function toB64(u8: Uint8ClampedArray | Uint8Array): string {
     png = c.toDataURL("image/png").split(",")[1];
   }
   return { b64: toB64(r.data), width: r.width, height: r.height, png };
+};
+
+/** The app's decoder for the legacy-open ink realignment (loadRasterForInk), as base64 RGBA. */
+(window as unknown as Record<string, unknown>).__evalInkRaster = async (dataUrl: string) => {
+  const r = await loadRasterForInk({ dataUrl, width: 0, height: 0, mimeType: "" });
+  return r ? { b64: toB64(r.data), width: r.width, height: r.height } : null;
 };

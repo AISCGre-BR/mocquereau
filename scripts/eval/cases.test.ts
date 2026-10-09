@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gtAreas, loadCases } from "./cases";
+import { gtAreas, loadCases, samePage } from "./cases";
 
 // PNG 1x1 válido (o migrador confere a assinatura dos bytes).
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -18,14 +18,14 @@ describe("gtAreas", () => {
 });
 
 describe("loadCases", () => {
-  function legacy(boxes: Record<number, unknown>) {
+  function legacy(boxes: Record<number, unknown>, adj?: Record<string, unknown>) {
     return {
       title: "T",
       text: { raw: "Pu er na tus", words: [{ original: "Puer", syllables: ["Pu", "er"] }, { original: "natus", syllables: ["na", "tus"] }], hyphenationMode: "manual" },
       sources: [{
         id: "s1", order: 1, metadata: { siglum: "X1", library: "", city: "", century: "", notation: "adiastematic" },
         lines: [
-          { id: "l1", image: { dataUrl: PNG, width: 1, height: 1, mimeType: "image/png" }, syllableRange: { start: 0, end: 3 }, dividers: [], gaps: [], syllableBoxes: boxes, confirmed: true },
+          { id: "l1", image: { dataUrl: PNG, width: 1, height: 1, mimeType: "image/png" }, syllableRange: { start: 0, end: 3 }, dividers: [], gaps: [], syllableBoxes: boxes, confirmed: true, ...(adj ? { imageAdjustments: adj } : {}) },
           { id: "l2", image: { dataUrl: PNG, width: 1, height: 1, mimeType: "image/png" }, syllableRange: { start: 0, end: 3 }, dividers: [], gaps: [], syllableBoxes: {}, confirmed: false },
         ],
         syllableCuts: {},
@@ -43,5 +43,31 @@ describe("loadCases", () => {
     expect(c.line.syllableBoxes).toEqual({ 1: null });
     expect(c.line.neumeBands).toEqual(c.areas);
     expect(c.line.confirmed).toBe(false);
+  });
+
+  const B = { 0: { x: 0.1, y: 0.1, w: 0.1, h: 0.2 }, 2: { x: 0.4, y: 0.1, w: 0.1, h: 0.2 } };
+
+  it("abre como o app: páginas giradas com caixas passam pelo realinhamento por tinta (loader do app)", async () => {
+    const seen: string[] = [];
+    const loadRaster = async (img: { dataUrl: string }) => {
+      seen.push(img.dataUrl.slice(0, 22));
+      return null; // imagem não decodificada: o app mantém a página como lida
+    };
+    const { cases } = await loadCases(legacy(B, { rotation: 5, flipH: false, flipV: false }), "teste", { loadRaster });
+    expect(seen).toEqual(["data:image/png;base64,"]);
+    expect(cases[0].gt.map((g) => g.index)).toEqual([0, 2]);
+  });
+
+  it("samePage: mesma imagem e caixas (quase) iguais = mesma página, em projetos diferentes", async () => {
+    const a = (await loadCases(legacy(B), "a")).cases[0];
+    const b = (await loadCases(legacy(B, { rotation: 5, flipH: false, flipV: false }), "b")).cases[0];
+    const many = (n: number, moved = -1) =>
+      Object.fromEntries(Array.from({ length: n }, (_, i) => [i, { x: 0.05 * i + (i === moved ? 0.02 : 0), y: 0.1, w: 0.04, h: 0.2 }]));
+    const c = (await loadCases(legacy({ 0: B[0] }), "c")).cases[0];
+    const d = (await loadCases(legacy(many(12)), "d")).cases[0];
+    const e = (await loadCases(legacy(many(12, 9)), "e")).cases[0];
+    expect(samePage(a, b)).toBe(true);
+    expect(samePage(a, c)).toBe(false);
+    expect(samePage(d, e)).toBe(true); // uma caixa redesenhada em 12: ainda a mesma página
   });
 });

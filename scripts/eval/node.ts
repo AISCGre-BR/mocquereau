@@ -11,7 +11,7 @@ import { coveredByOtherPages } from "../../src/renderer/lib/sources";
 import type { EvalCase } from "./cases";
 import type { Rect } from "./metrics";
 
-export { loadCases, gtAreas } from "./cases";
+export { loadCases, gtAreas, samePage } from "./cases";
 export * from "./metrics";
 export { suggestBoxes, planSuggestion, regionToView, viewToRegion, coveredByOtherPages, frameOf };
 

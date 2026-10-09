@@ -11,8 +11,10 @@ import { boxesInView } from "@shared/box-frame";
 import { orderNeumeBands } from "@shared/band-order";
 import { MISSING_IMAGE_ID } from "@shared/image-id";
 import { resolveNotation } from "../../src/renderer/lib/suggest/request";
-import type { ManuscriptLine, ManuscriptSource, SyllabifiedWord } from "../../src/renderer/lib/models";
-import { median, zoneOf, type Rect } from "./metrics";
+import { realignLegacyProject, type RasterLoader } from "../../src/renderer/lib/box-frame-realign";
+import { resolveUnsetRanges } from "../../src/renderer/lib/sources";
+import type { ManuscriptLine, ManuscriptSource, MocquereauProject, SyllabifiedWord } from "../../src/renderer/lib/models";
+import { iou, median, zoneOf, type Rect } from "./metrics";
 
 export const AREA_MARGIN_X = 0.003;
 export const AREA_MARGIN_Y = 0.1;
@@ -35,6 +37,41 @@ export interface EvalCase {
   words: SyllabifiedWord[];
   /** Primeira sílaba com caixa no gabarito: a sílaba ativa de quem trabalha em sequência. */
   firstGt: number;
+  /** Identidade da imagem (sha256 do migrador). */
+  imageKey: string;
+  /** Caixas como salvas (moldura de origem), para reconhecer a mesma página em outro projeto. */
+  storedBoxes: Record<number, Rect>;
+}
+
+/** Fraction of boxes that must match (IoU >= SAME_BOX_IOU) for two pages to be the same page. */
+export const SAME_PAGE_BOXES = 0.9;
+export const SAME_BOX_IOU = 0.9;
+
+/**
+ * Same page in two projects: same image bytes, same boxed syllables, and nearly
+ * all boxes equal (a copied project where the user redrew a box or two).
+ */
+export function samePage(a: Pick<EvalCase, "imageKey" | "storedBoxes">, b: Pick<EvalCase, "imageKey" | "storedBoxes">): boolean {
+  if (a.imageKey !== b.imageKey) return false;
+  const ka = Object.keys(a.storedBoxes);
+  const kb = new Set(Object.keys(b.storedBoxes));
+  if (ka.length === 0 || ka.length !== kb.size || ka.some((k) => !kb.has(k))) return false;
+  const equal = ka.filter((k) => iou(a.storedBoxes[Number(k)], b.storedBoxes[Number(k)]) >= SAME_BOX_IOU).length;
+  return equal >= SAME_PAGE_BOXES * ka.length;
+}
+
+export interface LoadOptions {
+  /**
+   * Decoder of the app's legacy-open realignment (loadRasterForInk in the app;
+   * the eval passes one backed by Chromium). Absent = no realignment.
+   */
+  loadRaster?: RasterLoader;
+}
+
+function storedBoxesOf(line: ManuscriptLine): Record<number, Rect> {
+  const out: Record<number, Rect> = {};
+  for (const [k, b] of Object.entries(line.syllableBoxes ?? {})) if (b) out[Number(k)] = { x: b.x, y: b.y, w: b.w, h: b.h };
+  return out;
 }
 
 const cy = (r: Rect) => r.y + r.h / 2;
@@ -81,20 +118,27 @@ function toBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
 }
 
-export async function loadCases(json: unknown, label: string): Promise<{ cases: EvalCase[]; skipped: string[] }> {
+export async function loadCases(
+  json: unknown,
+  label: string,
+  opts: LoadOptions = {},
+): Promise<{ cases: EvalCase[]; skipped: string[] }> {
   if (typeof json !== "object" || json === null || Array.isArray(json) || "schemaVersion" in json) {
     throw new Error("formato não suportado pelo eval (esperado .mocquereau.json legado)");
   }
   const migrated = await migrateLegacyProject(json);
   const urls = new Map<string, string>();
   for (const [id, img] of migrated.images) urls.set(id, `data:${img.mimeType};base64,${toBase64(img.bytes)}`);
-  const project = hydrateProject(migrated.project, (ref) => urls.get(ref.imageId) ?? "");
+  // Open exactly as the app does a legacy file (useProjectFile.adoptOpened): ink realignment, then unset ranges.
+  let project = hydrateProject(migrated.project, (ref) => urls.get(ref.imageId) ?? "") as unknown as MocquereauProject;
+  if (opts.loadRaster) project = await realignLegacyProject(project, opts.loadRaster, { yieldFn: async () => {} });
+  project = resolveUnsetRanges(project);
   const ambiguous = new Set(migrated.ambiguousLines.map((r) => `${r.sourceId}/${r.lineId}`));
-  const words = project.text.words as SyllabifiedWord[];
+  const words: SyllabifiedWord[] = project.text.words;
 
   const cases: EvalCase[] = [];
   const skipped: string[] = [];
-  (project.sources as unknown as ManuscriptSource[]).forEach((source, si) => {
+  project.sources.forEach((source, si) => {
     const siglum = source.metadata.siglum?.trim() || `fonte ${si + 1}`;
     source.lines.forEach((line, li) => {
       const name = `${siglum} p${li + 1}`;
@@ -127,6 +171,8 @@ export async function loadCases(json: unknown, label: string): Promise<{ cases: 
         sourceModel: { ...source, lines: source.lines.map((l) => (l.id === line.id ? caseLine : l)) },
         words,
         firstGt: gtBoxes[0].index,
+        imageKey: line.image.imageId ?? line.image.dataUrl,
+        storedBoxes: storedBoxesOf(line),
       });
     });
   });
