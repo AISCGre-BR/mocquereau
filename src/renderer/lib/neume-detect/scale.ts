@@ -138,8 +138,12 @@ export function odd(v: number): number {
   return Math.max(3, Math.round(v) | 1);
 }
 
-/** Tabela "Etapa 0" da spec. Com staff (modo D) os limites passam a depender de s. */
-export function deriveParams(u: number, staff?: StaffMetrics | null): Params {
+/**
+ * Tabela "Etapa 0" da spec. Com staff (modo D) os limites passam a depender de s. `up` = fator da
+ * ampliacao do raster de trabalho (1 ou 2): os pisos de minSide (2 px) e minArea (2 px^2) valem em
+ * pixels da imagem, senao um ponto isolado do pergaminho ampliado 2x (2 x 2) passaria pelo filtro.
+ */
+export function deriveParams(u: number, staff?: StaffMetrics | null, up = 1): Params {
   const p: Params = {
     u,
     window: odd(10 * u),
@@ -148,9 +152,9 @@ export function deriveParams(u: number, staff?: StaffMetrics | null): Params {
     darkOpen: odd(2.3 * u),
     darkMargin: Math.ceil(u),
     // M4a: pontos e tracos finos (punctum ~ u x u) sobrevivem; o ruido pontual e menor que isso.
-    minArea: 0.35 * u * u,
+    minArea: Math.max(0.35 * u * u, 2 * up * up),
     maxArea: 170 * u * u,
-    minSide: Math.max(2, 0.5 * u),
+    minSide: Math.max(2 * up, 0.5 * u),
     maxSide: 30 * u,
     maxAspect: 8,
     mergeGapX: 1.3 * u,

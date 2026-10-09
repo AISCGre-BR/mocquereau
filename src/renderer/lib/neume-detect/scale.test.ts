@@ -42,6 +42,13 @@ describe('scale', () => {
     expect(deriveParams(6).minSide).toBe(3);
   });
 
+  it('ampliado 2x: pisos de minSide e minArea em pixels da imagem', () => {
+    expect(deriveParams(2, null, 2).minSide).toBe(4);
+    expect(deriveParams(2, null, 2).minArea).toBe(8);
+    expect(deriveParams(2, null, 1).minArea).toBeCloseTo(2, 9);
+    expect(deriveParams(12, null, 2).minSide).toBe(6);
+  });
+
   it('strokeWidthOutside ignora as linhas excluídas', () => {
     const m = { data: new Uint8Array(40 * 40), width: 40, height: 40 };
     const fill = (x: number, y: number, w: number, h: number) => { for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) m.data[yy * 40 + xx] = 1; };

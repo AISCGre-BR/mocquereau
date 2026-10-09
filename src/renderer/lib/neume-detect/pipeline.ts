@@ -6,7 +6,7 @@
 // Fluxo base: find_candidates() de othmar/candidates.py.
 import { groupConfidence, cutScores, expectedCenters, overlapFraction, partitionDP, segmentByAnchors, type Glyph } from './assign';
 import { ceilPx, floorPx, fracToPxRect, lineOrNone, selectBand } from './band';
-import { filterComponents, labelComponents, labelsTouching, type Component } from './components';
+import { dropIsolatedSpecks, filterComponents, labelComponents, labelsTouching, type Component } from './components';
 import {
   cropGray,
   cropMask,
@@ -111,6 +111,12 @@ interface InkStage {
 }
 
 /** Etapas 1 e 3: binarizacao, manchas, remocao da pauta, rotulagem, barras, filtros. */
+/**
+ * Alcance (em u) que salva um ponto de ate u^2 de ser descartado como mancha do pergaminho: ha um
+ * componente maior a ate 6u (vaos internos de um grupo de neumas). Escolhido pelo eval (4u a 6u).
+ */
+const SPECK_REACH = 6;
+
 function inkStage(
   work: Work,
   p: Params,
@@ -139,7 +145,8 @@ function inkStage(
       bars.push(c);
       reject.add(c.label);
     }
-  return { comps: filterComponents(lab, p, reject), bars, channel: name, k, red };
+  const comps = dropIsolatedSpecks(filterComponents(lab, p, reject), p.u, SPECK_REACH * p.u);
+  return { comps, bars, channel: name, k, red };
 }
 
 /** Pauta cuja extensao vertical contem (ou, senao, esta mais perto de) a mediana dos centros das ancoras. */
@@ -312,10 +319,7 @@ function analyzeBand(
   debug.mode = staff ? 'D' : 'A';
   debug.bandSource = band.source;
   debug.strokeWidth = u;
-  const p = deriveParams(u, staff ? metrics : null);
-  // O piso de 2 px do minSide vale em pixels da imagem: ampliada 2x, um ponto isolado do pergaminho
-  // vira 2 x 2 e passaria pelo filtro.
-  if (prep.up > 1) p.minSide = Math.max(p.minSide, 2 * prep.up);
+  const p = deriveParams(u, staff ? metrics : null, prep.up);
 
   // Etapa 1: binarizacao comum (com repeticao k = 0,1 e canal auto se faltarem componentes)
   const blobs = darkBlobs(work.gray, work.valid, p); // independe de canal e de k: calculado uma vez

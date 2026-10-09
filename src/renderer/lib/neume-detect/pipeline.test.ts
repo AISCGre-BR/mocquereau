@@ -511,12 +511,24 @@ describe('M4a — caneta do texto mais grossa que os neumas', () => {
     for (const s of fx.syllables) for (const n of fx.neumes[s.index]) expect(cands.some((c) => contains(c, center(n)))).toBe(true);
   });
 
-  it('ruído pontual do pergaminho não vira candidato com os filtros menores', () => {
-    const fx = buildAdiastematicLine({ u: 3, seed: 62 }); // addNoise com pontos isolados
+  it('ruído pontual do pergaminho (pontos de 1, 2x2 e 3x3 px) não vira candidato com os filtros menores', () => {
+    const fx = buildAdiastematicLine({ u: 3, seed: 62 }); // addNoise com pontos isolados de 1 px
     const { width: W, height: H } = fx.raster;
+    // manchinhas de tinta isoladas no pergaminho: entre as colunas (altura dos neumas) e acima delas
+    const colW = (W - 120) / fx.syllables.length;
+    const specks: PxBox[] = [];
+    for (let j = 0; j < fx.syllables.length; j++) {
+      const x = Math.round(60 + (j + 0.8) * colW);
+      specks.push(fillRect(fx.raster, x, 70, 2, 2, INK), fillRect(fx.raster, x + 9, 115, 3, 3, INK), fillRect(fx.raster, x - 20, 14, 3, 3, INK));
+    }
     const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates' });
     const truth = Object.values(fx.truth);
-    for (const c of res.candidates!.map((k) => fracToPx(k.box, W, H)))
+    const cands = res.candidates!.map((k) => fracToPx(k.box, W, H));
+    expect(cands.length).toBeGreaterThan(0); // não vazio: os neumas continuam lá
+    for (const s of fx.syllables) for (const n of fx.neumes[s.index]) expect(cands.some((c) => contains(c, center(n)))).toBe(true);
+    for (const c of cands) {
       expect(truth.some((t) => contains(t, center(c)))).toBe(true);
+      expect(specks.some((b) => contains(c, center(b)))).toBe(false);
+    }
   });
 });
