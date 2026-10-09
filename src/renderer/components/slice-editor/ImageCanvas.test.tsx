@@ -289,6 +289,16 @@ describe("ImageCanvas: áreas da linha de neumas (S7)", () => {
     expect(active).toBe(0);
   });
 
+  it("desligar a ferramenta no meio do arraste descarta a área", () => {
+    const v = setupBands({ bandTool: true });
+    v.ev(v.wrapper, "pointerdown", 10, 10);
+    v.ev(v.wrapper, "pointermove", 90, 20);
+    v.rerender(<ImageCanvas {...v.props} bandTool={false} />);
+    v.ev(v.wrapper, "pointerup", 90, 20);
+    expect(v.onBandsCommit).not.toHaveBeenCalled();
+    expect(v.onBoxCommit).not.toHaveBeenCalled();
+  });
+
   it("área menor que o mínimo não é gravada", () => {
     const v = setupBands({ bandTool: true });
     v.ev(v.wrapper, "pointerdown", 10, 10);

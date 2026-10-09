@@ -99,12 +99,6 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   );
   const activeSyllable = recortes.activeSyllable;
 
-  // S7: a page the suggester could not place a line on turns the band tool on.
-  const { setBandTool } = recortes;
-  useEffect(() => {
-    if (suggestions.notice === "needsBand") setBandTool(true);
-  }, [suggestions.notice, suggestions.noticeSeq, setBandTool]);
-
   // ── Writes to the project (end of each gesture) ──────────────────────────
 
   function writeBoxes(

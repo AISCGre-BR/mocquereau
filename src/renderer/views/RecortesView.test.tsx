@@ -92,6 +92,8 @@ function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClien
     dispatch?: React.Dispatch<DocumentAction>;
     history?: HistoryApi;
     recortes?: RecortesContextValue;
+    /** Unmounts/remounts the view (a view switch), keeping the providers. */
+    setViewShown?: (shown: boolean) => void;
   } = {};
   function Grab() {
     ref.recortes = useRecortesContext();
@@ -99,7 +101,8 @@ function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClien
   }
   function Harness() {
     const [state, dispatch, history] = useProjectReducer();
-    Object.assign(ref, { state, dispatch, history });
+    const [viewShown, setViewShown] = useState(true);
+    Object.assign(ref, { state, dispatch, history, setViewShown });
     if (!state.project) return null;
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
@@ -107,7 +110,7 @@ function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClien
           <SuggestionsProvider createClient={() => client}>
             <Grab />
             <MenuShortcuts />
-            <RecortesView />
+            {viewShown && <RecortesView />}
           </SuggestionsProvider>
         </RecortesProvider>
       </ProjectContext.Provider>
@@ -860,6 +863,78 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     expect(v.queryByRole("dialog")).toBeNull();
     expect(v.ref.recortes!.activeLineId).toBe("p2");
     expect(v.ref.recortes!.bandTool).toBe(true);
+  });
+
+  it("needsBand liga a ferramenta só uma vez: Esc, voltar à página ou remontar a vista não a religam", async () => {
+    window.mocquereau = {
+      readClipboardImage: vi.fn(),
+      openImageFile: vi.fn(),
+      getSuggestionsEnabled: vi.fn(async () => true),
+      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+    } as never;
+    const client = fakeClient();
+    const blank = (id: string) => mkLine(id, { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
+    const v = mount(projectWith([mkSource("A", [blank("p1"), blank("p2")])]), client);
+    await act(async () => {});
+    act(() => v.ref.recortes!.selectLine("A", "p1"));
+    v.key({ key: "G", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(client.calls.length).toBe(1));
+    await act(async () => {
+      client.calls[0].resolve({ suggestions: [], debug: { needsBand: true } as SuggestResult["debug"] });
+      await Promise.resolve();
+    });
+    expect(v.ref.recortes!.bandTool).toBe(true);
+    v.key({ key: "Escape" });
+    expect(v.ref.recortes!.bandTool).toBe(false);
+    act(() => v.ref.recortes!.selectLine("A", "p2"));
+    act(() => v.ref.recortes!.selectLine("A", "p1"));
+    expect(v.ref.recortes!.bandTool).toBe(false);
+    act(() => v.ref.setViewShown!(false));
+    act(() => v.ref.setViewShown!(true));
+    expect(v.ref.recortes!.bandTool).toBe(false);
+  });
+
+  it("gravar uma área na página apaga a dica needsBand dela", async () => {
+    window.mocquereau = {
+      readClipboardImage: vi.fn(),
+      openImageFile: vi.fn(),
+      getSuggestionsEnabled: vi.fn(async () => true),
+      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+    } as never;
+    const client = fakeClient();
+    const blank = mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
+    const v = mount(projectWith([mkSource("A", [blank])]), client);
+    await act(async () => {});
+    v.key({ key: "G", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(client.calls.length).toBe(1));
+    await act(async () => {
+      client.calls[0].resolve({ suggestions: [], debug: { needsBand: true } as SuggestResult["debug"] });
+      await Promise.resolve();
+    });
+    expect(v.getByRole("status")).toBeTruthy();
+    pointer(v.wrapper(), "pointerdown", 20, 20);
+    pointer(v.wrapper(), "pointermove", 180, 40);
+    pointer(v.wrapper(), "pointerup", 180, 40);
+    expect(v.line().neumeBands).toHaveLength(1);
+    expect(v.queryByRole("status")).toBeNull();
+    // The hint is gone from the provider too: remounting the view does not bring it back.
+    act(() => v.ref.setViewShown!(false));
+    act(() => v.ref.setViewShown!(true));
+    expect(v.queryByRole("status")).toBeNull();
+  });
+
+  it("ferramenta desligada: Delete não apaga a área que estava selecionada", () => {
+    const TOP = { x: 0.1, y: 0.1, w: 0.8, h: 0.1 };
+    const LOW = { x: 0.1, y: 0.6, w: 0.8, h: 0.1 };
+    const v = mount(projectWith([mkSource("A", [mkLine("line-1", { neumeBands: [TOP, LOW] })])]));
+    act(() => v.ref.recortes!.setBandTool(true));
+    act(() => v.ref.recortes!.setActiveBand(1));
+    act(() => v.ref.recortes!.setBandTool(false));
+    // Even if a late gesture selects a band while the tool is off.
+    act(() => v.ref.recortes!.setActiveBand(1));
+    expect(v.ref.recortes!.activeBand).toBeNull();
+    v.key({ key: "Delete" });
+    expect(v.line().neumeBands).toEqual([TOP, LOW]);
   });
 });
 

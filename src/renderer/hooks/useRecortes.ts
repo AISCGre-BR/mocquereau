@@ -151,7 +151,9 @@ export function useRecortes(project: MocquereauProject | null): RecortesState {
     setBandTool,
     // A band removed by undo or by another page's selection is no selection.
     activeBand:
-      state.activeBand !== null && line?.neumeBands?.[state.activeBand] && !pendingNewLine ? state.activeBand : null,
+      state.bandTool && state.activeBand !== null && line?.neumeBands?.[state.activeBand] && !pendingNewLine
+        ? state.activeBand
+        : null,
     setActiveBand,
     goTo,
   };

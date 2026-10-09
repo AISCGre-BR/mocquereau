@@ -161,6 +161,13 @@ export function ImageCanvas({
       ? bandList.map((b, i) => (i === bandDraft.idx ? bandDraft.box : b))
       : bandList;
 
+  // Turning the tool off mid-drag drops the band being drawn.
+  useEffect(() => {
+    if (bandTool) return;
+    bandDraw.current = null;
+    setLiveBand(null);
+  }, [bandTool]);
+
   /** Commits `bands` sorted, with the index `band` ends up at. */
   function commitBands(bands: SyllableBox[], band: SyllableBox) {
     const sorted = sortNeumeBands(bands);
@@ -393,7 +400,7 @@ export function ImageCanvas({
   }
 
   function handleImagePointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (bandDraw.current) {
+    if (bandDraw.current && bandTool) {
       const band = bandDraw.current.live;
       bandDraw.current = null;
       setLiveBand(null);

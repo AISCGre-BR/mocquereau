@@ -213,6 +213,35 @@ export function SuggestionsProvider({
     });
   }, []);
 
+  // S7: a NEW needsBand result on the active page turns the band tool on, once.
+  // Notices persist per page, so revisiting the page (or remounting the view)
+  // must not turn it on again: the consumed seqs live here, above the view.
+  const consumedBandSeqs = useRef(new Set<number>());
+  const { setBandTool } = recortes;
+  useEffect(() => {
+    if (!activeLineId) return;
+    const entry = notices.get(activeLineId);
+    if (entry?.notice !== "needsBand" || consumedBandSeqs.current.has(entry.seq)) return;
+    consumedBandSeqs.current.add(entry.seq);
+    setBandTool(true);
+  }, [activeLineId, notices, setBandTool]);
+
+  // A band saved on a page answers its needsBand notice: the hint goes.
+  useEffect(() => {
+    if (!project) return;
+    const answered: string[] = [];
+    for (const [lineId, entry] of notices) {
+      if (entry.notice !== "needsBand") continue;
+      if (findLineById(project, lineId).line?.neumeBands?.length) answered.push(lineId);
+    }
+    if (answered.length === 0) return;
+    setNotices((prev) => {
+      const next = new Map(prev);
+      for (const id of answered) next.delete(id);
+      return next;
+    });
+  }, [project, notices]);
+
   const finish = useCallback((token: Running) => {
     if (runningRef.current !== token) return;
     runningRef.current = null;
