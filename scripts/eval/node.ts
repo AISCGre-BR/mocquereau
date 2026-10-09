@@ -29,10 +29,10 @@ export function runSequential(
   c: EvalCase,
   raster: RasterRGBA,
   opts: { minConfidence?: number } = {},
-): { sugs: Map<number, Rect>; ms: number } {
+): { sugs: Map<number, Rect>; ms: number | null } {
   const plan = planCase(c);
   const sugs = new Map<number, Rect>();
-  if (!plan) return { sugs, ms: 0 };
+  if (!plan) return { sugs, ms: null }; // no detector call: not a timing sample
   const t0 = performance.now();
   const res = suggestBoxes({ ...plan.input, image: raster });
   const ms = performance.now() - t0;
@@ -45,9 +45,9 @@ export function runSequential(
  * Candidate boxes of the detector, in view fractions, or null while the detector
  * does not expose them (they arrive in a later task).
  */
-export function runCandidates(c: EvalCase, raster: RasterRGBA): { cands: Rect[]; ms: number } | null {
+export function runCandidates(c: EvalCase, raster: RasterRGBA): { cands: Rect[]; ms: number | null } | null {
   const plan = planCase(c);
-  if (!plan) return { cands: [], ms: 0 };
+  if (!plan) return { cands: [], ms: null };
   const t0 = performance.now();
   const res = suggestBoxes({ ...plan.input, image: raster }) as { candidates?: { box: Rect }[] | Rect[] };
   const ms = performance.now() - t0;

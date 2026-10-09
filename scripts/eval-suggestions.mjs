@@ -11,12 +11,29 @@
 import { build } from "esbuild";
 import { chromium } from "playwright";
 import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.resolve(HERE, "..");
+const REPO = realpathSync(path.resolve(HERE, ".."));
+
+/** Real path of p, following symlinks of its nearest existing ancestor (p itself may not exist yet). */
+function realTarget(p) {
+  let cur = path.resolve(p);
+  const rest = [];
+  for (;;) {
+    try {
+      return path.join(realpathSync(cur), ...rest);
+    } catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return path.resolve(p);
+      rest.unshift(path.basename(cur));
+      cur = parent;
+    }
+  }
+}
 
 function fail(msg, code = 2) {
   console.error(msg);
@@ -46,7 +63,7 @@ function parseArgs(argv) {
   if (!opts.projects.length) fail("uso: node scripts/eval-suggestions.mjs <projeto>... [--modes sequential,candidates] [--json f] [--out f] [--dump dir] [--othmar f] [--min-confidence a,b]");
   for (const [flag, p] of [["--json", opts.json], ["--out", opts.out], ["--dump", opts.dump]]) {
     if (p === null) continue;
-    const abs = path.resolve(p);
+    const abs = realTarget(p);
     if (abs === REPO || abs.startsWith(REPO + path.sep)) fail(`${flag}: caminho dentro do repositório recusado (${abs}); os dados do usuário não entram no repo`);
   }
   return opts;
@@ -54,22 +71,28 @@ function parseArgs(argv) {
 
 const opts = parseArgs(process.argv.slice(2));
 
-// 1. Bundles (Node: cases/metrics/detector; browser: raster) in a temp dir.
-const tmp = await mkdtemp(path.join(os.tmpdir(), "mocq-eval-"));
-const nodeBundle = path.join(tmp, "node.mjs");
-const pageBundle = path.join(tmp, "page.js");
-const alias = { "@shared": path.join(REPO, "src/shared") };
-await build({ entryPoints: [path.join(HERE, "eval/node.ts")], bundle: true, platform: "node", format: "esm", outfile: nodeBundle, alias, logLevel: "warning" });
-await build({ entryPoints: [path.join(HERE, "eval/page.ts")], bundle: true, platform: "browser", format: "iife", outfile: pageBundle, alias, logLevel: "error" });
-const E = await import(pathToFileURL(nodeBundle).href);
-
-// 2. Headless Chromium with the raster helper.
-const browser = await chromium.launch();
-const page = await browser.newPage();
-await page.addScriptTag({ path: pageBundle });
-
-const othmar = opts.othmar ? JSON.parse(await readFile(opts.othmar, "utf8")) : null;
-if (opts.dump) await mkdir(opts.dump, { recursive: true });
+// Read and check every input before allocating anything (bad input exits with nothing to clean up).
+const inputs = [];
+for (const projPath of opts.projects) {
+  let json;
+  try {
+    json = JSON.parse((await readFile(projPath, "utf8")).replace(/^\uFEFF/, ""));
+  } catch (err) {
+    fail(`${projPath}: não foi possível ler o JSON (${err.message})`);
+  }
+  if (typeof json !== "object" || json === null || Array.isArray(json) || "schemaVersion" in json) {
+    fail(`${projPath}: formato não suportado pelo eval (esperado .mocquereau.json legado)`);
+  }
+  inputs.push({ label: path.basename(projPath).replace(/\.mocquereau\.json$/, ""), json });
+}
+let othmar = null;
+if (opts.othmar) {
+  try {
+    othmar = JSON.parse(await readFile(opts.othmar, "utf8"));
+  } catch (err) {
+    fail(`${opts.othmar}: não foi possível ler o JSON (${err.message})`);
+  }
+}
 
 const fileSafe = (s) => s.replace(/[^\w.-]+/g, "_");
 const rows = []; // { project, source, mode, minConf, ious[], wrong, ms[] }
@@ -85,23 +108,37 @@ function bucket(project, source, mode, minConf, dup) {
   r.dup ||= dup;
   return r;
 }
+/** ms null = no detector call (no plan): left out of the p95 sample. */
 function add(b, dup, ious, wrong, ms) {
   for (const t of dup ? [b] : [b, b.uniq]) {
     t.ious.push(...ious);
     t.wrong += wrong;
-    if (ms !== undefined) t.ms.push(ms);
+    if (ms != null) t.ms.push(ms);
   }
 }
 
+// From here on every failure throws, so `finally` always closes Chromium and removes the temp dir.
+let tmp = null;
+let browser = null;
+let E;
+let failure = null;
 try {
-  for (const projPath of opts.projects) {
-    const label = path.basename(projPath).replace(/\.mocquereau\.json$/, "");
-    let json;
-    try {
-      json = JSON.parse((await readFile(projPath, "utf8")).replace(/^﻿/, ""));
-    } catch (err) {
-      fail(`${projPath}: não foi possível ler o JSON (${err.message})`);
-    }
+  // 1. Bundles (Node: cases/metrics/detector; browser: raster) in a temp dir.
+  tmp = await mkdtemp(path.join(os.tmpdir(), "mocq-eval-"));
+  const nodeBundle = path.join(tmp, "node.mjs");
+  const pageBundle = path.join(tmp, "page.js");
+  const alias = { "@shared": path.join(REPO, "src/shared") };
+  await build({ entryPoints: [path.join(HERE, "eval/node.ts")], bundle: true, platform: "node", format: "esm", outfile: nodeBundle, alias, logLevel: "warning" });
+  await build({ entryPoints: [path.join(HERE, "eval/page.ts")], bundle: true, platform: "browser", format: "iife", outfile: pageBundle, alias, logLevel: "error" });
+  E = await import(pathToFileURL(nodeBundle).href);
+
+  // 2. Headless Chromium with the raster helper.
+  browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.addScriptTag({ path: pageBundle });
+  if (opts.dump) await mkdir(opts.dump, { recursive: true });
+
+  for (const { label, json } of inputs) {
     // The app's legacy-open ink realignment, with the app's decoder running in Chromium.
     const loadRaster = async (image) => {
       const r = await page.evaluate((u) => window.__evalInkRaster(u), image.dataUrl);
@@ -172,10 +209,13 @@ try {
       }
     }
   }
+} catch (err) {
+  failure = err;
 } finally {
-  await browser.close();
-  await rm(tmp, { recursive: true, force: true });
+  await browser?.close().catch(() => {});
+  if (tmp) await rm(tmp, { recursive: true, force: true });
 }
+if (failure) fail(`eval falhou: ${failure?.stack ?? failure}`);
 
 // 4. Output.
 const pct = (v) => `${Math.round(v * 100)}%`;
