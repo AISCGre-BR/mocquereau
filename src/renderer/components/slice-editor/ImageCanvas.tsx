@@ -24,6 +24,7 @@ import {
 import { isRotateShortcut, rotateQuarter } from '../../lib/canvas-rotation';
 import { isTextInput } from '../../shell/useMenuShortcuts';
 import { useTranslation } from 'react-i18next';
+import { sortNeumeBands } from '../../lib/neume-bands';
 
 interface ImageCanvasProps {
   image: StoredImage | null;
@@ -48,7 +49,21 @@ interface ImageCanvasProps {
   onContextMenu?: (e: React.MouseEvent) => void;
   /** Neume suggestions of the page (S3): dashed, in the syllable's pigment. */
   suggestedBoxes?: Record<number, SyllableBox>;
+  /** Neume line bands of the page (S7), same frame as the boxes, sorted top to bottom. */
+  neumeBands?: SyllableBox[];
+  /** "Marcar linha de neumas": sheet gestures draw and select bands instead of boxes. */
+  bandTool?: boolean;
+  activeBand?: number | null;
+  onActivateBand?: (index: number | null) => void;
+  /** End of a band gesture: the whole sorted list, and the index of the band just drawn or edited. */
+  onBandsCommit?: (bands: SyllableBox[], activeIndex: number) => void;
+  /** Right click on a band while the tool is on. */
+  onBandContextMenu?: (index: number, at: { x: number; y: number }) => void;
 }
+
+/** Smallest band kept: 1% of the view wide, 0.5% high. */
+const BAND_MIN_W = 0.01;
+const BAND_MIN_H = 0.005;
 
 export function ImageCanvas({
   image,
@@ -67,6 +82,12 @@ export function ImageCanvas({
   onUpdateAdjustments,
   onContextMenu,
   suggestedBoxes,
+  neumeBands,
+  bandTool = false,
+  activeBand = null,
+  onActivateBand,
+  onBandsCommit,
+  onBandContextMenu,
 }: ImageCanvasProps) {
   const { t } = useTranslation();
   const imageWrapperRef = useRef<HTMLDivElement>(null);
@@ -126,6 +147,25 @@ export function ImageCanvas({
     draft && draft.base === syllableBoxes && draft.idx === activeSyllableIdx
       ? { ...syllableBoxes, [draft.idx]: draft.box }
       : syllableBoxes;
+
+  // ── Neume bands (S7) ───────────────────────────────────────────────────────
+  // A band being drawn, and the draft of the selected band while it is moved or
+  // resized (same staleness rule as the box draft).
+  const bandDraw = useRef<{ startX: number; startY: number; live: SyllableBox | null } | null>(null);
+  const [liveBand, setLiveBand] = useState<SyllableBox | null>(null);
+  const [bandDraft, setBandDraft] = useState<{ base: SyllableBox[] | undefined; idx: number; box: SyllableBox } | null>(null);
+  const bandList = neumeBands ?? [];
+  const selectedBand = bandTool && activeBand !== null && bandList[activeBand] ? activeBand : null;
+  const shownBands =
+    bandDraft && bandDraft.base === neumeBands && bandDraft.idx === selectedBand
+      ? bandList.map((b, i) => (i === bandDraft.idx ? bandDraft.box : b))
+      : bandList;
+
+  /** Commits `bands` sorted, with the index `band` ends up at. */
+  function commitBands(bands: SyllableBox[], band: SyllableBox) {
+    const sorted = sortNeumeBands(bands);
+    onBandsCommit?.(sorted, sorted.indexOf(band));
+  }
 
   // Resolve syllable text for a given global idx (used by box overlay labels/titles)
   function syllableTextAt(globalIdx: number): string {
@@ -274,6 +314,19 @@ export function ImageCanvas({
   function handleImagePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     // Only the primary button draws (right click opens the context menu).
     if (e.button !== 0) return;
+    if (bandTool) {
+      // The band tool owns the sheet: a drag draws a band; a click clears the selection.
+      e.preventDefault();
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      const rect = imageWrapperRef.current!.getBoundingClientRect();
+      bandDraw.current = {
+        startX: (e.clientX - rect.left) / rect.width,
+        startY: (e.clientY - rect.top) / rect.height,
+        live: null,
+      };
+      setLiveBand(null);
+      return;
+    }
     pressAt.current = { x: e.clientX, y: e.clientY };
     if (!drawMode || activeSyllableIdx === null) return;
     const hasBox = boxes[activeSyllableIdx] != null;
@@ -309,6 +362,21 @@ export function ImageCanvas({
   }
 
   function handleImagePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (bandDraw.current) {
+      const rect = imageWrapperRef.current!.getBoundingClientRect();
+      const curX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const curY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      const { startX, startY } = bandDraw.current;
+      const band: SyllableBox = {
+        x: Math.min(startX, curX),
+        y: Math.min(startY, curY),
+        w: Math.abs(curX - startX),
+        h: Math.abs(curY - startY),
+      };
+      bandDraw.current.live = band;
+      setLiveBand(band);
+      return;
+    }
     if (!drawState.current) return;
     const wrapper = imageWrapperRef.current!;
     const rect = wrapper.getBoundingClientRect();
@@ -325,6 +393,15 @@ export function ImageCanvas({
   }
 
   function handleImagePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (bandDraw.current) {
+      const band = bandDraw.current.live;
+      bandDraw.current = null;
+      setLiveBand(null);
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      if (band && band.w >= BAND_MIN_W && band.h >= BAND_MIN_H) commitBands([...bandList, band], band);
+      else onActivateBand?.(null);
+      return;
+    }
     const box = drawState.current?.live ?? null;
     const drawing = drawState.current !== null;
     const press = pressAt.current;
@@ -354,6 +431,10 @@ export function ImageCanvas({
   /** pointercancel / lostpointercapture mid-draw: the new box is dropped. */
   function handleImagePointerCancel() {
     pressAt.current = null;
+    if (bandDraw.current) {
+      bandDraw.current = null;
+      setLiveBand(null);
+    }
     if (!drawState.current) return;
     drawState.current = null;
     setLiveDrawBox(null);
@@ -381,7 +462,7 @@ export function ImageCanvas({
           data-sheet-card
           className={[
             'relative mx-auto rounded-lg bg-surface shadow-elev-2',
-            drawMode && activeSyllableIdx !== null && boxes[activeSyllableIdx] == null
+            bandTool || (drawMode && activeSyllableIdx !== null && boxes[activeSyllableIdx] == null)
               ? 'cursor-crosshair'
               : 'cursor-default',
           ].join(' ')}
@@ -418,6 +499,38 @@ export function ImageCanvas({
             />
           </div>
 
+          {/* Neume line bands (S7): always shown, behind the syllable boxes;
+              they only take the pointer with the band tool on. */}
+          {shownBands.map((band, i) =>
+            i === selectedBand ? null : (
+              <div
+                key={`band-${i}`}
+                data-neume-band={i}
+                className={[
+                  'absolute rounded-xs border border-dashed border-rule-strong',
+                  bandTool ? 'cursor-pointer' : 'pointer-events-none',
+                ].join(' ')}
+                style={{
+                  left: `${band.x * 100}%`,
+                  top: `${band.y * 100}%`,
+                  width: `${band.w * 100}%`,
+                  height: `${band.h * 100}%`,
+                }}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.stopPropagation();
+                  onActivateBand?.(i);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onActivateBand?.(i);
+                  onBandContextMenu?.(i, { x: e.clientX, y: e.clientY });
+                }}
+              />
+            ),
+          )}
+
           {/* Non-active boxes — clickable to switch active syllable. Always rendered
               when there's a box (visible styling only when showAllBoxes is on). */}
           {(syllableRange
@@ -429,11 +542,12 @@ export function ImageCanvas({
             return (
               <div
                 key={`all-${idx}`}
-                className={
+                className={[
                   showAllBoxes
                     ? `${cropBoxClass('confirmed', idx)} group cursor-pointer`
-                    : 'absolute cursor-pointer border-2 border-transparent'
-                }
+                    : 'absolute cursor-pointer border-2 border-transparent',
+                  bandTool ? 'pointer-events-none' : '',
+                ].join(' ').trim()}
                 style={{
                   left: `${box.x * 100}%`,
                   top: `${box.y * 100}%`,
@@ -499,8 +613,21 @@ export function ImageCanvas({
               );
             })}
 
+          {/* With the band tool on, the active box is only shown (the sheet belongs to the tool). */}
+          {bandTool && activeSyllableIdx !== null && boxes[activeSyllableIdx] != null && (() => {
+            const box = boxes[activeSyllableIdx] as SyllableBox;
+            return (
+              <div
+                className={`${cropBoxClass('active', activeSyllableIdx)} pointer-events-none`}
+                style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%` }}
+              >
+                <span className="sc-box__tag pointer-events-none">{syllableTextAt(activeSyllableIdx)}</span>
+              </div>
+            );
+          })()}
+
           {/* SyllableBoxOverlay for active syllable that has a box */}
-          {activeSyllableIdx !== null && boxes[activeSyllableIdx] != null && (
+          {!bandTool && activeSyllableIdx !== null && boxes[activeSyllableIdx] != null && (
             <SyllableBoxOverlay
               box={boxes[activeSyllableIdx] as SyllableBox}
               syllableIdx={activeSyllableIdx}
@@ -512,6 +639,40 @@ export function ImageCanvas({
                 onBoxCommit?.(activeSyllableIdx, newBox);
               }}
               onBoxCancel={() => setDraft(null)}
+            />
+          )}
+
+          {/* The selected band, with its 8 handles (band tool on). */}
+          {selectedBand !== null && (
+            <SyllableBoxOverlay
+              variant="band"
+              box={shownBands[selectedBand]}
+              syllableIdx={selectedBand}
+              containerRef={imageWrapperRef}
+              onBoxChange={(next) => setBandDraft({ base: neumeBands, idx: selectedBand, box: next })}
+              onBoxCommit={(next) => {
+                setBandDraft(null);
+                commitBands(bandList.map((b, i) => (i === selectedBand ? next : b)), next);
+              }}
+              onBoxCancel={() => setBandDraft(null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onBandContextMenu?.(selectedBand, { x: e.clientX, y: e.clientY });
+              }}
+            />
+          )}
+
+          {/* Band being drawn */}
+          {liveBand && (
+            <div
+              className="pointer-events-none absolute rounded-xs border border-dashed border-rule-strong"
+              style={{
+                left: `${liveBand.x * 100}%`,
+                top: `${liveBand.y * 100}%`,
+                width: `${liveBand.w * 100}%`,
+                height: `${liveBand.h * 100}%`,
+              }}
             />
           )}
 

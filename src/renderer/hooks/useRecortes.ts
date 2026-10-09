@@ -61,6 +61,12 @@ export interface RecortesState {
   setShowAll(on: boolean): void;
   imagePanelOpen: boolean;
   setImagePanelOpen(open: boolean): void;
+  /** "Marcar linha de neumas" (S7). */
+  bandTool: boolean;
+  setBandTool(on: boolean): void;
+  /** Selected neume band of the active page (index into its sorted bands), or null. */
+  activeBand: number | null;
+  setActiveBand(i: number | null): void;
   goTo(target: { sourceId: string; syllable?: number }): void;
 }
 
@@ -107,6 +113,9 @@ export function useRecortes(project: MocquereauProject | null): RecortesState {
     [],
   );
 
+  const setBandTool = useCallback((on: boolean) => dispatch({ type: "SET_BAND_TOOL", payload: on }), []);
+  const setActiveBand = useCallback((i: number | null) => dispatch({ type: "SET_ACTIVE_BAND", payload: i }), []);
+
   function goTo(target: { sourceId: string; syllable?: number }) {
     const src = project?.sources.find((s) => s.id === target.sourceId);
     if (!src) return;
@@ -138,6 +147,12 @@ export function useRecortes(project: MocquereauProject | null): RecortesState {
     setShowAll,
     imagePanelOpen: state.imagePanelOpen,
     setImagePanelOpen,
+    bandTool: state.bandTool,
+    setBandTool,
+    // A band removed by undo or by another page's selection is no selection.
+    activeBand:
+      state.activeBand !== null && line?.neumeBands?.[state.activeBand] && !pendingNewLine ? state.activeBand : null,
+    setActiveBand,
     goTo,
   };
 }

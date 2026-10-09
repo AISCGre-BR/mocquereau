@@ -295,5 +295,6 @@
   "sourceTree.menu.notationAuto": "自動",
   "sourceTree.menu.notationAdiastematic": "アディアステマ式",
   "sourceTree.menu.notationDiastematic": "ディアステマ式",
-  "recortes.tools.neumeBand": "ネウマの行を指定"
+  "recortes.tools.neumeBand": "ネウマの行を指定",
+  "recortes.band.delete": "領域を削除"
 }

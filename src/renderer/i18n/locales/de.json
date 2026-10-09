@@ -295,5 +295,6 @@
   "sourceTree.menu.notationAuto": "Automatisch",
   "sourceTree.menu.notationAdiastematic": "Adiastematisch",
   "sourceTree.menu.notationDiastematic": "Diastematisch",
-  "recortes.tools.neumeBand": "Neumenzeile markieren"
+  "recortes.tools.neumeBand": "Neumenzeile markieren",
+  "recortes.band.delete": "Bereich löschen"
 }

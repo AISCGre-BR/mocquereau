@@ -81,6 +81,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     [setDialog, setSkippedPages],
   );
   const [sheetMenu, setSheetMenu] = useState<{ x: number; y: number } | null>(null);
+  const [bandMenu, setBandMenu] = useState<{ x: number; y: number; index: number } | null>(null);
 
   const words = project?.text.words;
   const total = useMemo(() => (words ? flattenSyllables(words).length : 0), [words]);
@@ -97,6 +98,12 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     [activeSource, activeLine, pageLabel],
   );
   const activeSyllable = recortes.activeSyllable;
+
+  // S7: a page the suggester could not place a line on turns the band tool on.
+  const { setBandTool } = recortes;
+  useEffect(() => {
+    if (suggestions.notice === "needsBand") setBandTool(true);
+  }, [suggestions.notice, suggestions.noticeSeq, setBandTool]);
 
   // ── Writes to the project (end of each gesture) ──────────────────────────
 
@@ -129,6 +136,19 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
         ? { start: Math.min(range.start, idx), end: Math.max(range.end, idx) }
         : undefined;
     writeBoxes({ ...viewBoxes, [idx]: box }, meta, grown);
+  }
+
+  /** Neume bands of the active page (S7); an empty list removes them. */
+  function writeBands(bands: SyllableBox[]) {
+    if (!activeSource || !activeLine) return;
+    dispatch({ type: "SET_LINE_NEUME_BANDS", payload: { sourceId: activeSource.id, lineId: activeLine.id, bands } });
+  }
+
+  function removeBand(index: number) {
+    const bands = activeLine?.neumeBands ?? [];
+    if (!bands[index]) return;
+    recortes.setActiveBand(null);
+    writeBands(bands.filter((_, i) => i !== index));
   }
 
   const sheetMenuItems = recortesMenuItems(commands.state, commands, t);
@@ -224,12 +244,21 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
     // Esc descarta as sugestões da página (S6), mesmo com o foco num botão da barra
     // (o Sugerir); com diálogo ou menu aberto, a tecla é deles.
+    // Com a ferramenta de área ligada, Esc a desliga (S7).
     if (e.key === "Escape") {
-      if (!document.querySelector("[role=dialog],[role=menu]")) suggestions.discardPage();
+      if (document.querySelector("[role=dialog],[role=menu]")) return;
+      if (recortes.bandTool) recortes.setBandTool(false);
+      else suggestions.discardPage();
       return;
     }
     // Teclas da casca e de controles nativos ficam com eles.
     if (target instanceof Element && isOutsideEditorKeys(target)) return;
+    // Delete com uma área selecionada apaga a área, antes de caixa ou sugestão.
+    if ((e.key === "Delete" || e.key === "Backspace") && recortes.activeBand !== null) {
+      e.preventDefault();
+      removeBand(recortes.activeBand);
+      return;
+    }
     if (!range) return;
     const active = recortes.activeSyllable;
 
@@ -351,6 +380,15 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onActivateSyllable={recortes.setActiveSyllable}
                 onBoxCommit={(idx, box) => commitBox(idx, box)}
                 suggestedBoxes={suggestions.active}
+                neumeBands={activeLine?.neumeBands}
+                bandTool={recortes.bandTool}
+                activeBand={recortes.activeBand}
+                onActivateBand={recortes.setActiveBand}
+                onBandsCommit={(bands, index) => {
+                  writeBands(bands);
+                  recortes.setActiveBand(index);
+                }}
+                onBandContextMenu={(index, at) => setBandMenu({ ...at, index })}
                 words={project.text.words}
                 showAllBoxes={recortes.showAll}
                 sameSizeMode={recortes.sameSize}
@@ -392,6 +430,16 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
             )}
           </MenuSurface>
         )}
+        {bandMenu && (
+          <MenuSurface
+            aria-label={t("recortes.tools.neumeBand")}
+            className="fixed z-[130]"
+            style={{ left: bandMenu.x, top: bandMenu.y }}
+            onClose={() => setBandMenu(null)}
+          >
+            <MenuItem label={t("recortes.band.delete")} onSelect={() => removeBand(bandMenu.index)} />
+          </MenuSurface>
+        )}
         <RealignBoxesDialog open={recortes.dialog === "realign"} line={activeLine} onClose={() => recortes.setDialog(null)} />
         <Dialog
           open={recortes.dialog === "clearPage"}
@@ -431,8 +479,10 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onClick={() => {
                   const skipped = recortes.skippedPages;
                   closeSkipped();
-                  // Task 7 also turns on the neume band tool here.
-                  if (skipped?.lineIds[0]) recortes.selectLine(skipped.sourceId, skipped.lineIds[0]);
+                  if (skipped?.lineIds[0]) {
+                    recortes.selectLine(skipped.sourceId, skipped.lineIds[0]);
+                    recortes.setBandTool(true);
+                  }
                 }}
               >
                 {t("recortes.suggestSource.goFirst")}

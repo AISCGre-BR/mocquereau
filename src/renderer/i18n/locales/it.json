@@ -295,5 +295,6 @@
   "sourceTree.menu.notationAuto": "Automatica",
   "sourceTree.menu.notationAdiastematic": "Adiastematica",
   "sourceTree.menu.notationDiastematic": "Diastematica",
-  "recortes.tools.neumeBand": "Segna la riga dei neumi"
+  "recortes.tools.neumeBand": "Segna la riga dei neumi",
+  "recortes.band.delete": "Elimina area"
 }

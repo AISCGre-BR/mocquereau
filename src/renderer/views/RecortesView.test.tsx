@@ -859,5 +859,76 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Ir para a primeira" }));
     expect(v.queryByRole("dialog")).toBeNull();
     expect(v.ref.recortes!.activeLineId).toBe("p2");
+    expect(v.ref.recortes!.bandTool).toBe(true);
   });
 });
+
+describe("RecortesView: áreas da linha de neumas (S7)", () => {
+  const TOP = { x: 0.1, y: 0.1, w: 0.8, h: 0.1 };
+  const LOW = { x: 0.1, y: 0.6, w: 0.8, h: 0.1 };
+
+  it("Delete com área selecionada remove só ela (antes da caixa ativa); Esc desliga a ferramenta", () => {
+    const v = mount(projectWith([mkSource("A", [mkLine("line-1", { neumeBands: [TOP, LOW] })])]));
+    act(() => v.ref.recortes!.setBandTool(true));
+    // LOW ocupa y 60-70 na folha de 200 x 100.
+    const low = v.container.querySelector('[data-neume-band="1"]') as HTMLElement;
+    pointer(low, "pointerdown", 100, 65);
+    pointer(low, "pointerup", 100, 65);
+    expect(v.ref.recortes!.activeBand).toBe(1);
+    v.key({ key: "Delete" });
+    expect(v.line().neumeBands).toEqual([TOP]);
+    expect(v.line().syllableBoxes).toEqual({ 0: BOX });
+    v.key({ key: "Escape" });
+    expect(v.ref.recortes!.bandTool).toBe(false);
+    act(() => v.ref.history!.undo());
+    expect(v.line().neumeBands).toEqual([TOP, LOW]);
+  });
+
+  it("menu de contexto sobre uma área: item único Apagar área", () => {
+    const v = mount(projectWith([mkSource("A", [mkLine("line-1", { neumeBands: [TOP, LOW] })])]));
+    act(() => v.ref.recortes!.setBandTool(true));
+    const top = v.container.querySelector('[data-neume-band="0"]') as HTMLElement;
+    fireEvent.contextMenu(top, { clientX: 50, clientY: 15 });
+    const menu = v.getByRole("menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual(["Apagar área"]);
+    fireEvent.click(items[0]);
+    expect(v.line().neumeBands).toEqual([LOW]);
+  });
+
+  it("selecionar a área sem mexer não cria passo de desfazer; trocar de página limpa a seleção", () => {
+    const v = mount(projectWith([mkSource("A", [mkLine("line-1", { neumeBands: [TOP] }), mkLine("line-2")])]));
+    act(() => v.ref.recortes!.setBandTool(true));
+    const band = v.container.querySelector('[data-neume-band="0"]') as HTMLElement;
+    pointer(band, "pointerdown", 100, 15);
+    pointer(band, "pointerup", 100, 15);
+    const overlay = v.container.querySelector("[data-band-overlay]") as HTMLElement;
+    pointer(overlay, "pointerdown", 100, 15);
+    pointer(overlay, "pointerup", 100, 15);
+    expect(v.ref.history!.canUndo).toBe(false);
+    act(() => v.ref.recortes!.selectLine("A", "line-2"));
+    expect(v.ref.recortes!.activeBand).toBeNull();
+    expect(v.ref.recortes!.bandTool).toBe(true);
+  });
+
+  it("dica needsBand liga a ferramenta", async () => {
+    window.mocquereau = {
+      readClipboardImage: vi.fn(),
+      openImageFile: vi.fn(),
+      getSuggestionsEnabled: vi.fn(async () => true),
+      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+    } as never;
+    const client = fakeClient();
+    const blank = mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
+    const v = mount(projectWith([mkSource("A", [blank])]), client);
+    await act(async () => {});
+    v.key({ key: "G", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(client.calls.length).toBe(1));
+    await act(async () => {
+      client.calls[0].resolve({ suggestions: [], debug: { needsBand: true } as SuggestResult["debug"] });
+      await Promise.resolve();
+    });
+    expect(v.ref.recortes!.bandTool).toBe(true);
+  });
+});
+

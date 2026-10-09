@@ -295,5 +295,6 @@
   "sourceTree.menu.notationAuto": "Automatic",
   "sourceTree.menu.notationAdiastematic": "Adiastematic",
   "sourceTree.menu.notationDiastematic": "Diastematic",
-  "recortes.tools.neumeBand": "Mark neume line"
+  "recortes.tools.neumeBand": "Mark neume line",
+  "recortes.band.delete": "Delete band"
 }

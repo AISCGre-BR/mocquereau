@@ -744,6 +744,15 @@ describe("projectReducer — áreas de neumas e notação por página", () => {
     expect("neumeBands" in lineOf(s)).toBe(false);
   });
 
+  it("SET_LINE_NEUME_BANDS com as mesmas áreas não cria estado novo", () => {
+    let s = stateWithOneLine();
+    s = projectReducer(s, { type: "SET_LINE_NEUME_BANDS", payload: { sourceId, lineId, bands: [
+      { x: 0, y: 0.2, w: 1, h: 0.1 }, { x: 0, y: 0.6, w: 1, h: 0.1 } ] } });
+    const same = projectReducer(s, { type: "SET_LINE_NEUME_BANDS", payload: { sourceId, lineId, bands: [
+      { x: 0, y: 0.6, w: 1, h: 0.1 }, { x: 0, y: 0.2, w: 1, h: 0.1 } ] } });
+    expect(same.project).toBe(s.project);
+  });
+
   it("girar 90 graus remapeia as áreas para o novo referencial", () => {
     let s = stateWithOneLine({
       image: { dataUrl: "data:,", width: 200, height: 100, mimeType: "image/png" },

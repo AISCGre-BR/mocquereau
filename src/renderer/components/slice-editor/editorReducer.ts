@@ -23,6 +23,10 @@ export interface EditorState {
   sameSize: boolean;
   showAll: boolean;
   imagePanelOpen: boolean;
+  /** "Marcar linha de neumas" (S7): sheet gestures draw and select neume bands. */
+  bandTool: boolean;
+  /** Index of the selected neume band of the active page (sorted top to bottom), or null. */
+  activeBand: number | null;
 }
 
 export const initialEditorState: EditorState = {
@@ -35,6 +39,8 @@ export const initialEditorState: EditorState = {
   sameSize: false,
   showAll: true,
   imagePanelOpen: false,
+  bandTool: false,
+  activeBand: null,
 };
 
 // ── Action union ─────────────────────────────────────────────────────────────
@@ -53,7 +59,10 @@ export type EditorAction =
   | { type: 'SET_DRAW_MODE'; payload: boolean }
   | { type: 'SET_SAME_SIZE'; payload: boolean }
   | { type: 'SET_SHOW_ALL'; payload: boolean }
-  | { type: 'SET_IMAGE_PANEL_OPEN'; payload: boolean };
+  | { type: 'SET_IMAGE_PANEL_OPEN'; payload: boolean }
+  /** Off also clears the selected band. drawMode is left as it is. */
+  | { type: 'SET_BAND_TOOL'; payload: boolean }
+  | { type: 'SET_ACTIVE_BAND'; payload: number | null };
 
 // ── Reducer ──────────────────────────────────────────────────────────────────
 
@@ -69,6 +78,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         followRangeStart: activeSyllableIdx === undefined,
         zoom: 1,
         imagePanelOpen: false,
+        activeBand: null,
       };
     }
 
@@ -89,6 +99,12 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'SET_IMAGE_PANEL_OPEN':
       return { ...state, imagePanelOpen: action.payload };
+
+    case 'SET_BAND_TOOL':
+      return { ...state, bandTool: action.payload, activeBand: action.payload ? state.activeBand : null };
+
+    case 'SET_ACTIVE_BAND':
+      return { ...state, activeBand: action.payload };
 
     default:
       return state;

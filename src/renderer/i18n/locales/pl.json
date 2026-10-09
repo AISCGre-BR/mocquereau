@@ -295,5 +295,6 @@
   "sourceTree.menu.notationAuto": "Automatyczna",
   "sourceTree.menu.notationAdiastematic": "Adiastematyczna",
   "sourceTree.menu.notationDiastematic": "Diastematyczna",
-  "recortes.tools.neumeBand": "Zaznacz linię neum"
+  "recortes.tools.neumeBand": "Zaznacz linię neum",
+  "recortes.band.delete": "Usuń obszar"
 }

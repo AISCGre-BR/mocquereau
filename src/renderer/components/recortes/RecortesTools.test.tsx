@@ -115,6 +115,24 @@ describe("RecortesTools: alternâncias", () => {
   });
 });
 
+describe("RecortesTools: Marcar linha de neumas (S7)", () => {
+  it("o ícone liga e desliga a ferramenta; ligada, arrastar na folha grava uma área, não uma caixa", () => {
+    const v = mount(projectWith([mkLine("a1")]));
+    const band = screen.getByRole("button", { name: "Marcar linha de neumas" });
+    expect(band.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(band);
+    expect(band.getAttribute("aria-pressed")).toBe("true");
+    const wrapper = v.container.querySelector("[data-image-wrapper]") as HTMLElement;
+    for (const [type, x] of [["pointerdown", 20], ["pointermove", 120], ["pointerup", 120]] as const) {
+      act(() => void wrapper.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: x / 2 })));
+    }
+    expect(v.line().syllableBoxes).toEqual({});
+    expect(v.line().neumeBands).toHaveLength(1);
+    fireEvent.click(band);
+    expect(band.getAttribute("aria-pressed")).toBe("false");
+  });
+});
+
 describe("RecortesTools: painel Imagem", () => {
   it("botão Imagem fica pressionado com o painel aberto; Esc e o clique fora fecham", () => {
     const v = mount(projectWith([mkLine("a1")]));

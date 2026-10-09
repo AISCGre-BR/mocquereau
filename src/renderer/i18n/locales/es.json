@@ -295,5 +295,6 @@
   "sourceTree.menu.notationAuto": "Automática",
   "sourceTree.menu.notationAdiastematic": "Adiastemática",
   "sourceTree.menu.notationDiastematic": "Diastemática",
-  "recortes.tools.neumeBand": "Marcar línea de neumas"
+  "recortes.tools.neumeBand": "Marcar línea de neumas",
+  "recortes.band.delete": "Borrar área"
 }

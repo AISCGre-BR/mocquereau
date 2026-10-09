@@ -18,9 +18,11 @@ function selected(): EditorState {
 describe('initialEditorState', () => {
   it('holds no persistent data: only selection and view toggles', () => {
     expect(Object.keys(initialEditorState).sort()).toEqual([
+      'activeBand',
       'activeLineId',
       'activeSourceId',
       'activeSyllableIdx',
+      'bandTool',
       'drawMode',
       'followRangeStart',
       'imagePanelOpen',
@@ -91,5 +93,24 @@ describe('toggles', () => {
     s = editorReducer(s, { type: 'SET_SHOW_ALL', payload: false });
     s = editorReducer(s, { type: 'SET_IMAGE_PANEL_OPEN', payload: true });
     expect([s.drawMode, s.sameSize, s.showAll, s.imagePanelOpen]).toEqual([false, true, false, true]);
+  });
+});
+
+describe('neume band tool (S7)', () => {
+  it('starts off; turning it off clears the selected band', () => {
+    expect(initialEditorState.bandTool).toBe(false);
+    expect(initialEditorState.activeBand).toBeNull();
+    let s = editorReducer(selected(), { type: 'SET_BAND_TOOL', payload: true });
+    s = editorReducer(s, { type: 'SET_ACTIVE_BAND', payload: 1 });
+    expect([s.bandTool, s.activeBand, s.drawMode]).toEqual([true, 1, true]);
+    s = editorReducer(s, { type: 'SET_BAND_TOOL', payload: false });
+    expect([s.bandTool, s.activeBand]).toEqual([false, null]);
+  });
+
+  it('changing page clears the selected band and keeps the tool as it was', () => {
+    let s = editorReducer(selected(), { type: 'SET_BAND_TOOL', payload: true });
+    s = editorReducer(s, { type: 'SET_ACTIVE_BAND', payload: 0 });
+    s = editorReducer(s, { type: 'SELECT', payload: { sourceId: 'src-1', lineId: 'line-2' } });
+    expect([s.bandTool, s.activeBand]).toEqual([true, null]);
   });
 });

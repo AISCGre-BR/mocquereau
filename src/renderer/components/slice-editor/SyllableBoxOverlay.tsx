@@ -25,6 +25,9 @@ interface SyllableBoxOverlayProps {
   onBoxChange: (newBox: SyllableBox) => void;           // every pointermove: the draft, kept by the canvas
   onBoxCommit: (newBox: SyllableBox) => void;           // end of the gesture (pointerup): written to the project
   onBoxCancel?: () => void;                             // gesture cancelled (pointercancel, capture lost): drop the draft
+  /** 'band': a neume line band (S7), outlined in rule-strong without pigment or tag. */
+  variant?: 'syllable' | 'band';
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 // ── Drag state type ───────────────────────────────────────────────────────────
@@ -115,7 +118,10 @@ export function SyllableBoxOverlay({
   onBoxChange,
   onBoxCommit,
   onBoxCancel,
+  variant = 'syllable',
+  onContextMenu,
 }: SyllableBoxOverlayProps) {
+  const band = variant === 'band';
   const dragState = useRef<DragState | null>(null);
 
   // ── Pointer events on the outer div (body drag + handle move relay) ────────
@@ -221,7 +227,7 @@ export function SyllableBoxOverlay({
     e.stopPropagation();
 
     // Transfer pointer capture to the outer div so its pointermove/pointerup handlers fire
-    const outer = e.currentTarget.closest('[data-box-overlay]') as HTMLElement | null;
+    const outer = e.currentTarget.closest('[data-box-overlay],[data-band-overlay]') as HTMLElement | null;
     if (outer) {
       outer.setPointerCapture(e.pointerId);
     }
@@ -239,8 +245,12 @@ export function SyllableBoxOverlay({
 
   return (
     <div
-      data-box-overlay
-      className={`${cropBoxClass('active', syllableIdx)} select-none touch-none`}
+      data-box-overlay={band ? undefined : ''}
+      data-band-overlay={band ? '' : undefined}
+      className={[
+        band ? 'absolute rounded-xs border border-dashed border-rule-strong' : cropBoxClass('active', syllableIdx),
+        'select-none touch-none',
+      ].join(' ')}
       style={{
         left:   `${box.x * 100}%`,
         top:    `${box.y * 100}%`,
@@ -252,6 +262,7 @@ export function SyllableBoxOverlay({
       onPointerUp={onOuterPointerUp}
       onPointerCancel={onOuterPointerCancel}
       onLostPointerCapture={onOuterPointerCancel}
+      onContextMenu={onContextMenu}
     >
       {label && <span className="sc-box__tag pointer-events-none">{label}</span>}
       {HANDLES.map((h) => (

@@ -11,6 +11,7 @@ import type {
 } from "../lib/models";
 import type { HyphenationMode } from "../lib/syllabify";
 import { normalizeRotation } from "../lib/image-adjustments";
+import { sameNeumeBands, sortNeumeBands } from "../lib/neume-bands";
 import { frameOf, framesEqual, hasAnyBox, remapBox } from "@shared/box-frame";
 import type { BoxFrame, Classification, PageNotation } from "@shared/project-schema";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "@shared/classification";
@@ -548,14 +549,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case "SET_LINE_NEUME_BANDS": {
       const { sourceId, lineId } = action.payload;
-      const bands = [...action.payload.bands].sort((a, b) => a.y - b.y || a.x - b.x);
+      const bands = sortNeumeBands(action.payload.bands);
       return updateLine(state, sourceId, lineId, (l) => {
         if (!bands.length) {
           if (!l.neumeBands) return l;
           const { neumeBands: _drop, ...rest } = l;
           return rest as ManuscriptLine;
         }
-        return { ...l, neumeBands: bands };
+        // The same bands again (a click on a band) is no edit: no undo step.
+        return sameNeumeBands(l.neumeBands, bands) ? l : { ...l, neumeBands: bands };
       });
     }
 
