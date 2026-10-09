@@ -4,7 +4,7 @@
 // Ver NOTICE.
 // suggestBoxes: pipeline puro, sincrono e deterministico (spec, etapas 0 a 6).
 // Fluxo base: find_candidates() de othmar/candidates.py.
-import { groupConfidence, cutScores, expectedCenters, partitionDP, segmentByAnchors, type Glyph } from './assign';
+import { groupConfidence, cutScores, expectedCenters, overlapFraction, partitionDP, segmentByAnchors, type Glyph } from './assign';
 import { ceilPx, floorPx, fracToPxRect, lineOrNone, selectBand } from './band';
 import { filterComponents, labelComponents, labelsTouching, type Component } from './components';
 import {
@@ -35,6 +35,7 @@ import { findTextLine, isTextComponent, isTextDebris, wordSpans, type TextLine }
 import type {
   BandDebug,
   BandSource,
+  Candidate,
   ChannelName,
   FracRect,
   GrayImage,
@@ -479,6 +480,97 @@ function unionFrac(rs: FracRect[]): FracRect | null {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/** Ancora -> faixa de maior intersecao (-1 = fora de todas). */
+function anchorBands(bands: FracRect[], anchors: SuggestAnchor[]): number[] {
+  return anchors.map((a) => {
+    let best = -1;
+    let bestA = 0;
+    bands.forEach((b, k) => {
+      const v = area(b, a.box);
+      if (v > bestA) {
+        bestA = v;
+        best = k;
+      }
+    });
+    return best;
+  });
+}
+
+/**
+ * Modo candidatos: todos os grupos de neumas das faixas (as do usuario ou a inferida), sem silaba.
+ * Glifos >= 50% dentro de uma ancora sao descartados; os demais viram uma caixa cada (placeBox).
+ * Ordem de leitura: faixa, depois centro x.
+ */
+function suggestCandidates(input: SuggestInput, debug: SuggestDebug, lap: Lap): Candidate[] {
+  const W = input.image.width;
+  const H = input.image.height;
+  const anchors = input.anchors ?? [];
+  let selected: { sel: SelectedBand; own: SuggestAnchor[]; frac: FracRect | null }[];
+  if (input.bands?.length) {
+    const anchorBand = anchorBands(input.bands, anchors);
+    selected = input.bands.map((b, k) => ({
+      sel: selectBand({ band: b, notation: input.notation }, W, H),
+      own: anchors.filter((_, i) => anchorBand[i] === k),
+      frac: b,
+    }));
+  } else {
+    const sel = selectBand({ ...input, anchors }, W, H);
+    if (sel.source === 'none') {
+      debug.needsBand = true;
+      return [];
+    }
+    selected = [{ sel, own: anchors, frac: null }];
+  }
+  const candidates: Candidate[] = [];
+  const perBand: BandDebug[] = [];
+  const debugs: SuggestDebug[] = [];
+  selected.forEach(({ sel, own, frac }, k) => {
+    if (frac && sel.source !== 'user') {
+      perBand.push({ band: frac, mode: 'A', glyphs: 0 });
+      return;
+    }
+    const d = frac ? emptyDebug() : debug;
+    const a = analyzeBand(input, sel, own, 0, d, lap);
+    if (!a || 'needsBand' in a) {
+      if (a && 'needsBand' in a) debug.needsBand = true;
+      perBand.push({ band: { x: sel.rect.x / W, y: sel.rect.y / H, w: sel.rect.w / W, h: sel.rect.h / H }, mode: 'A', glyphs: 0 });
+      return;
+    }
+    debugs.push(d);
+    perBand.push({ band: workFrac(a.work, W, H), mode: a.staff ? 'D' : 'A', glyphs: a.glyphs.length, channel: d.channel, sauvolaK: d.sauvolaK });
+    if (!debug.staff) debug.staff = staffDebug(a, H);
+    const toWork = (list: SuggestAnchor[]) => list.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
+    const allLocal = toWork(anchors);
+    const ownLocal = toWork(own);
+    const boxes: FracRect[] = [];
+    for (const g of a.glyphs) {
+      if (allLocal.some((an) => overlapFraction(g, an.box) >= 0.5)) continue;
+      const box = placeBox([g], a, ownLocal, W, H);
+      if (box) boxes.push(box);
+    }
+    boxes.sort((p, q) => p.x + p.w / 2 - (q.x + q.w / 2));
+    for (const box of boxes) candidates.push({ box, band: k });
+    if (!frac) debug.band = workFrac(a.work, W, H);
+  });
+  if (input.bands?.length) {
+    debug.bandSource = 'user';
+    debug.bands = perBand;
+    debug.band = unionFrac(perBand.map((p) => p.band));
+    debug.mode = debugs.some((d) => d.mode === 'D') ? 'D' : 'A';
+    const first = debugs[0];
+    if (first) {
+      debug.scale = first.scale;
+      debug.strokeWidth = first.strokeWidth;
+      debug.channel = first.channel;
+      debug.sauvolaK = first.sauvolaK;
+    }
+    debug.textLine = debugs.find((d) => d.textLine)?.textLine;
+    for (const d of debugs)
+      for (const key of Object.keys(debug.counts) as (keyof SuggestDebug['counts'])[]) debug.counts[key] += d.counts[key];
+  }
+  return candidates;
+}
+
 /** Varias faixas do usuario (ordem de leitura = ordem do array) como uma unica linha virtual. */
 function suggestOnBands(
   input: SuggestInput,
@@ -491,19 +583,7 @@ function suggestOnBands(
 ): Suggestion[] {
   const W = input.image.width;
   const H = input.image.height;
-  // ancora -> faixa de maior intersecao (-1 = fora de todas)
-  const anchorBand = anchors.map((a) => {
-    let best = -1;
-    let bestA = 0;
-    bands.forEach((b, k) => {
-      const v = area(b, a.box);
-      if (v > bestA) {
-        bestA = v;
-        best = k;
-      }
-    });
-    return best;
-  });
+  const anchorBand = anchorBands(bands, anchors);
   const lines: VirtualLine[] = [];
   const lineOf = new Map<number, number>();
   const perBand: BandDebug[] = [];
@@ -597,6 +677,12 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   const { image } = input;
   const W = image.width;
   const H = image.height;
+  if (input.mode === 'candidates') {
+    const candidates = suggestCandidates(input, debug, lap);
+    lap('assign');
+    ms.total = now() - t0;
+    return { suggestions: [], candidates, debug };
+  }
   const order = new Map(input.syllables.map((s, i) => [s.index, i]));
   const anchors = (input.anchors ?? []).filter((a) => order.has(a.index));
   const anchored = new Set(anchors.map((a) => a.index));

@@ -42,16 +42,15 @@ export function runSequential(
 }
 
 /**
- * Candidate boxes of the detector, in view fractions, or null while the detector
- * does not expose them (they arrive in a later task).
+ * Candidate boxes of the detector, in view fractions. Until the candidates plan
+ * exists (later task), the sequential plan with `mode: 'candidates'` and no syllables.
  */
-export function runCandidates(c: EvalCase, raster: RasterRGBA): { cands: Rect[]; ms: number | null } | null {
+export function runCandidates(c: EvalCase, raster: RasterRGBA): { cands: Rect[]; ms: number | null } {
   const plan = planCase(c);
-  if (!plan) return { cands: [], ms: null };
+  if (!plan) return { cands: [], ms: null }; // no detector call: not a timing sample
   const t0 = performance.now();
-  const res = suggestBoxes({ ...plan.input, image: raster }) as { candidates?: { box: Rect }[] | Rect[] };
+  const res = suggestBoxes({ ...plan.input, image: raster, mode: "candidates", syllables: [] });
   const ms = performance.now() - t0;
-  if (!Array.isArray(res.candidates)) return null;
-  const cands = res.candidates.map((k) => regionToView("box" in k ? k.box : k, plan.region));
+  const cands = (res.candidates ?? []).map((k) => regionToView(k.box, plan.region));
   return { cands, ms };
 }

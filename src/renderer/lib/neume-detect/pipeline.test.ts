@@ -453,3 +453,47 @@ describe('suggestBoxes — varias areas', () => {
     expect(res.suggestions.map((s) => s.index)).toEqual(fx.syllables.map((s) => s.index));
   });
 });
+
+describe('suggestBoxes — modo candidatos', () => {
+  const center = (b: PxBox) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+  const contains = (b: PxBox, p: { x: number; y: number }) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+
+  it('um candidato cobre cada neuma; nenhum no texto; ordem de leitura por x', () => {
+    const fx = buildAdiastematicLine({ seed: 51 });
+    const { width: W, height: H } = fx.raster;
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates' });
+    expect(res.suggestions).toEqual([]);
+    const cands = res.candidates!.map((c) => fracToPx(c.box, W, H));
+    for (const s of fx.syllables) for (const n of fx.neumes[s.index]) expect(cands.some((c) => contains(c, center(n)))).toBe(true);
+    for (const c of cands) expect(c.y + c.h / 2).toBeLessThan(fx.baseline - 2 * fx.xHeight); // nenhum centro na faixa do texto
+    const xs = res.candidates!.map((c) => c.box.x + c.box.w / 2);
+    expect(xs).toEqual([...xs].sort((a, b) => a - b));
+    expect(res.candidates!.every((c) => c.band === 0)).toBe(true);
+  });
+
+  it('duas áreas: band = índice da área; candidatos da primeira antes dos da segunda', () => {
+    const a = buildAdiastematicLine({ seed: 52 });
+    const b = buildAdiastematicLine({ seed: 53 });
+    const W = a.raster.width, H = a.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4);
+    data.set(a.raster.data, 0);
+    data.set(b.raster.data, W * H * 4);
+    const res = suggestBoxes({
+      image: { data, width: W, height: 2 * H }, notation: 'adiastematic', syllables: [], mode: 'candidates',
+      bands: [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }],
+    });
+    const bands = res.candidates!.map((c) => c.band);
+    expect(bands).toEqual([...bands].sort((p, q) => p - q));
+    expect(new Set(bands)).toEqual(new Set([0, 1]));
+  });
+
+  it('grupo coberto por uma caixa existente não vira candidato', () => {
+    const fx = buildAdiastematicLine({ seed: 54 });
+    const { width: W, height: H } = fx.raster;
+    const anchors = [{ index: 1, box: pxToFrac(fx.truth[1], W, H) }];
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], anchors, mode: 'candidates' });
+    const cands = res.candidates!.map((c) => fracToPx(c.box, W, H));
+    for (const n of fx.neumes[1]) expect(cands.some((c) => contains(c, center(n)))).toBe(false);
+    for (const n of fx.neumes[0]) expect(cands.some((c) => contains(c, center(n)))).toBe(true);
+  });
+});

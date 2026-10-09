@@ -97,7 +97,6 @@ if (opts.othmar) {
 const fileSafe = (s) => s.replace(/[^\w.-]+/g, "_");
 const rows = []; // { project, source, mode, minConf, ious[], wrong, ms[] }
 const raw = { projects: [], skipped: [] };
-const unavailable = new Set();
 const seenPages = []; // { c, name }: first occurrence of each page
 const duplicates = [];
 
@@ -179,12 +178,9 @@ try {
       }
       if (opts.modes.includes("candidates")) {
         const res = E.runCandidates(c, raster);
-        if (res === null) unavailable.add("candidates");
-        else {
-          const ious = E.candidateIous(res.cands, zones);
-          add(bucket(label, c.source, "candidates", undefined, !!dupOf), !!dupOf, ious, 0, res.ms);
-          caseRaw.modes.candidates = { ious, ms: res.ms, candidates: res.cands };
-        }
+        const ious = E.candidateIous(res.cands, zones);
+        add(bucket(label, c.source, "candidates", undefined, !!dupOf), !!dupOf, ious, 0, res.ms);
+        caseRaw.modes.candidates = { ious, ms: res.ms, candidates: res.cands };
       }
       if (othmar) {
         const boxes = othmar[c.name];
@@ -238,7 +234,6 @@ for (const g of groups) {
 const notes = [...raw.skipped.map((s) => `skipped: ${s}`), ...duplicates.map((d) => `duplicata: ${d}`)];
 const table = [...out, ...(notes.length ? ["", ...notes] : [])].join("\n");
 console.log(table);
-for (const m of unavailable) console.error(`modo ${m}: o detector ainda não expõe candidatos (ignorado)`);
 
 if (opts.out) await writeFile(opts.out, table + "\n");
 if (opts.json) {

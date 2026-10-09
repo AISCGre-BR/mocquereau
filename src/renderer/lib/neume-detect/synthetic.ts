@@ -205,6 +205,8 @@ export interface LineFixture {
   syllables: SuggestSyllable[];
   /** Uniao da tinta dos neumas de cada silaba (indice global). */
   ink: Record<number, PxBox>;
+  /** Caixa de cada neuma desenhado, por sílaba. */
+  neumes: Record<number, PxBox[]>;
   /** Caixa que um pesquisador desenharia: ver cada gerador. */
   truth: Record<number, PxBox>;
   u: number;
@@ -248,6 +250,7 @@ export function buildAdiastematicLine(opts: AdiastematicOptions = {}): LineFixtu
   const margin = 60;
   const colW = (width - 2 * margin) / n;
   const ink: Record<number, PxBox> = {};
+  const neumes: Record<number, PxBox[]> = {};
   const truth: Record<number, PxBox> = {};
   syllables.forEach((s, j) => {
     const cx = Math.round(margin + j * colW);
@@ -263,6 +266,7 @@ export function buildAdiastematicLine(opts: AdiastematicOptions = {}): LineFixtu
       x = b.x + b.w + 6 * u + Math.floor(rnd() * 4 * u);
       if (x + 4 * u > limit) break;
     }
+    neumes[s.index] = boxes;
     ink[s.index] = unionBox(boxes);
     truth[s.index] = padBox(ink[s.index], Math.max(2, u));
     drawText(r, s.text, cx + Math.round(0.1 * colW), baseline, xh, u);
@@ -272,7 +276,7 @@ export function buildAdiastematicLine(opts: AdiastematicOptions = {}): LineFixtu
     fillRect(r, gx - 13, 70, 26, 26, STAIN);
   }
   if (opts.noise !== false) addNoise(r, (opts.seed ?? 7) + 1);
-  return { raster: r, syllables, ink, truth, u, baseline, xHeight: xh };
+  return { raster: r, syllables, ink, neumes, truth, u, baseline, xHeight: xh };
 }
 
 export interface StaffSpec {
@@ -336,6 +340,7 @@ export function buildDiastematicLine(opts: { seed?: number; red?: boolean; noise
   const syllables: SuggestSyllable[] = ['Al', 'le', 'lu', 'ia'].map((text, i) => ({ index: i, text, wordIndex: 0 }));
   const cols = [140, 430, 720, 1010];
   const ink: Record<number, PxBox> = {};
+  const neumes: Record<number, PxBox[]> = {};
   const truth: Record<number, PxBox> = {};
   const baseline = Math.round(lineCenter(3) + 3.5 * s);
   const xh = 14;
@@ -351,6 +356,7 @@ export function buildDiastematicLine(opts: { seed?: number; red?: boolean; noise
       boxes.push(fillRect(r, x, y, 12, 12));
       x += 12 + 10 + Math.floor(rnd() * 8);
     }
+    neumes[syl.index] = boxes;
     ink[syl.index] = unionBox(boxes);
     const pad = Math.max(2, u);
     const y0 = Math.min(lineCenter(0) - 0.5 * s, ink[syl.index].y - pad);
@@ -361,5 +367,5 @@ export function buildDiastematicLine(opts: { seed?: number; red?: boolean; noise
   const bar = fillRect(r, 950, staff.yTop - 2, 3, 3 * s + staff.t + 4);
   const custos = unionBox([fillRect(r, width - 52, lineCenter(1) - 2, 6, 5), fillRect(r, width - 47, lineCenter(1) - 9, 2, 8)]);
   if (opts.noise !== false) addNoise(r, (opts.seed ?? 11) + 1);
-  return { raster: r, syllables, ink, truth, u, baseline, xHeight: xh, staff, clef, custos, bar };
+  return { raster: r, syllables, ink, neumes, truth, u, baseline, xHeight: xh, staff, clef, custos, bar };
 }
