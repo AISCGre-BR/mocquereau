@@ -41,6 +41,8 @@ export interface SuggestionsValue {
   active: Record<number, SyllableBox>;
   /** Último aviso da página ativa; null some. */
   notice: SuggestNotice | null;
+  /** Changes every time a notice is set, even the same one again (a repeated hint shows again). */
+  noticeSeq: number;
   suggest(): void;
   cancel(): void;
   accept(idx: number): void;
@@ -124,7 +126,8 @@ export function SuggestionsProvider({
   const enabled = enabledPref === true;
   const [pages, setPages] = useState<ReadonlyMap<string, PageSuggestions>>(() => new Map());
   const [rejected, setRejected] = useState<ReadonlyMap<string, ReadonlySet<number>>>(() => new Map());
-  const [notices, setNotices] = useState<ReadonlyMap<string, SuggestNotice>>(() => new Map());
+  const [notices, setNotices] = useState<ReadonlyMap<string, { notice: SuggestNotice; seq: number }>>(() => new Map());
+  const noticeSeqRef = useRef(0);
   const [running, setRunning] = useState<Running | null>(null);
 
   // Async work reads the latest values, not the render that started it.
@@ -199,10 +202,12 @@ export function SuggestionsProvider({
   }, [project, pages, updatePages]);
 
   const setNotice = useCallback((lineId: string, notice: SuggestNotice | null) => {
+    // A new seq even for the same notice: "none" twice shows the line twice.
+    const seq = notice ? ++noticeSeqRef.current : 0;
     setNotices((prev) => {
-      if ((prev.get(lineId) ?? null) === notice) return prev;
+      if (!notice && !prev.has(lineId)) return prev;
       const next = new Map(prev);
-      if (notice) next.set(lineId, notice);
+      if (notice) next.set(lineId, { notice, seq });
       else next.delete(lineId);
       return next;
     });
@@ -340,7 +345,8 @@ export function SuggestionsProvider({
     },
     status: running && running.lineId === activeLineId ? "running" : "idle",
     active,
-    notice: (activeLineId && notices.get(activeLineId)) || null,
+    notice: (activeLineId && notices.get(activeLineId)?.notice) || null,
+    noticeSeq: (activeLineId && notices.get(activeLineId)?.seq) || 0,
     suggest() {
       if (activeLine) void run(activeLine.id);
     },

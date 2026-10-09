@@ -251,9 +251,30 @@ export function ImageCanvas({
   }
 
   // ── Draw-new-box pointer handlers ─────────────────────────────────────────
+  /** Syllable whose suggestion (other than the active syllable's) lies under the point. */
+  function suggestionAt(clientX: number, clientY: number): number | null {
+    if (!suggestedBoxes) return null;
+    const rect = imageWrapperRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    const fx = (clientX - rect.left) / rect.width;
+    const fy = (clientY - rect.top) / rect.height;
+    for (const [key, box] of Object.entries(suggestedBoxes)) {
+      const idx = Number(key);
+      if (idx === activeSyllableIdx || boxes[idx] != null) continue;
+      if (fx >= box.x && fx <= box.x + box.w && fy >= box.y && fy <= box.y + box.h) return idx;
+    }
+    return null;
+  }
+
+  // Where the primary button went down on the sheet: a release without moving
+  // is a click (it may land on a suggestion).
+  const pressAt = useRef<{ x: number; y: number } | null>(null);
+  const CLICK_SLOP = 3;
+
   function handleImagePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     // Only the primary button draws (right click opens the context menu).
     if (e.button !== 0) return;
+    pressAt.current = { x: e.clientX, y: e.clientY };
     if (!drawMode || activeSyllableIdx === null) return;
     const hasBox = boxes[activeSyllableIdx] != null;
     if (hasBox) return;  // SyllableBoxOverlay handles its own pointer events
@@ -306,11 +327,22 @@ export function ImageCanvas({
   function handleImagePointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const box = drawState.current?.live ?? null;
     const drawing = drawState.current !== null;
+    const press = pressAt.current;
+    pressAt.current = null;
     // Cleared before releasing the capture: the lostpointercapture it causes
     // must not read as a cancelled gesture.
     drawState.current = null;
     setLiveDrawBox(null);
     if (drawing) (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    const isClick =
+      press !== null && Math.abs(e.clientX - press.x) <= CLICK_SLOP && Math.abs(e.clientY - press.y) <= CLICK_SLOP;
+    if (isClick) {
+      const hit = suggestionAt(e.clientX, e.clientY);
+      if (hit !== null) {
+        onActivateSyllable?.(hit);
+        return;
+      }
+    }
     if (!box || activeSyllableIdx === null) return;
     // Accept very small selections (0.5% = ~5-10 pixels depending on image size).
     // Rejecting too aggressively frustrates users marking narrow neumes.
@@ -321,6 +353,7 @@ export function ImageCanvas({
 
   /** pointercancel / lostpointercapture mid-draw: the new box is dropped. */
   function handleImagePointerCancel() {
+    pressAt.current = null;
     if (!drawState.current) return;
     drawState.current = null;
     setLiveDrawBox(null);
@@ -442,36 +475,26 @@ export function ImageCanvas({
             );
           })}
 
-          {/* Suggested boxes (S3). The active syllable's one lets the pointer
-              through, so drawing over it simply draws; the others activate
-              their syllable on click (never accept). */}
+          {/* Suggested boxes (S3): never take the pointer, so a drag that starts
+              over one draws as usual; a plain click over one activates its
+              syllable (suggestionAt in the pointer-up path), never accepts. */}
           {suggestedBoxes &&
             Object.entries(suggestedBoxes).map(([key, box]) => {
               const idx = Number(key);
               if (boxes[idx] != null) return null;
-              const isActive = idx === activeSyllableIdx;
               return (
                 <div
                   key={`suggested-${idx}`}
                   data-suggested={idx}
-                  className={`${cropBoxClass('suggested', idx)} ${isActive ? 'pointer-events-none' : 'cursor-pointer'}`}
+                  className={`${cropBoxClass('suggested', idx)} pointer-events-none`}
                   style={{
                     left: `${box.x * 100}%`,
                     top: `${box.y * 100}%`,
                     width: `${box.w * 100}%`,
                     height: `${box.h * 100}%`,
                   }}
-                  onPointerDown={isActive ? undefined : (e) => e.stopPropagation()}
-                  onClick={
-                    isActive
-                      ? undefined
-                      : (e) => {
-                          e.stopPropagation();
-                          onActivateSyllable?.(idx);
-                        }
-                  }
                 >
-                  {isActive && <span className="sc-box__tag pointer-events-none">{syllableTextAt(idx)}</span>}
+                  {idx === activeSyllableIdx && <span className="sc-box__tag pointer-events-none">{syllableTextAt(idx)}</span>}
                 </div>
               );
             })}

@@ -72,8 +72,14 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
   // The Recortes dialogs live in the provider (the menu opens them): leaving
   // the view closes them, so they do not reappear when it mounts again.
-  const setDialog = recortes.setDialog;
-  useEffect(() => () => setDialog(null), [setDialog]);
+  const { setDialog, setSkippedPages } = recortes;
+  useEffect(
+    () => () => {
+      setDialog(null);
+      setSkippedPages(null);
+    },
+    [setDialog, setSkippedPages],
+  );
   const [sheetMenu, setSheetMenu] = useState<{ x: number; y: number } | null>(null);
 
   const words = project?.text.words;
@@ -332,7 +338,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
 
           <div className="relative min-h-0 flex-1">
             {hasImage && suggestions.notice && (
-              <NoticeLine key={`${activeLine?.id}:${suggestions.notice}`} notice={suggestions.notice} />
+              <NoticeLine key={`${activeLine?.id}:${suggestions.noticeSeq}`} notice={suggestions.notice} />
             )}
             {hasImage ? (
               <ImageCanvas

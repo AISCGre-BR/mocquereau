@@ -356,6 +356,16 @@ describe("RecortesView: diálogos do provider", () => {
     expect(ref.recortes!.dialog).toBeNull();
     act(() => ref.setShow!(true));
     expect(utils.queryByRole("dialog")).toBeNull();
+
+    // O mesmo para o diálogo das páginas sem área (S10).
+    act(() => {
+      ref.recortes!.setSkippedPages({ sourceId: "A", lineIds: ["line-1"] });
+      ref.recortes!.setDialog("suggestSkipped");
+    });
+    expect(utils.getByRole("dialog", { name: "Páginas sem área" })).toBeTruthy();
+    act(() => ref.setShow!(false));
+    expect(ref.recortes!.dialog).toBeNull();
+    expect(ref.recortes!.skippedPages).toBeNull();
   });
 });
 
@@ -754,13 +764,29 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     expect(v.line().syllableBoxes).toEqual({});
   });
 
-  it("clicar numa sugestão ativa a sílaba sem aceitar", async () => {
+  it("clique sem arrastar dentro de uma sugestão ativa a sílaba dela, sem aceitar nem desenhar", async () => {
     const v = await mountOn();
     await v.suggestWith({ 0: B0, 2: B2 });
-    const s2 = v.suggested().find((el) => el.style.left === "45%")!;
-    fireEvent.click(s2);
+    expect(v.suggested().every((el) => el.className.includes("pointer-events-none"))).toBe(true);
+    // B2 ocupa x 90-110, y 20-40 na folha de 200 x 100.
+    pointer(v.wrapper(), "pointerdown", 100, 30);
+    pointer(v.wrapper(), "pointerup", 100, 30);
     expect(v.ref.recortes!.activeSyllable).toBe(2);
     expect(v.line().syllableBoxes).toEqual({});
+  });
+
+  it("arrastar a partir de dentro da sugestão de outra sílaba desenha a caixa da ativa", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 2: B2 });
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    // Nenhuma sugestão recebe o ponteiro: o gesto começa na folha.
+    expect(v.suggested().every((el) => el.className.includes("pointer-events-none"))).toBe(true);
+    pointer(v.wrapper(), "pointerdown", 100, 30);
+    pointer(v.wrapper(), "pointermove", 140, 80);
+    pointer(v.wrapper(), "pointerup", 140, 80);
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    const drawn = v.line().syllableBoxes![0]!;
+    expect([drawn.x, drawn.y, drawn.w, drawn.h].map((n) => +n.toFixed(9))).toEqual([0.5, 0.3, 0.2, 0.5]);
   });
 
   it("Ctrl+Shift+Enter aceita todas num passo, sem avançar a sílaba", async () => {
@@ -804,6 +830,21 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     expect(v.getByText("Nenhum neuma encontrado").className).toContain("text-ink-muted");
     v.key({ key: "Tab" });
     expect(v.queryByText("Nenhum neuma encontrado")).toBeNull();
+    // Sugerir de novo sem nada achado: a linha volta.
+    await v.suggestWith({});
+    expect(v.getByText("Nenhum neuma encontrado")).toBeTruthy();
+  });
+
+  it("dica repetida sem pedido ao detector (nada a sugerir) reaparece a cada Sugerir", async () => {
+    const full = { 0: BOX, 1: BOX, 2: BOX, 3: BOX, 4: BOX };
+    const v = await mountOn([mkLine("p1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: full })]);
+    v.key({ key: "G", ctrlKey: true, shiftKey: true });
+    expect(v.getByText("Nenhum neuma encontrado")).toBeTruthy();
+    v.key({ key: "Tab" });
+    expect(v.queryByText("Nenhum neuma encontrado")).toBeNull();
+    v.key({ key: "G", ctrlKey: true, shiftKey: true });
+    expect(v.getByText("Nenhum neuma encontrado")).toBeTruthy();
+    expect(v.client.calls).toHaveLength(0);
   });
 
   it("Sugerir em todas as páginas: páginas sem área abrem o diálogo; Ir para a primeira a seleciona", async () => {

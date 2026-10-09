@@ -8,21 +8,15 @@ import { useTranslation } from "react-i18next";
 import { Sparkles } from "lucide-react";
 import { Button } from "../../ui/Button";
 import { useSuggestions } from "../../hooks/SuggestionsContext";
-import { useProject } from "../../hooks/useProject";
-import { useRecortesContext } from "../../hooks/RecortesContext";
+import { useRecortesCommands } from "../../hooks/RecortesContext";
 
 export function SuggestActions() {
   const { t } = useTranslation();
   const suggestions = useSuggestions();
-  const { state } = useProject();
-  const recortes = useRecortesContext();
+  // Same selector as the menu (usable image, nothing running): one source of truth.
+  const { canSuggest } = useRecortesCommands().state;
   if (!suggestions.enabled) return null;
 
-  const line = state.project?.sources
-    .find((s) => s.id === recortes.activeSourceId)
-    ?.lines.find((l) => l.id === recortes.activeLineId);
-  const image = line?.image as { dataUrl?: string; missing?: boolean } | undefined;
-  const usable = !!image?.dataUrl && !image.missing;
   const running = suggestions.status === "running";
   const count = Object.keys(suggestions.active).length;
 
@@ -36,7 +30,7 @@ export function SuggestActions() {
       <Button
         variant="filled"
         icon={<Sparkles aria-hidden="true" />}
-        disabled={!running && !usable}
+        disabled={!running && !canSuggest}
         onClick={running ? suggestions.cancel : suggestions.suggest}
       >
         {t(running ? "recortes.suggest.cancel" : "recortes.suggest.run")}
