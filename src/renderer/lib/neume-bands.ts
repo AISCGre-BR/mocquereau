@@ -1,13 +1,14 @@
 // src/renderer/lib/neume-bands.ts
 //
-// Neume line bands of a page (S7): kept sorted top to bottom (ties: left to
-// right), so an index into the list names the same band in the canvas, the
-// selection and the project.
+// Neume line bands of a page (S7): kept in reading order (rows top to bottom,
+// left to right in a row; see @shared/band-order), so an index into the list
+// names the same band in the canvas, the selection and the project.
 
+import { orderNeumeBands } from "@shared/band-order";
 import type { SyllableBox } from "./models";
 
 export function sortNeumeBands(bands: readonly SyllableBox[]): SyllableBox[] {
-  return [...bands].sort((a, b) => a.y - b.y || a.x - b.x);
+  return orderNeumeBands(bands);
 }
 
 export function sameNeumeBands(a: readonly SyllableBox[] | undefined, b: readonly SyllableBox[]): boolean {

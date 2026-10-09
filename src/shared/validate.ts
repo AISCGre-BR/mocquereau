@@ -3,6 +3,7 @@
 // Hand-written validator for schemaVersion 3 project.json (no new dependency).
 // Structural problems are errors (the file is refused); recoverable problems
 // in optional fields become defaults plus a warning. Never mutates its input.
+import { orderNeumeBands } from "./band-order";
 import {
   CURRENT_SCHEMA_VERSION,
   type BoxFrame,
@@ -135,7 +136,7 @@ function readBands(v: unknown, path: string, ctx: Ctx): SyllableBox[] {
     const h = y0 === b.y && y1 === b.y + b.h ? b.h : y1 - y0;
     out.push({ x: x0, y: y0, w, h });
   });
-  return out.sort((a, b) => a.y - b.y || a.x - b.x);
+  return orderNeumeBands(out);
 }
 
 function line(v: unknown, path: string, ctx: Ctx): LineOf<ImageRef> | null {

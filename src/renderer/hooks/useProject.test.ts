@@ -740,6 +740,10 @@ describe("projectReducer — áreas de neumas e notação por página", () => {
     s = projectReducer(s, { type: "SET_LINE_NEUME_BANDS", payload: { sourceId, lineId, bands: [
       { x: 0, y: 0.6, w: 1, h: 0.1 }, { x: 0, y: 0.2, w: 1, h: 0.1 } ] } });
     expect(lineOf(s).neumeBands!.map((b) => b.y)).toEqual([0.2, 0.6]);
+    // Side by side, tops slightly apart: one row, left to right.
+    s = projectReducer(s, { type: "SET_LINE_NEUME_BANDS", payload: { sourceId, lineId, bands: [
+      { x: 0.55, y: 0.1, w: 0.4, h: 0.1 }, { x: 0.05, y: 0.12, w: 0.4, h: 0.1 } ] } });
+    expect(lineOf(s).neumeBands!.map((b) => b.x)).toEqual([0.05, 0.55]);
     s = projectReducer(s, { type: "SET_LINE_NEUME_BANDS", payload: { sourceId, lineId, bands: [] } });
     expect("neumeBands" in lineOf(s)).toBe(false);
   });

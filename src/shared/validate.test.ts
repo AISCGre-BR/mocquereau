@@ -150,6 +150,15 @@ describe("classification validation", () => {
     expect(r.warnings.some((w) => w.includes("neumeBands"))).toBe(true);
   });
 
+  it("neumeBands lado a lado com topos um pouco diferentes: mesma linha, esquerda para direita", () => {
+    const p = clone();
+    const right = { x: 0.55, y: 0.1, w: 0.4, h: 0.1 };
+    const left = { x: 0.05, y: 0.12, w: 0.4, h: 0.1 };
+    p.sources[0].lines[0].neumeBands = [right, left];
+    const r = validateProject(p);
+    expect(r.ok && r.project.sources[0].lines[0].neumeBands).toEqual([left, right]);
+  });
+
   it("notationOverride desconhecido some com aviso; ausência não gera aviso", () => {
     const p = clone();
     p.sources[0].lines[0].notationOverride = "square";
