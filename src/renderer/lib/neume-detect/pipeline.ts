@@ -508,21 +508,32 @@ function suggestOnBands(
   const lineOf = new Map<number, number>();
   const perBand: BandDebug[] = [];
   const debugs: SuggestDebug[] = [];
+  // Componentes esperados por faixa: a parte de `needed` proporcional a largura da faixa
+  // (a de pagina inteira faria toda faixa recair na binarizacao mais ruidosa).
+  const selected = bands.map((b) => selectBand({ band: b, notation: input.notation }, W, H));
+  const totalW = selected.reduce((sum, s) => sum + (s.source === 'user' ? s.rect.w : 0), 0);
   bands.forEach((b, k) => {
-    const sel = selectBand({ band: b, notation: input.notation }, W, H);
+    const sel = selected[k];
     if (sel.source !== 'user') {
       perBand.push({ band: b, mode: 'A', glyphs: 0 });
       return;
     }
     const own = anchors.filter((_, i) => anchorBand[i] === k);
     const d = emptyDebug();
-    const a = analyzeBand(input, sel, own, needed, d, lap);
+    const share = totalW > 0 ? Math.max(1, Math.round((needed * sel.rect.w) / totalW)) : needed;
+    const a = analyzeBand(input, sel, own, share, d, lap);
     if (!a || 'needsBand' in a) {
       perBand.push({ band: { x: sel.rect.x / W, y: sel.rect.y / H, w: sel.rect.w / W, h: sel.rect.h / H }, mode: 'A', glyphs: 0 });
       return;
     }
     debugs.push(d);
-    perBand.push({ band: workFrac(a.work, W, H), mode: a.staff ? 'D' : 'A', glyphs: a.glyphs.length });
+    perBand.push({
+      band: workFrac(a.work, W, H),
+      mode: a.staff ? 'D' : 'A',
+      glyphs: a.glyphs.length,
+      channel: d.channel,
+      sauvolaK: d.sauvolaK,
+    });
     // faixa sem glifos nem ancoras nao ocupa espaco na linha virtual (nao rouba silabas)
     if (!a.glyphs.length && !own.length) return;
     lineOf.set(k, lines.length);

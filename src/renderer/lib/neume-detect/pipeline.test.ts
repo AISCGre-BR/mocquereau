@@ -362,6 +362,37 @@ describe('suggestBoxes — varias areas', () => {
     });
   });
 
+  it('duas linhas empilhadas: cada area conta so as suas silabas e fica na binarizacao primaria', () => {
+    // Linha de cima com 1 silaba (e marcas apagadas que so k menor pega), de baixo com 9: com a
+    // meta da pagina inteira (10) a de cima sempre recairia na binarizacao mais ruidosa.
+    const a = buildAdiastematicLine({ seed: 41, words: [['Ky']] });
+    const b = buildAdiastematicLine({ seed: 42, words: [['Chri', 'ste'], ['e', 'lei', 'son'], ['Ky', 'ri', 'e', 'e']] });
+    for (let g = 196; g < 240; g += 2) fillRect(a.raster, 200 + (g - 196) * 10, 60, 12, 12, [g, g, g]);
+    const W = a.raster.width;
+    const H = a.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4);
+    data.set(a.raster.data, 0);
+    data.set(b.raster.data, W * H * 4);
+    const syllables = [
+      ...a.syllables,
+      ...b.syllables.map((s) => ({ ...s, index: s.index + a.syllables.length, wordIndex: s.wordIndex + 1 })),
+    ];
+    const res = suggestBoxes({
+      image: { data, width: W, height: 2 * H },
+      notation: 'adiastematic',
+      syllables,
+      bands: [
+        { x: 0, y: 0, w: 0.5, h: 0.5 },
+        { x: 0, y: 0.5, w: 1, h: 0.5 },
+      ],
+    });
+    const alone = suggestBoxes({ image: a.raster, notation: 'adiastematic', syllables: a.syllables, band: { x: 0, y: 0, w: 1, h: 1 } });
+    expect(res.debug.bands!.map((d) => [d.channel, d.sauvolaK])).toEqual([
+      [alone.debug.channel, alone.debug.sauvolaK],
+      ['r', alone.debug.sauvolaK],
+    ]);
+  });
+
   it('ancora na segunda area e ancora fora de todas: sem sugestao para elas, demais em ordem', () => {
     const a = buildAdiastematicLine({ seed: 41, words: [['Ky', 'ri', 'e'], ['e', 'lei', 'son']] });
     const b = buildAdiastematicLine({ seed: 42, words: [['Chri', 'ste'], ['e', 'lei', 'son']] });

@@ -100,6 +100,9 @@ export interface BandDebug {
   band: FracRect;
   mode: 'A' | 'D';
   glyphs: number;
+  /** Binarizacao usada na faixa (ausente quando a faixa nao foi analisada). */
+  channel?: ChannelName;
+  sauvolaK?: number;
 }
 
 export interface SuggestDebug {
