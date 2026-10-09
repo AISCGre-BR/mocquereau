@@ -130,6 +130,18 @@ async function openFixtureProject(page) {
   await settle(page, 3000);
 }
 
+/** Recortes na página de neumas sintéticos da fixture (sílabas sem caixa, com linha de neumas). */
+async function openNeumePage(page) {
+  await openFixtureProject(page);
+  await page.keyboard.press("Control+2");
+  await settle(page);
+  const laon = page.locator('[data-source-id="src-1"]');
+  await laon.click();
+  if ((await laon.getAttribute("aria-expanded")) !== "true") await laon.getByTestId("source-chevron").click();
+  await page.locator('[role=treeitem][data-line-id="line-1-neumas"]').click();
+  await settle(page, 3000);
+}
+
 const GUIDE_TEXT = [
   "Glória in excélsis Deo",
   "Et in terra pax homínibus bonae voluntátis",
@@ -182,6 +194,20 @@ const SCREENS = {
     await page.locator("[role=treeitem][data-line-id]").filter({ has: page.locator("[data-confirmed]") }).first().click();
     await settle(page, 3000);
     await page.getByRole("button", { name: "Imagem" }).click();
+    await settle(page, 600);
+  },
+  // Página de neumas sintéticos da fixture (Laon 239, 6r): sílabas sem caixa e uma linha de neumas.
+  "recortes-sugestoes": async (page) => {
+    await openNeumePage(page);
+    await page.keyboard.press("Control+Shift+G");
+    await page.locator(".sc-box--suggested").first().waitFor({ timeout: 20000 });
+    await settle(page, 600);
+  },
+  "recortes-area": async (page) => {
+    await openNeumePage(page);
+    await page.getByRole("button", { name: "Marcar linha de neumas" }).click();
+    await settle(page, 300);
+    await page.locator("[data-neume-band]").first().click();
     await settle(page, 600);
   },
   "fonte-dialog": async (page) => {

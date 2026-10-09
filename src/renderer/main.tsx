@@ -8,6 +8,13 @@ import "./styles.css";
 import "./i18n";
 import { App } from "./App";
 
+// scripts/smoke-worker.mjs: o main carrega ?smoke=worker so com MOCQUEREAU_SMOKE=worker.
+if (new URLSearchParams(location.search).get("smoke") === "worker") {
+  void import("./smoke").then(async ({ runWorkerSmoke }) => {
+    document.title = await runWorkerSmoke();
+  });
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element #root not found");
 

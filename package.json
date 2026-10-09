@@ -25,7 +25,8 @@
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:linux": "electron-vite build && electron-builder --linux",
-    "visual-check": "electron-vite build && node scripts/visual-check/shoot.mjs"
+    "visual-check": "electron-vite build && node scripts/visual-check/shoot.mjs",
+    "smoke:worker": "node scripts/smoke-worker.mjs"
   },
   "dependencies": {
     "@fontsource-variable/source-sans-3": "^5.3.0",
