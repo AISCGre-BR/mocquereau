@@ -46,6 +46,8 @@ interface ImageCanvasProps {
   onUpdateAdjustments?: (partial: Partial<ImageAdjustments>) => void;
   /** Right click on the sheet (the Recortes menu as a context menu). */
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** Neume suggestions of the page (S3): dashed, in the syllable's pigment. */
+  suggestedBoxes?: Record<number, SyllableBox>;
 }
 
 export function ImageCanvas({
@@ -64,6 +66,7 @@ export function ImageCanvas({
   adjustments,
   onUpdateAdjustments,
   onContextMenu,
+  suggestedBoxes,
 }: ImageCanvasProps) {
   const { t } = useTranslation();
   const imageWrapperRef = useRef<HTMLDivElement>(null);
@@ -438,6 +441,40 @@ export function ImageCanvas({
               </div>
             );
           })}
+
+          {/* Suggested boxes (S3). The active syllable's one lets the pointer
+              through, so drawing over it simply draws; the others activate
+              their syllable on click (never accept). */}
+          {suggestedBoxes &&
+            Object.entries(suggestedBoxes).map(([key, box]) => {
+              const idx = Number(key);
+              if (boxes[idx] != null) return null;
+              const isActive = idx === activeSyllableIdx;
+              return (
+                <div
+                  key={`suggested-${idx}`}
+                  data-suggested={idx}
+                  className={`${cropBoxClass('suggested', idx)} ${isActive ? 'pointer-events-none' : 'cursor-pointer'}`}
+                  style={{
+                    left: `${box.x * 100}%`,
+                    top: `${box.y * 100}%`,
+                    width: `${box.w * 100}%`,
+                    height: `${box.h * 100}%`,
+                  }}
+                  onPointerDown={isActive ? undefined : (e) => e.stopPropagation()}
+                  onClick={
+                    isActive
+                      ? undefined
+                      : (e) => {
+                          e.stopPropagation();
+                          onActivateSyllable?.(idx);
+                        }
+                  }
+                >
+                  {isActive && <span className="sc-box__tag pointer-events-none">{syllableTextAt(idx)}</span>}
+                </div>
+              );
+            })}
 
           {/* SyllableBoxOverlay for active syllable that has a box */}
           {activeSyllableIdx !== null && boxes[activeSyllableIdx] != null && (

@@ -21,6 +21,7 @@ import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
 import { RecortesTools } from "./components/recortes/RecortesTools";
+import { SuggestActions } from "./components/recortes/SuggestActions";
 import { TabelaTools } from "./components/table-preview/TabelaTools";
 import { TableZoomProvider } from "./hooks/useTableZoom";
 import { RecortesProvider, useRecortesCommands, useRecortesContext } from "./hooks/RecortesContext";
@@ -157,6 +158,11 @@ function Workbench() {
       clearPage: recortes.clearPage,
       realignBoxes: recortes.realignBoxes,
       nextSource: recortes.nextSource,
+      suggest: recortes.suggest,
+      suggestSource: recortes.suggestSource,
+      acceptAllSuggestions: recortes.acceptAllSuggestions,
+      discardSuggestions: recortes.discardSuggestions,
+      toggleSuggestions: recortes.toggleSuggestions,
       clearRecent: () => {
         if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
         void window.mocquereau
@@ -197,6 +203,8 @@ function Workbench() {
                 >
                   {t("shell.file.exportDocx")}
                 </Button>
+              ) : view === "recortes" ? (
+                <SuggestActions />
               ) : undefined
             }
           />

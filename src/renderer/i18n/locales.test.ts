@@ -25,6 +25,7 @@ const SAME_AS_EN: Record<string, "*" | readonly Translated[]> = {
   "texto.migration.changedWordItem": "*",
   "sourceTree.menu.folio": ["it", "es", "de", "pl"],
   "sourceTree.folio.folio": ["it", "es", "de", "pl"],
+  "sourceTree.menu.notation": ["de"],
   "sourceDialog.link": ["it", "de", "pl"],
   "exportDialog.title": ["de"],
   "shell.menu.file": ["it"],

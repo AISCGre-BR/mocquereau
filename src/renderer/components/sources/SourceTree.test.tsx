@@ -279,6 +279,38 @@ describe("SourceTree: menus", () => {
     expect(sources()[0].lines[0].label).toBeUndefined();
   });
 
+  it('"Notação" marca a atual e grava SET_LINE_NOTATION (S9)', () => {
+    const { sources, ref } = mount(projectWith([mkSource("A", 1, null, [mkLine("a1")])]));
+    const page = () => screen.getAllByRole("treeitem").find((el) => el.getAttribute("data-line-id") === "a1")!;
+    const openNotation = () => {
+      const menu = openMenu(page());
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Notação" }));
+      return screen.getAllByRole("menu").find((m) => m.getAttribute("aria-label") === "Notação")!;
+    };
+    const checked = (sub: HTMLElement) =>
+      within(sub)
+        .getAllByRole("menuitemcheckbox")
+        .filter((el) => el.getAttribute("aria-checked") === "true")
+        .map((el) => el.textContent);
+    let sub = openNotation();
+    expect(within(sub).getAllByRole("menuitemcheckbox").map((el) => el.textContent)).toEqual([
+      "Automática",
+      "Adiastemática",
+      "Diastemática",
+    ]);
+    expect(checked(sub)).toEqual(["Automática"]);
+    fireEvent.click(within(sub).getByRole("menuitemcheckbox", { name: "Diastemática" }));
+    expect(sources()[0].lines[0].notationOverride).toBe("diastematic");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    sub = openNotation();
+    expect(checked(sub)).toEqual(["Diastemática"]);
+    fireEvent.click(within(sub).getByRole("menuitemcheckbox", { name: "Automática" }));
+    expect(sources()[0].lines[0].notationOverride).toBeUndefined();
+    act(() => ref.dispatch!({ type: "UNDO" }));
+    expect(sources()[0].lines[0].notationOverride).toBe("diastematic");
+  });
+
   it('"Nova fonte" cria uma fonte vazia, seleciona e abre o diálogo', () => {
     const { sources, ref, onEditSource } = mount(projectWith([mkSource("A", 1, null)]));
     fireEvent.click(screen.getByRole("button", { name: "Nova fonte" }));

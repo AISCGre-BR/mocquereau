@@ -388,3 +388,8 @@ export function useSuggestions(): SuggestionsValue {
   if (!ctx) throw new Error("useSuggestions must be used inside SuggestionsProvider");
   return ctx;
 }
+
+/** null outside a SuggestionsProvider (the Recortes commands work without one). */
+export function useOptionalSuggestions(): SuggestionsValue | null {
+  return useContext(SuggestionsContext);
+}

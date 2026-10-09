@@ -10,12 +10,21 @@ import { useProject } from "./useProject";
 import { useRecortes, type RecortesState } from "./useRecortes";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { RecortesMenuState } from "../shell/menus";
+import { useOptionalSuggestions } from "./SuggestionsContext";
 
-export type RecortesDialog = "clearPage" | "realign" | null;
+export type RecortesDialog = "clearPage" | "realign" | "suggestSkipped" | null;
+
+export interface SkippedPages {
+  sourceId: string;
+  lineIds: string[];
+}
 
 export interface RecortesContextValue extends RecortesState {
   dialog: RecortesDialog;
   setDialog(dialog: RecortesDialog): void;
+  /** S10: pages "Sugerir em todas as páginas" skipped for lack of a neume band. */
+  skippedPages: SkippedPages | null;
+  setSkippedPages(pages: SkippedPages | null): void;
 }
 
 const RecortesContext = createContext<RecortesContextValue | null>(null);
@@ -24,7 +33,12 @@ export function RecortesProvider({ children }: { children: ReactNode }) {
   const { state } = useProject();
   const recortes = useRecortes(state.project);
   const [dialog, setDialog] = useState<RecortesDialog>(null);
-  return <RecortesContext.Provider value={{ ...recortes, dialog, setDialog }}>{children}</RecortesContext.Provider>;
+  const [skippedPages, setSkippedPages] = useState<SkippedPages | null>(null);
+  return (
+    <RecortesContext.Provider value={{ ...recortes, dialog, setDialog, skippedPages, setSkippedPages }}>
+      {children}
+    </RecortesContext.Provider>
+  );
 }
 
 export function useRecortesContext(): RecortesContextValue {
@@ -35,6 +49,12 @@ export function useRecortesContext(): RecortesContextValue {
 
 export interface RecortesCommands {
   state: RecortesMenuState;
+  suggest(): void;
+  /** S10: every page of the source; pages needing a band open the dialog. */
+  suggestSource(): void;
+  acceptAllSuggestions(): void;
+  discardSuggestions(): void;
+  toggleSuggestions(): void;
   /** Removes the active syllable's box (menu, Delete). */
   removeBox(): void;
   /** Removes the box of syllable `idx` on the active page: the one path for every removal. */
@@ -59,6 +79,12 @@ export function useRecortesCommands(): RecortesCommands {
   const viewBoxes = line ? boxesInView(line) : {};
   const hasActiveBox = active !== null && viewBoxes[active] != null;
   const pageHasWork = !!line && (hasAnyBox(line.syllableBoxes) || line.gaps.length > 0 || line.confirmed);
+  const suggestions = useOptionalSuggestions();
+  const suggestionsEnabled = suggestions?.enabled ?? false;
+  const idle = suggestions?.status !== "running";
+  const image = line?.image as ({ dataUrl?: string; missing?: boolean } | undefined);
+  const canSuggest = suggestionsEnabled && idle && !!image?.dataUrl && !image.missing;
+  const hasSuggestions = suggestionsEnabled && Object.keys(suggestions?.active ?? {}).length > 0;
 
   function removeBoxAt(idx: number) {
     if (!source || !line || viewBoxes[idx] == null) return;
@@ -97,7 +123,26 @@ export function useRecortesCommands(): RecortesCommands {
       canClearPage: pageHasWork,
       canRealign: !!line && hasAnyBox(line.syllableBoxes),
       hasNextSource: sourceIdx >= 0 && sourceIdx < sources.length - 1,
+      suggestionsEnabled,
+      canSuggest,
+      canSuggestSource: suggestionsEnabled && idle && !!source && source.lines.length > 0,
+      hasSuggestions,
     },
+    suggest: () => {
+      if (canSuggest) suggestions?.suggest();
+    },
+    suggestSource: () => {
+      if (!suggestions || !suggestionsEnabled || !source) return;
+      const sourceId = source.id;
+      void suggestions.suggestSource().then(({ skipped }) => {
+        if (skipped.length === 0) return;
+        recortes.setSkippedPages({ sourceId, lineIds: skipped });
+        recortes.setDialog("suggestSkipped");
+      });
+    },
+    acceptAllSuggestions: () => suggestions?.acceptAll(),
+    discardSuggestions: () => suggestions?.discardPage(),
+    toggleSuggestions: () => suggestions?.setEnabled(!suggestionsEnabled),
     removeBox: () => {
       if (active !== null) removeBoxAt(active);
     },

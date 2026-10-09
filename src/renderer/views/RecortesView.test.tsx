@@ -2,7 +2,7 @@
 import "../i18n";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
-import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { RecortesView, isOutsideEditorKeys } from "./RecortesView";
 import {
   ProjectContext,
@@ -14,9 +14,18 @@ import {
   type ProjectState,
 } from "../hooks/useProject";
 import { syllabifyText } from "../lib/syllabify";
-import { RecortesProvider, useRecortesContext, type RecortesContextValue } from "../hooks/RecortesContext";
+import { RecortesProvider, useRecortesCommands, useRecortesContext, type RecortesContextValue } from "../hooks/RecortesContext";
+import { SuggestionsProvider } from "../hooks/SuggestionsContext";
+import { recortesMenuItems } from "../shell/menus";
+import { useMenuShortcuts } from "../shell/useMenuShortcuts";
+import type { NeumeDetectClient, SuggestInput, SuggestResult } from "../lib/neume-detect";
 import { resolveCellState } from "../lib/tableUtils";
-import type { ManuscriptLine, ManuscriptSource, MocquereauProject } from "../lib/models";
+import type { ManuscriptLine, ManuscriptSource, MocquereauProject, SyllableBox } from "../lib/models";
+
+vi.mock("../lib/suggest/raster", () => ({
+  loadSuggestImage: vi.fn(async () => ({})),
+  renderSuggestRaster: vi.fn(() => ({ data: new Uint8ClampedArray(10 * 10 * 4), width: 10, height: 10 })),
+}));
 
 const BOX = { x: 0.1, y: 0.1, w: 0.2, h: 0.5 };
 const IMG = { dataUrl: "data:image/png;base64,iVBORw0KGgo=", width: 100, height: 50, mimeType: "image/png" };
@@ -51,8 +60,33 @@ function projectWith(sources: ManuscriptSource[] = [mkSource("A", [mkLine("line-
   return { ...base, text: { raw, words: syllabifyText(raw, "sung"), hyphenationMode: "sung" }, sources };
 }
 
+/** Fake neume-detect client: every request waits for the test to settle it. */
+function fakeClient() {
+  const calls: Array<{ input: SuggestInput; resolve(r: SuggestResult): void }> = [];
+  let next = 1;
+  return {
+    calls,
+    cancel: vi.fn(),
+    dispose: vi.fn(),
+    suggest(input: SuggestInput) {
+      const id = next++;
+      let resolve!: (r: SuggestResult) => void;
+      const result = new Promise<SuggestResult>((res) => (resolve = res));
+      calls.push({ input, resolve });
+      return { id, result };
+    },
+  } satisfies NeumeDetectClient & { calls: unknown[] };
+}
+
+/** The Recortes menu accelerators, as the App wires them (Ctrl+Shift+G, Ctrl+Shift+Enter). */
+function MenuShortcuts() {
+  const commands = useRecortesCommands();
+  useMenuShortcuts([{ id: "recortes", label: "", items: recortesMenuItems(commands.state, commands, (k) => k) }]);
+  return null;
+}
+
 /** Real document reducer (with history) around the view. */
-function mount(project: MocquereauProject) {
+function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClient()) {
   const ref: {
     state?: ProjectState;
     dispatch?: React.Dispatch<DocumentAction>;
@@ -70,8 +104,11 @@ function mount(project: MocquereauProject) {
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
         <RecortesProvider>
-          <Grab />
-          <RecortesView />
+          <SuggestionsProvider createClient={() => client}>
+            <Grab />
+            <MenuShortcuts />
+            <RecortesView />
+          </SuggestionsProvider>
         </RecortesProvider>
       </ProjectContext.Provider>
     );
@@ -303,8 +340,10 @@ describe("RecortesView: diálogos do provider", () => {
       return (
         <ProjectContext.Provider value={{ state, dispatch, history }}>
           <RecortesProvider>
-            <Grab />
-            {show && <RecortesView />}
+            <SuggestionsProvider>
+              <Grab />
+              {show && <RecortesView />}
+            </SuggestionsProvider>
           </RecortesProvider>
         </ProjectContext.Provider>
       );
@@ -532,9 +571,11 @@ describe("RecortesView: largura presa à vista", () => {
     const { container } = render(
       <ProjectContext.Provider value={{ state, dispatch: vi.fn() }}>
         <RecortesProvider>
-          <div className="flex">
-            <RecortesView />
-          </div>
+          <SuggestionsProvider>
+            <div className="flex">
+              <RecortesView />
+            </div>
+          </SuggestionsProvider>
         </RecortesProvider>
       </ProjectContext.Provider>,
     );
@@ -647,5 +688,135 @@ describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
     const v = mount(projectWith());
     expect(v.queryByText("Alterações salvas automaticamente")).toBeNull();
     expect(v.queryByRole("button", { name: /Limpar tudo|Ajustes/ })).toBeNull();
+  });
+});
+
+describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
+  const B0: SyllableBox = { x: 0.05, y: 0.2, w: 0.1, h: 0.2 };
+  const B1: SyllableBox = { x: 0.25, y: 0.2, w: 0.1, h: 0.2 };
+  const B2: SyllableBox = { x: 0.45, y: 0.2, w: 0.1, h: 0.2 };
+
+  function result(boxes: Record<number, SyllableBox>, needsBand = false): SuggestResult {
+    return {
+      suggestions: Object.entries(boxes).map(([i, box]) => ({ index: Number(i), box, confidence: 0.9 })),
+      debug: { needsBand } as SuggestResult["debug"],
+    };
+  }
+
+  const blank = (id: string) => mkLine(id, { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
+
+  async function mountOn(lines: ManuscriptLine[] = [blank("line-1")]) {
+    window.mocquereau = {
+      readClipboardImage: vi.fn(),
+      openImageFile: vi.fn(),
+      getSuggestionsEnabled: vi.fn(async () => true),
+      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+    } as never;
+    const client = fakeClient();
+    const v = mount(projectWith([mkSource("A", lines)]), client);
+    await act(async () => {}); // preference
+    const suggested = () => Array.from(v.container.querySelectorAll<HTMLElement>(".sc-box--suggested"));
+    const resolve = async (n: number, r: SuggestResult) => {
+      await waitFor(() => expect(client.calls.length).toBe(n + 1));
+      await act(async () => {
+        client.calls[n].resolve(r);
+        await Promise.resolve();
+      });
+    };
+    /** Ctrl+Shift+G (menu accelerator) and the first result. */
+    const suggestWith = async (boxes: Record<number, SyllableBox>) => {
+      const n = client.calls.length;
+      v.key({ key: "G", ctrlKey: true, shiftKey: true });
+      await resolve(n, result(boxes));
+    };
+    return { ...v, client, suggested, resolve, suggestWith };
+  }
+
+  it("Sugerir mostra caixas tracejadas; Enter aceita a ativa e avança; Ctrl+Z desfaz", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 1: B1, 2: B2 });
+    expect(v.suggested()).toHaveLength(3);
+    // A sugestão da sílaba ativa leva a etiqueta.
+    expect(v.suggested().filter((el) => el.querySelector(".sc-box__tag")).map((el) => el.textContent)).toEqual(["Pu"]);
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+
+    v.key({ key: "Enter" });
+    expect(v.line().syllableBoxes).toEqual({ 0: B0 });
+    expect(v.ref.recortes!.activeSyllable).toBe(1);
+    expect(v.suggested()).toHaveLength(2);
+
+    // Tab avança sem aceitar.
+    v.key({ key: "Tab" });
+    expect(v.ref.recortes!.activeSyllable).toBe(2);
+    expect(v.line().syllableBoxes).toEqual({ 0: B0 });
+
+    act(() => v.ref.history!.undo());
+    expect(v.line().syllableBoxes).toEqual({});
+  });
+
+  it("clicar numa sugestão ativa a sílaba sem aceitar", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 2: B2 });
+    const s2 = v.suggested().find((el) => el.style.left === "45%")!;
+    fireEvent.click(s2);
+    expect(v.ref.recortes!.activeSyllable).toBe(2);
+    expect(v.line().syllableBoxes).toEqual({});
+  });
+
+  it("Ctrl+Shift+Enter aceita todas num passo, sem avançar a sílaba", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 1: B1, 2: B2 });
+    v.key({ key: "Enter", ctrlKey: true, shiftKey: true });
+    expect(v.line().syllableBoxes).toEqual({ 0: B0, 1: B1, 2: B2 });
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    expect(v.suggested()).toHaveLength(0);
+    act(() => v.ref.history!.undo());
+    expect(v.line().syllableBoxes).toEqual({});
+  });
+
+  it("Delete numa sílaba sugerida rejeita a sugestão sem criar caixa", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 1: B1 });
+    v.key({ key: "Delete" });
+    expect(v.suggested()).toHaveLength(1);
+    expect(v.line().syllableBoxes).toEqual({});
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("Esc descarta as sugestões da página", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 1: B1 });
+    v.key({ key: "Escape" });
+    expect(v.suggested()).toHaveLength(0);
+    expect(v.line().syllableBoxes).toEqual({});
+  });
+
+  it("faixa de sílabas: sugerida sem caixa ganha traço tracejado", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 1: B1 });
+    const underline = v.container.querySelector('[data-syllable="1"] [data-underline]')!;
+    expect(underline.className).toContain("border-dashed");
+  });
+
+  it("dica de uma linha: Nenhum neuma encontrado, some na próxima tecla", async () => {
+    const v = await mountOn();
+    await v.suggestWith({});
+    expect(v.getByText("Nenhum neuma encontrado").className).toContain("text-ink-muted");
+    v.key({ key: "Tab" });
+    expect(v.queryByText("Nenhum neuma encontrado")).toBeNull();
+  });
+
+  it("Sugerir em todas as páginas: páginas sem área abrem o diálogo; Ir para a primeira a seleciona", async () => {
+    const v = await mountOn([blank("p1"), blank("p2"), blank("p3")]);
+    fireEvent.contextMenu(v.wrapper(), { clientX: 20, clientY: 20 });
+    fireEvent.click(within(v.getByRole("menu", { name: "Recortes" })).getByRole("menuitem", { name: "Sugerir em todas as páginas da fonte" }));
+    await v.resolve(0, result({ 0: B0 }));
+    await v.resolve(1, result({}, true));
+    await v.resolve(2, result({}, true));
+    const dialog = await waitFor(() => v.getByRole("dialog", { name: "Páginas sem área" }));
+    expect(dialog.textContent).toContain("2 páginas precisam da área da linha de neumas.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Ir para a primeira" }));
+    expect(v.queryByRole("dialog")).toBeNull();
+    expect(v.ref.recortes!.activeLineId).toBe("p2");
   });
 });

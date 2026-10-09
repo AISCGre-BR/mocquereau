@@ -11,6 +11,7 @@ import { useProject } from "../hooks/useProject";
 import type { HistoryMeta } from "../history/history";
 import type { SyllableRange } from "../hooks/useRecortes";
 import { useRecortesCommands, useRecortesContext } from "../hooks/RecortesContext";
+import { useSuggestions, type SuggestNotice } from "../hooks/SuggestionsContext";
 import { SourceTree } from "../components/sources/SourceTree";
 import { useAddPage, type AddPage } from "../components/sources/useAddPage";
 import { ResizeImageDialog } from "../components/sources/ResizeImageDialog";
@@ -60,6 +61,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   const project = state.project;
   const recortes = useRecortesContext();
   const commands = useRecortesCommands();
+  const suggestions = useSuggestions();
+  const suggestedSet = useMemo(() => new Set(Object.keys(suggestions.active).map(Number)), [suggestions.active]);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   useEffect(() => {
     if (!openSourceId) return;
@@ -184,6 +187,11 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     });
   }
 
+  function closeSkipped() {
+    recortes.setDialog(null);
+    recortes.setSkippedPages(null);
+  }
+
   // ── Paste (Ctrl+V reads the clipboard through main) ──────────────────────
 
   const pasteRef = useRef<() => void>(() => {});
@@ -208,6 +216,12 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   keyRef.current = (e: KeyboardEvent) => {
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    // Esc descarta as sugestões da página (S6), mesmo com o foco num botão da barra
+    // (o Sugerir); com diálogo ou menu aberto, a tecla é deles.
+    if (e.key === "Escape") {
+      if (!document.querySelector("[role=dialog],[role=menu]")) suggestions.discardPage();
+      return;
+    }
     // Teclas da casca e de controles nativos ficam com eles.
     if (target instanceof Element && isOutsideEditorKeys(target)) return;
     if (!range) return;
@@ -222,10 +236,12 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       return;
     }
 
-    // Ctrl+Enter (Próxima fonte) é atalho do menu Recortes.
+    // Ctrl+Enter (Próxima fonte) e Ctrl+Shift+Enter (Aceitar todas) são atalhos do menu Recortes.
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return;
     if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
       e.preventDefault();
+      // Enter aceita a sugestão da sílaba ativa e avança; Tab só avança (S6).
+      if (e.key === "Enter" && active !== null && active in suggestions.active) suggestions.accept(active);
       // Tab/Enter avança a sílaba ativa; além do fim, estende o intervalo da página.
       if (active === null) {
         recortes.setActiveSyllable(range.start);
@@ -255,6 +271,9 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       if (viewBoxes[active] != null) {
         e.preventDefault();
         commands.removeBox();
+      } else if (active in suggestions.active) {
+        e.preventDefault();
+        suggestions.reject(active);
       }
       return;
     }
@@ -306,11 +325,15 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onRangeChange={setRange}
                 onToggleGap={toggleGap}
                 onRemoveBox={commands.removeBoxAt}
+                suggested={suggestedSet}
               />
             </div>
           )}
 
-          <div className="min-h-0 flex-1">
+          <div className="relative min-h-0 flex-1">
+            {hasImage && suggestions.notice && (
+              <NoticeLine key={`${activeLine?.id}:${suggestions.notice}`} notice={suggestions.notice} />
+            )}
             {hasImage ? (
               <ImageCanvas
                 image={activeLine!.image}
@@ -321,6 +344,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onZoomChange={recortes.setZoom}
                 onActivateSyllable={recortes.setActiveSyllable}
                 onBoxCommit={(idx, box) => commitBox(idx, box)}
+                suggestedBoxes={suggestions.active}
                 words={project.text.words}
                 showAllBoxes={recortes.showAll}
                 sameSizeMode={recortes.sameSize}
@@ -354,6 +378,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                   key={item.id}
                   label={item.label}
                   shortcut={item.accelerator ? formatAccelerator(item.accelerator, platform) : undefined}
+                  checked={item.checked}
                   disabled={item.disabled}
                   onSelect={item.onSelect}
                 />
@@ -385,10 +410,67 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
         >
           {t("recortes.clearPage.body")}
         </Dialog>
+        <Dialog
+          open={recortes.dialog === "suggestSkipped" && !!recortes.skippedPages}
+          title={t("recortes.suggestSource.title")}
+          onClose={closeSkipped}
+          actions={
+            <>
+              <Button variant="elevated" onClick={closeSkipped}>
+                {t("recortes.suggestSource.close")}
+              </Button>
+              <Button
+                variant="filled"
+                data-autofocus
+                onClick={() => {
+                  const skipped = recortes.skippedPages;
+                  closeSkipped();
+                  // Task 7 also turns on the neume band tool here.
+                  if (skipped?.lineIds[0]) recortes.selectLine(skipped.sourceId, skipped.lineIds[0]);
+                }}
+              >
+                {t("recortes.suggestSource.goFirst")}
+              </Button>
+            </>
+          }
+        >
+          {t("recortes.suggestSource.body", { count: recortes.skippedPages?.lineIds.length ?? 0 })}
+        </Dialog>
         <ResizeImageDialog addPage={addPage} />
         {editingSourceId && <SourceDialog sourceId={editingSourceId} onClose={() => setEditingSourceId(null)} />}
       </div>
     </div>
+  );
+}
+
+// ── NoticeLine ────────────────────────────────────────────────────────────────
+
+const NOTICE_TEXT: Record<SuggestNotice, string> = {
+  needsBand: "recortes.notice.needsBand",
+  none: "recortes.notice.none",
+  error: "recortes.notice.error",
+};
+
+/** One-line hint at the top of the sheet: gone on the next click or key, or after 6 s. */
+function NoticeLine({ notice }: { notice: SuggestNotice }) {
+  const { t } = useTranslation();
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const hide = () => setHidden(true);
+    const timer = window.setTimeout(hide, 6000);
+    window.addEventListener("pointerdown", hide, true);
+    window.addEventListener("keydown", hide, true);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointerdown", hide, true);
+      window.removeEventListener("keydown", hide, true);
+    };
+  }, []);
+  if (hidden) return null;
+  return (
+    <p role="status" className="pointer-events-none absolute inset-x-0 top-2 z-10 text-center text-sm text-ink-muted">
+      {t(NOTICE_TEXT[notice])}
+    </p>
   );
 }
 

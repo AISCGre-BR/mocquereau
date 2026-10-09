@@ -13,7 +13,15 @@ import { flattenSyllables } from "../../lib/sliceUtils";
 import { createEmptySource, groupSourcesByLevel1, guerangerToSource } from "../../lib/sources";
 import { sourceProgress } from "../../lib/recent-meta";
 import type { ManuscriptSource } from "../../lib/models";
-import { MenuItem, MenuSeparator, MenuSurface, type MenuCloseReason } from "../../ui/Menu";
+import type { PageNotation } from "@shared/project-schema";
+
+/** S9: the page's notation (null = automatic, from the source's classification). */
+const NOTATIONS: ReadonlyArray<{ value: PageNotation | null; label: string }> = [
+  { value: null, label: "sourceTree.menu.notationAuto" },
+  { value: "adiastematic", label: "sourceTree.menu.notationAdiastematic" },
+  { value: "diastematic", label: "sourceTree.menu.notationDiastematic" },
+];
+import { MenuItem, MenuSeparator, MenuSubmenu, MenuSurface, type MenuCloseReason } from "../../ui/Menu";
 import { Dialog } from "../../ui/Dialog";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Field";
@@ -389,6 +397,18 @@ export function SourceTree({ onEditSource }: SourceTreeProps) {
                 if (line) setFolio({ sourceId: item.sourceId, lineId: line.id, folio: line.folio ?? "", label: line.label ?? "" });
               }}
             />
+            <MenuSubmenu label={t("sourceTree.menu.notation")}>
+              {NOTATIONS.map(({ value, label }) => (
+                <MenuItem
+                  key={label}
+                  label={t(label)}
+                  checked={(sourceById(item.sourceId)?.lines.find((l) => l.id === item.lineId)?.notationOverride ?? null) === value}
+                  onSelect={() =>
+                    dispatch({ type: "SET_LINE_NOTATION", payload: { sourceId: item.sourceId, lineId: item.lineId, notation: value } })
+                  }
+                />
+              ))}
+            </MenuSubmenu>
             <MenuSeparator />
             <MenuItem
               label={t("sourceTree.menu.removePage")}
