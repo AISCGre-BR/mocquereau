@@ -35,7 +35,7 @@ export interface SuggestionsValue {
   enabled: boolean;
   /** Grava na main; desligar descarta tudo e encerra o worker. */
   setEnabled(on: boolean): void;
-  /** Da página ativa. */
+  /** "running" while any run is active (one page or the whole source): Sugerir waits, Cancelar stops it. */
   status: SuggestStatus;
   /** Sugestões vivas da página ativa (já filtradas contra o projeto atual). */
   active: Record<number, SyllableBox>;
@@ -48,9 +48,9 @@ export interface SuggestionsValue {
   accept(idx: number): void;
   /** Todas da página ativa, um dispatch. */
   acceptAll(): void;
-  /** Some e entra nas rejeitadas da página (sessão). */
+  /** Some e entra nas rejeitadas da página (sessão); um Sugerir explícito na página as esquece. */
   reject(idx: number): void;
-  /** Esc. */
+  /** Esc: also cancels any run in progress. */
   discardPage(): void;
   /** S10: lineIds que precisam de área. */
   suggestSource(): Promise<{ skipped: string[] }>;
@@ -59,6 +59,11 @@ export interface SuggestionsValue {
 interface Running {
   lineId: string;
   id: number | null;
+}
+
+/** A "Sugerir em todas as páginas" loop; `cancelled` is checked between pages. */
+interface SourceRun {
+  cancelled: boolean;
 }
 
 type RunOutcome = { kind: "done"; result: SuggestResult } | { kind: "skipped" } | { kind: "cancelled" } | { kind: "error" };
@@ -129,6 +134,7 @@ export function SuggestionsProvider({
   const [notices, setNotices] = useState<ReadonlyMap<string, { notice: SuggestNotice; seq: number }>>(() => new Map());
   const noticeSeqRef = useRef(0);
   const [running, setRunning] = useState<Running | null>(null);
+  const [sourceRunning, setSourceRunning] = useState(false);
 
   // Async work reads the latest values, not the render that started it.
   // Kept ahead of the render after our own dispatches, so two accepts in one
@@ -141,6 +147,7 @@ export function SuggestionsProvider({
   const rejectedRef = useRef(rejected);
   rejectedRef.current = rejected;
   const runningRef = useRef<Running | null>(null);
+  const sourceRunRef = useRef<SourceRun | null>(null);
   const userChoseRef = useRef(false);
   const clientRef = useRef<NeumeDetectClient | null>(null);
   const createClientRef = useRef(createClient);
@@ -177,9 +184,12 @@ export function SuggestionsProvider({
     };
   }, []);
 
-  // The worker goes with the provider.
+  // The worker goes with the provider (and a source-wide loop stops).
   useEffect(
     () => () => {
+      if (sourceRunRef.current) sourceRunRef.current.cancelled = true;
+      sourceRunRef.current = null;
+      runningRef.current = null;
       clientRef.current?.dispose();
       clientRef.current = null;
     },
@@ -256,10 +266,17 @@ export function SuggestionsProvider({
       const words = projectRef.current?.text.words;
       if (!source || !line || !words || !hasUsableImage(line)) return { kind: "skipped" };
 
-      const covered = coveredByOtherPages(source, line.id, "");
-      const plan = planSuggestion(source, line, words, covered, rejectedRef.current.get(line.id) ?? new Set());
+      let plan: ReturnType<typeof planSuggestion>;
+      try {
+        const covered = coveredByOtherPages(source, line.id, "");
+        plan = planSuggestion(source, line, words, covered, rejectedRef.current.get(line.id) ?? new Set());
+      } catch {
+        setNotice(line.id, "error");
+        return { kind: "error" };
+      }
+      // Nothing left to suggest (every target boxed, a gap or covered): no hint at all.
       if (!plan) {
-        setNotice(line.id, "none");
+        setNotice(line.id, null);
         return { kind: "skipped" };
       }
 
@@ -300,7 +317,13 @@ export function SuggestionsProvider({
     [finish, setNotice, updatePages],
   );
 
+  /** Stops whatever runs: the source-wide loop (no more pages) and the request in flight. */
   const cancelRunning = useCallback(() => {
+    if (sourceRunRef.current) {
+      sourceRunRef.current.cancelled = true;
+      sourceRunRef.current = null;
+      setSourceRunning(false);
+    }
     const token = runningRef.current;
     if (!token) return;
     runningRef.current = null;
@@ -372,12 +395,21 @@ export function SuggestionsProvider({
         clientRef.current = null;
       }
     },
-    status: running && running.lineId === activeLineId ? "running" : "idle",
+    status: running || sourceRunning ? "running" : "idle",
     active,
     notice: (activeLineId && notices.get(activeLineId)?.notice) || null,
     noticeSeq: (activeLineId && notices.get(activeLineId)?.seq) || 0,
     suggest() {
-      if (activeLine) void run(activeLine.id);
+      if (!activeLine || runningRef.current || sourceRunRef.current || !enabledRef.current) return;
+      // An explicit Sugerir gives the page's rejected syllables another chance.
+      const lineId = activeLine.id;
+      if (rejectedRef.current.has(lineId)) {
+        const next = new Map(rejectedRef.current);
+        next.delete(lineId);
+        rejectedRef.current = next;
+        setRejected(next);
+      }
+      void run(lineId);
     },
     cancel: cancelRunning,
     accept(idx) {
@@ -392,8 +424,8 @@ export function SuggestionsProvider({
       dropFromPage(activeLineId, idx);
     },
     discardPage() {
+      cancelRunning();
       if (!activeLineId) return;
-      if (runningRef.current?.lineId === activeLineId) cancelRunning();
       updatePages((prev) => {
         if (!prev.has(activeLineId)) return prev;
         const next = new Map(prev);
@@ -405,11 +437,22 @@ export function SuggestionsProvider({
     async suggestSource() {
       const skipped: string[] = [];
       const source = projectRef.current?.sources.find((s) => s.id === activeSourceId);
-      if (!source || !enabledRef.current) return { skipped };
-      for (const { id } of source.lines) {
-        const outcome = await run(id);
-        if (outcome.kind === "cancelled") break;
-        if (outcome.kind === "done" && outcome.result.debug.needsBand) skipped.push(id);
+      if (!source || !enabledRef.current || runningRef.current || sourceRunRef.current) return { skipped };
+      const loop: SourceRun = { cancelled: false };
+      sourceRunRef.current = loop;
+      setSourceRunning(true);
+      try {
+        for (const { id } of source.lines) {
+          if (loop.cancelled || !enabledRef.current) break;
+          const outcome = await run(id);
+          if (loop.cancelled || outcome.kind === "cancelled") break;
+          if (outcome.kind === "done" && outcome.result.debug.needsBand) skipped.push(id);
+        }
+      } finally {
+        if (sourceRunRef.current === loop) {
+          sourceRunRef.current = null;
+          setSourceRunning(false);
+        }
       }
       return { skipped };
     },

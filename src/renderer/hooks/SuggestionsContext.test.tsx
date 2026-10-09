@@ -10,6 +10,18 @@ import { NeumeDetectCancelledError } from "../lib/neume-detect";
 import type { NeumeDetectClient, SuggestInput, SuggestResult } from "../lib/neume-detect";
 import type { ManuscriptLine, ManuscriptSource, MocquereauAPI, MocquereauProject, SyllableBox } from "../lib/models";
 
+const planControl = vi.hoisted(() => ({ throws: false }));
+vi.mock("../lib/suggest/request", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../lib/suggest/request")>();
+  return {
+    ...mod,
+    planSuggestion: (...args: Parameters<typeof mod.planSuggestion>) => {
+      if (planControl.throws) throw new Error("plan");
+      return mod.planSuggestion(...args);
+    },
+  };
+});
+
 vi.mock("../lib/suggest/raster", () => ({
   loadSuggestImage: vi.fn(async () => ({})),
   renderSuggestRaster: vi.fn(() => ({ data: new Uint8ClampedArray(10 * 10 * 4), width: 10, height: 10 })),
@@ -90,6 +102,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  planControl.throws = false;
 });
 
 async function setup(opts: { enabled?: boolean; project?: MocquereauProject } = {}) {
@@ -216,8 +229,9 @@ describe("SuggestionsProvider", () => {
     const h = await setup();
     const call = await startSuggest(h);
     h.select("a2");
-    expect(h.value().status).toBe("idle"); // status is the active page's
+    expect(h.value().status).toBe("running"); // busy is global: Cancelar shows on every page
     await settle(() => call.resolve(result({ 0: B0 })));
+    expect(h.value().status).toBe("idle");
     expect(h.value().active).toEqual({});
     h.select("a1");
     expect(h.value().active).toEqual({ 0: B0 });
@@ -315,17 +329,53 @@ describe("SuggestionsProvider", () => {
     expect(h.hook.result.current.p.state.project).toBe(before);
   });
 
-  it("reject: some e a próxima sugestão da página trata a sílaba como suggest:false", async () => {
-    const h = await setup();
+  it("reject: some; a fonte inteira trata a sílaba como suggest:false; um Sugerir explícito a esquece", async () => {
+    const h = await setup({ project: makeProject([page("a1")]) });
     const first = await startSuggest(h);
     await settle(() => first.resolve(result({ 0: B0, 1: B1, 2: B2 })));
     act(() => h.value().reject(1));
     expect(h.value().active).toEqual({ 0: B0, 2: B2 });
 
-    const second = await startSuggest(h, 2);
-    const s1 = second.input.syllables.find((s) => s.index === 1)!;
-    expect(s1.suggest).toBe(false);
+    // "Sugerir em todas as páginas" keeps the page's rejections.
+    let done = false;
+    act(() => {
+      void h.value().suggestSource().then(() => (done = true));
+    });
+    await waitFor(() => expect(h.client.calls.length).toBe(2));
+    const second = h.client.calls[1];
+    expect(second.input.syllables.find((s) => s.index === 1)!.suggest).toBe(false);
     expect(second.input.syllables.filter((s) => s.index !== 1).every((s) => s.suggest !== false)).toBe(true);
+    await settle(() => second.resolve(result({ 0: B0, 2: B2 })));
+    await waitFor(() => expect(done).toBe(true));
+
+    // An explicit Sugerir on the page recovers a mistaken Delete.
+    const third = await startSuggest(h, 3);
+    expect(third.input.syllables.every((s) => s.suggest !== false)).toBe(true);
+  });
+
+  it("planSuggestion que lança vira aviso error, sem rejeição não tratada", async () => {
+    const h = await setup();
+    planControl.throws = true;
+    act(() => h.value().suggest());
+    await act(async () => {});
+    expect(h.value().notice).toBe("error");
+    expect(h.value().status).toBe("idle");
+    expect(h.client.calls).toHaveLength(0);
+    let out: unknown = null;
+    await act(async () => {
+      out = await h.value().suggestSource();
+    });
+    expect(out).toEqual({ skipped: [] });
+  });
+
+  it("nada a sugerir na página (tudo com caixa): nenhum aviso, nenhum pedido", async () => {
+    const full: Record<number, SyllableBox> = {};
+    for (let i = 0; i <= 6; i++) full[i] = { x: i / 10, y: 0.2, w: 0.05, h: 0.2 };
+    const h = await setup({ project: makeProject([page("a1", { syllableBoxes: full })]) });
+    act(() => h.value().suggest());
+    await act(async () => {});
+    expect(h.value().notice).toBeNull();
+    expect(h.client.calls).toHaveLength(0);
   });
 
   it("discardPage: some a página ativa, as outras ficam", async () => {
@@ -364,5 +414,77 @@ describe("SuggestionsProvider", () => {
     await waitFor(() => expect(done).toEqual({ skipped: ["a1"] }));
     h.select("a2");
     expect(h.value().active).toEqual({ 0: B0 });
+  });
+
+  it("suggestSource é global: running em outra página, Sugerir espera, cancelar para as páginas restantes", async () => {
+    const h = await setup({ project: makeProject([page("a1"), page("a2"), page("a3")]) });
+    let done: { skipped: string[] } | null = null;
+    act(() => {
+      void h.value().suggestSource().then((r) => (done = r));
+    });
+    await waitFor(() => expect(h.client.calls.length).toBe(1));
+    await settle(() => h.client.calls[0].resolve(result({ 0: B0 })));
+    await waitFor(() => expect(h.client.calls.length).toBe(2));
+    // Another page than the one being suggested: still busy, plain Sugerir does nothing.
+    h.select("a3");
+    expect(h.value().status).toBe("running");
+    act(() => h.value().suggest());
+    await act(async () => {});
+    expect(h.client.calls).toHaveLength(2);
+    act(() => h.value().cancel());
+    expect(h.value().status).toBe("idle");
+    expect(h.client.cancel).toHaveBeenCalledWith(h.client.calls[1].id);
+    await settle(() => h.client.calls[1].resolve(result({ 1: B1 })));
+    await waitFor(() => expect(done).toEqual({ skipped: [] }));
+    expect(h.client.calls).toHaveLength(2); // a3 never asked
+    h.select("a2");
+    expect(h.value().active).toEqual({});
+  });
+
+  it("suggestSource: cancelar entre páginas (sem pedido em voo) também para o laço", async () => {
+    const h = await setup({ project: makeProject([page("a1"), page("a2")]) });
+    let done: { skipped: string[] } | null = null;
+    act(() => {
+      void h.value().suggestSource().then((r) => (done = r));
+    });
+    await waitFor(() => expect(h.client.calls.length).toBe(1));
+    // Resolve and cancel in the same tick: the loop must not start a2.
+    await act(async () => {
+      h.client.calls[0].resolve(result({ 0: B0 }));
+      h.value().cancel();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(done).not.toBeNull());
+    expect(h.client.calls).toHaveLength(1);
+    expect(h.value().status).toBe("idle");
+  });
+
+  it("suggestSource: desligar a preferência no meio para o laço", async () => {
+    const h = await setup({ project: makeProject([page("a1"), page("a2"), page("a3")]) });
+    let done: { skipped: string[] } | null = null;
+    act(() => {
+      void h.value().suggestSource().then((r) => (done = r));
+    });
+    await waitFor(() => expect(h.client.calls.length).toBe(1));
+    act(() => h.value().setEnabled(false));
+    expect(h.value().status).toBe("idle");
+    await settle(() => h.client.calls[0].resolve(result({ 0: B0 })));
+    await waitFor(() => expect(done).not.toBeNull());
+    expect(h.client.calls).toHaveLength(1);
+  });
+
+  it("Esc (discardPage) cancela a fonte inteira", async () => {
+    const h = await setup({ project: makeProject([page("a1"), page("a2")]) });
+    let done: { skipped: string[] } | null = null;
+    act(() => {
+      void h.value().suggestSource().then((r) => (done = r));
+    });
+    await waitFor(() => expect(h.client.calls.length).toBe(1));
+    h.select("a2");
+    act(() => h.value().discardPage());
+    expect(h.value().status).toBe("idle");
+    await settle(() => h.client.calls[0].resolve(result({ 0: B0 })));
+    await waitFor(() => expect(done).not.toBeNull());
+    expect(h.client.calls).toHaveLength(1);
   });
 });

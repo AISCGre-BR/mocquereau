@@ -16,6 +16,7 @@ import {
 import { syllabifyText } from "../lib/syllabify";
 import { RecortesProvider, useRecortesCommands, useRecortesContext, type RecortesContextValue } from "../hooks/RecortesContext";
 import { SuggestionsProvider } from "../hooks/SuggestionsContext";
+import { SuggestActions } from "../components/recortes/SuggestActions";
 import { recortesMenuItems } from "../shell/menus";
 import { useMenuShortcuts } from "../shell/useMenuShortcuts";
 import type { NeumeDetectClient, SuggestInput, SuggestResult } from "../lib/neume-detect";
@@ -110,6 +111,9 @@ function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClien
           <SuggestionsProvider createClient={() => client}>
             <Grab />
             <MenuShortcuts />
+            <div role="toolbar" aria-label="Barra">
+              <SuggestActions />
+            </div>
             {viewShown && <RecortesView />}
           </SuggestionsProvider>
         </RecortesProvider>
@@ -838,16 +842,110 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     expect(v.getByText("Nenhum neuma encontrado")).toBeTruthy();
   });
 
-  it("dica repetida sem pedido ao detector (nada a sugerir) reaparece a cada Sugerir", async () => {
+  it("nada a sugerir (todas com caixa): sem dica e sem pedido ao detector", async () => {
     const full = { 0: BOX, 1: BOX, 2: BOX, 3: BOX, 4: BOX };
     const v = await mountOn([mkLine("p1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: full })]);
     v.key({ key: "G", ctrlKey: true, shiftKey: true });
-    expect(v.getByText("Nenhum neuma encontrado")).toBeTruthy();
-    v.key({ key: "Tab" });
-    expect(v.queryByText("Nenhum neuma encontrado")).toBeNull();
-    v.key({ key: "G", ctrlKey: true, shiftKey: true });
-    expect(v.getByText("Nenhum neuma encontrado")).toBeTruthy();
+    await act(async () => {});
+    expect(v.queryByRole("status")).toBeNull();
     expect(v.client.calls).toHaveLength(0);
+  });
+
+  it("clicar em Sugerir entrega o foco à folha: Enter aceita a sugestão ativa e não pede de novo", async () => {
+    const v = await mountOn();
+    const button = v.getByRole("button", { name: "Sugerir" });
+    act(() => button.focus());
+    fireEvent.click(button);
+    expect(document.activeElement).toBe(v.container.querySelector("[data-recortes-sheet]"));
+    await v.resolve(0, result({ 0: B0, 1: B1 }));
+    act(() => void fireEvent.keyDown(document.activeElement!, { key: "Enter" }));
+    expect(v.line().syllableBoxes).toEqual({ 0: B0 });
+    expect(v.ref.recortes!.activeSyllable).toBe(1);
+    await act(async () => {});
+    expect(v.client.calls).toHaveLength(1);
+    // Aceitar N also hands focus back: Delete then rejects the active suggestion.
+    const accept = v.getByRole("button", { name: /Aceitar/ });
+    act(() => accept.focus());
+    fireEvent.click(accept);
+    expect(document.activeElement).toBe(v.container.querySelector("[data-recortes-sheet]"));
+  });
+
+  it("fim do pedido com o foco preso na barra: o foco vai à folha", async () => {
+    const v = await mountOn();
+    v.key({ key: "G", ctrlKey: true, shiftKey: true });
+    const button = v.getByRole("button", { name: "Cancelar" });
+    act(() => button.focus());
+    await v.resolve(0, result({ 0: B0 }));
+    expect(document.activeElement).toBe(v.container.querySelector("[data-recortes-sheet]"));
+  });
+
+  it("clicar numa página da árvore entrega o foco à folha: Enter aceita; setas na árvore seguem nela", async () => {
+    const v = await mountOn([blank("p1"), blank("p2")]);
+    act(() => v.ref.recortes!.selectLine("A", "p1"));
+    await v.suggestWith({ 0: B0, 1: B1 });
+    act(() => v.ref.recortes!.selectLine("A", "p2"));
+    const tree = v.getByRole("tree");
+    const items = within(tree).getAllByRole("treeitem").filter((el) => el.hasAttribute("data-line-id"));
+    const p1 = items.find((el) => el.getAttribute("data-line-id") === "p1")!;
+    // Keyboard in the tree stays in the tree.
+    act(() => p1.focus());
+    act(() => void fireEvent.keyDown(p1, { key: "ArrowDown" }));
+    expect(tree.contains(document.activeElement)).toBe(true);
+    // A mouse pick hands focus to the sheet.
+    act(() => p1.focus());
+    fireEvent.click(p1);
+    expect(v.ref.recortes!.activeLineId).toBe("p1");
+    expect(document.activeElement).toBe(v.container.querySelector("[data-recortes-sheet]"));
+    act(() => void fireEvent.keyDown(document.activeElement!, { key: "Enter" }));
+    expect(v.line(0, 0).syllableBoxes).toEqual({ 0: B0 });
+  });
+
+  it("Enter que aceita no fim do intervalo não estende o intervalo (um passo de desfazer)", async () => {
+    const v = await mountOn([mkLine("p1", { syllableRange: { start: 0, end: 1 }, syllableBoxes: {}, confirmed: false })]);
+    await v.suggestWith({ 0: B0, 1: B1 });
+    v.key({ key: "Tab" });
+    expect(v.ref.recortes!.activeSyllable).toBe(1);
+    v.key({ key: "Enter" });
+    expect(v.line().syllableBoxes).toEqual({ 1: B1 });
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 1 });
+    expect(v.suggested()).toHaveLength(1); // the page's other suggestion survives
+    act(() => v.ref.history!.undo());
+    expect(v.line().syllableBoxes).toEqual({});
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("Sugerir em todas as páginas: em outra página o botão é Cancelar e cancela as páginas restantes", async () => {
+    const v = await mountOn([blank("p1"), blank("p2"), blank("p3")]);
+    fireEvent.contextMenu(v.wrapper(), { clientX: 20, clientY: 20 });
+    fireEvent.click(within(v.getByRole("menu", { name: "Recortes" })).getByRole("menuitem", { name: "Sugerir em todas as páginas da fonte" }));
+    await v.resolve(0, result({ 0: B0 }));
+    await waitFor(() => expect(v.client.calls.length).toBe(2));
+    act(() => v.ref.recortes!.selectLine("A", "p3"));
+    fireEvent.click(v.getByRole("button", { name: "Cancelar" }));
+    expect(v.getByRole("button", { name: "Sugerir" })).toBeTruthy();
+    await act(async () => {
+      v.client.calls[1].resolve(result({ 1: B1 }));
+      await Promise.resolve();
+    });
+    await act(async () => {});
+    expect(v.client.calls).toHaveLength(2);
+    expect(v.queryByRole("dialog")).toBeNull();
+  });
+
+  it("fonte inteira terminada depois de sair da vista: o diálogo não abre na volta", async () => {
+    const v = await mountOn([blank("p1"), blank("p2")]);
+    fireEvent.contextMenu(v.wrapper(), { clientX: 20, clientY: 20 });
+    fireEvent.click(within(v.getByRole("menu", { name: "Recortes" })).getByRole("menuitem", { name: "Sugerir em todas as páginas da fonte" }));
+    await v.resolve(0, result({}, true));
+    await waitFor(() => expect(v.client.calls.length).toBe(2));
+    act(() => v.ref.setViewShown!(false));
+    await act(async () => {
+      v.client.calls[1].resolve(result({}, true));
+      await Promise.resolve();
+    });
+    await act(async () => {});
+    act(() => v.ref.setViewShown!(true));
+    expect(v.queryByRole("dialog")).toBeNull();
   });
 
   it("Sugerir em todas as páginas: páginas sem área abrem o diálogo; Ir para a primeira a seleciona", async () => {

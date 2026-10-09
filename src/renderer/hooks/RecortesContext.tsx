@@ -5,7 +5,7 @@
 // toggles. The provider also holds which Recortes dialog is open, so a menu
 // item can open a dialog that the view renders.
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { useProject } from "./useProject";
 import { useRecortes, type RecortesState } from "./useRecortes";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
@@ -25,6 +25,8 @@ export interface RecortesContextValue extends RecortesState {
   /** S10: pages "Sugerir em todas as páginas" skipped for lack of a neume band. */
   skippedPages: SkippedPages | null;
   setSkippedPages(pages: SkippedPages | null): void;
+  /** True while the Recortes view is mounted (the view sets it): a late result opens no dialog on a view that is gone. */
+  viewMounted: { current: boolean };
 }
 
 const RecortesContext = createContext<RecortesContextValue | null>(null);
@@ -34,8 +36,9 @@ export function RecortesProvider({ children }: { children: ReactNode }) {
   const recortes = useRecortes(state.project);
   const [dialog, setDialog] = useState<RecortesDialog>(null);
   const [skippedPages, setSkippedPages] = useState<SkippedPages | null>(null);
+  const viewMounted = useRef(false);
   return (
-    <RecortesContext.Provider value={{ ...recortes, dialog, setDialog, skippedPages, setSkippedPages }}>
+    <RecortesContext.Provider value={{ ...recortes, dialog, setDialog, skippedPages, setSkippedPages, viewMounted }}>
       {children}
     </RecortesContext.Provider>
   );
@@ -132,13 +135,18 @@ export function useRecortesCommands(): RecortesCommands {
       if (canSuggest) suggestions?.suggest();
     },
     suggestSource: () => {
-      if (!suggestions || !suggestionsEnabled || !source) return;
+      if (!suggestions || !suggestionsEnabled || !idle || !source) return;
       const sourceId = source.id;
-      void suggestions.suggestSource().then(({ skipped }) => {
-        if (skipped.length === 0) return;
-        recortes.setSkippedPages({ sourceId, lineIds: skipped });
-        recortes.setDialog("suggestSkipped");
-      });
+      const { viewMounted, setSkippedPages, setDialog } = recortes;
+      suggestions
+        .suggestSource()
+        .then(({ skipped }) => {
+          // Finished after the user left the view: no dialog waiting on the way back.
+          if (skipped.length === 0 || !viewMounted.current) return;
+          setSkippedPages({ sourceId, lineIds: skipped });
+          setDialog("suggestSkipped");
+        })
+        .catch(() => {});
     },
     acceptAllSuggestions: () => suggestions?.acceptAll(),
     discardSuggestions: () => suggestions?.discardPage(),

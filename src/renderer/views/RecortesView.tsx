@@ -29,6 +29,7 @@ import { planGapToggle } from "../lib/syllable-gap";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
 import { coveredByOtherPages } from "../lib/sources";
+import { focusSheet, focusSheetIfStranded } from "../components/recortes/sheetFocus";
 
 /**
  * Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas):
@@ -72,14 +73,15 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   const addPage = useAddPage((sourceId, lineId) => recortes.selectLine(sourceId, lineId));
   // The Recortes dialogs live in the provider (the menu opens them): leaving
   // the view closes them, so they do not reappear when it mounts again.
-  const { setDialog, setSkippedPages } = recortes;
-  useEffect(
-    () => () => {
+  const { setDialog, setSkippedPages, viewMounted } = recortes;
+  useEffect(() => {
+    viewMounted.current = true;
+    return () => {
+      viewMounted.current = false;
       setDialog(null);
       setSkippedPages(null);
-    },
-    [setDialog, setSkippedPages],
-  );
+    };
+  }, [setDialog, setSkippedPages, viewMounted]);
   const [sheetMenu, setSheetMenu] = useState<{ x: number; y: number } | null>(null);
   const [bandMenu, setBandMenu] = useState<{ x: number; y: number; index: number } | null>(null);
 
@@ -270,7 +272,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
       e.preventDefault();
       // Enter aceita a sugestão da sílaba ativa e avança; Tab só avança (S6).
-      if (e.key === "Enter" && active !== null && active in suggestions.active) suggestions.accept(active);
+      const accepted = e.key === "Enter" && active !== null && active in suggestions.active;
+      if (accepted) suggestions.accept(active);
       // Tab/Enter avança a sílaba ativa; além do fim, estende o intervalo da página.
       if (active === null) {
         recortes.setActiveSyllable(range.start);
@@ -278,6 +281,9 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       }
       const next = active + 1;
       if (next >= total) return;
+      // Accepting at the range end stays put: extending the range too would
+      // discard the page's other suggestions and add a second undo step.
+      if (accepted && next > range.end) return;
       recortes.setActiveSyllable(next);
       if (next > range.end) setRange({ start: range.start, end: next });
       return;
@@ -333,6 +339,15 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // A run that ends with focus stranded on the toolbar or the tree hands it to
+  // the sheet, so Enter accepts instead of clicking Sugerir again.
+  const prevStatus = useRef(suggestions.status);
+  useEffect(() => {
+    const was = prevStatus.current;
+    prevStatus.current = suggestions.status;
+    if (was === "running" && suggestions.status === "idle") focusSheetIfStranded();
+  }, [suggestions.status]);
+
   if (!project) {
     return <div className="flex h-full items-center justify-center text-ink-muted">{t("sliceEditor.empty")}</div>;
   }
@@ -340,11 +355,12 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 focus:outline-none">
-        <SourceTree onEditSource={setEditingSourceId} />
+        <SourceTree onEditSource={setEditingSourceId} onPagePicked={focusSheet} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           {hasImage && activeLine && (
-            <div className="flex-shrink-0 px-4 pt-3">
+            // The strip keeps focus where it is on a click; stranded focus goes to the sheet.
+            <div className="flex-shrink-0 px-4 pt-3" onMouseDown={focusSheetIfStranded}>
               <SyllableStrip
                 words={project.text.words}
                 line={activeLine}
@@ -359,7 +375,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
             </div>
           )}
 
-          <div className="relative min-h-0 flex-1">
+          <div data-recortes-sheet tabIndex={-1} className="relative min-h-0 flex-1 focus:outline-none">
             {hasImage && suggestions.notice && (
               <NoticeLine key={`${activeLine?.id}:${suggestions.noticeSeq}`} notice={suggestions.notice} />
             )}
