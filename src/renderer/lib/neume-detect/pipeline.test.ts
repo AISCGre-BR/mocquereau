@@ -225,8 +225,8 @@ describe('suggestBoxes — diastematico', () => {
 
 describe('suggestBoxes — desempenho', () => {
   const strict = process.env.NEUME_PERF === '1';
+  const words = Array.from({ length: 5 }, (_, i) => ['Ky', 'ri', 'e', i % 2 ? 'e' : 'son']);
   it(`2400 x 600, 20 silabas < ${strict ? 1500 : 4000} ms`, () => {
-    const words = Array.from({ length: 5 }, (_, i) => ['Ky', 'ri', 'e', i % 2 ? 'e' : 'son']);
     const fx = buildAdiastematicLine({ width: 2400, height: 600, words, seed: 21 });
     const { width: W, height: H } = fx.raster;
     const t0 = performance.now();
@@ -237,6 +237,22 @@ describe('suggestBoxes — desempenho', () => {
     const good = fx.syllables.filter((s) => got[s.index] && iou(got[s.index], fx.truth[s.index]) >= 0.9);
     expect(good.length).toBeGreaterThanOrEqual(18);
     expect(dt).toBeLessThan(strict ? 1500 : 4000);
+  });
+
+  it(`folio 1600 x 2400 com area inteira < ${strict ? 600 : 3000} ms`, () => {
+    const fx = buildAdiastematicLine({ width: 1600, height: 400, words, seed: 22 });
+    const W = 1600;
+    const H = 2400;
+    const data = new Uint8ClampedArray(W * H * 4).fill(235);
+    for (let k = 0; k < 6; k++) data.set(fx.raster.data, k * 400 * W * 4); // seis linhas
+    const t0 = performance.now();
+    suggestBoxes({
+      image: { data, width: W, height: H },
+      notation: 'adiastematic',
+      syllables: fx.syllables,
+      bands: Array.from({ length: 6 }, (_, k) => ({ x: 0, y: k / 6, w: 1, h: 1 / 6 })),
+    });
+    expect(performance.now() - t0).toBeLessThan(strict ? 600 : 3000);
   });
 });
 

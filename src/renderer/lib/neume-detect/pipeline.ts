@@ -8,14 +8,10 @@ import { groupConfidence, cutScores, expectedCenters, partitionDP, segmentByAnch
 import { ceilPx, floorPx, fracToPxRect, lineOrNone, selectBand } from './band';
 import { filterComponents, labelComponents, labelsTouching, type Component } from './components';
 import {
-  alphaMask,
   cropGray,
   cropMask,
   contrastScore,
-  cropRaster,
-  downscaleGray,
-  downscaleMask,
-  extractChannel,
+  prepareWork,
   upscale2xGray,
   upscale2xMask,
 } from './image';
@@ -210,20 +206,11 @@ function workFrac(work: Work, W: number, H: number): FracRect {
  * Etapa 0: raster de trabalho (recorte, reducao a MAX_LONG_SIDE, ampliacao 2x se u < 2) e espessura
  * de traco. Unico ponto de preparacao do raster de trabalho de uma faixa.
  */
-function prepareWork(image: SuggestInput['image'], rect: PxBox): { work: Work; grayInk: Mask; u: number } {
-  const crop = cropRaster(image, rect);
-  const scale = Math.min(1, MAX_LONG_SIDE / Math.max(crop.width, crop.height));
-  let work: Work = {
-    r: downscaleGray(extractChannel(crop, 'r'), scale),
-    gray: downscaleGray(extractChannel(crop, 'gray'), scale),
-    valid: downscaleMask(alphaMask(crop), scale),
-    ox: rect.x,
-    oy: rect.y,
-    sx: 1,
-    sy: 1,
-  };
-  work.sx = work.r.width / crop.width;
-  work.sy = work.r.height / crop.height;
+function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; grayInk: Mask; u: number } {
+  const scale = Math.min(1, MAX_LONG_SIDE / Math.max(rect.w, rect.h));
+  let work: Work = { ...prepareWork(image, rect, scale), ox: rect.x, oy: rect.y, sx: 1, sy: 1 };
+  work.sx = work.r.width / rect.w;
+  work.sy = work.r.height / rect.h;
   let grayInk = binarizeOtsu(work.gray, work.valid);
   let u = estimateStrokeWidth(grayInk);
   if (u > 0 && u < 2) {
@@ -257,7 +244,7 @@ function analyzeBand(
   const W = input.image.width;
   const H = input.image.height;
   let band = selected;
-  const prep = prepareWork(input.image, band.rect);
+  const prep = buildWork(input.image, band.rect);
   let work = prep.work;
   const { grayInk, u } = prep;
   debug.scale = work.sx;
