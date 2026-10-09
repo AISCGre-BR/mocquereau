@@ -8,7 +8,7 @@
 // the page's suggestions. Accepting is the only write: one UPDATE_LINE_BOXES.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useProject } from "./useProject";
+import { projectReducer, useProject, type ProjectAction } from "./useProject";
 import { useRecortesContext } from "./RecortesContext";
 import { boxesInView, frameOf, framesEqual } from "@shared/box-frame";
 import type { BoxFrame } from "@shared/project-schema";
@@ -119,23 +119,40 @@ export function SuggestionsProvider({
   const project = state.project;
   const { activeSourceId, activeLineId } = recortes;
 
-  const [enabled, setEnabledState] = useState(true);
+  // null = preference not loaded yet: treated as off (S8: no worker before we know).
+  const [enabledPref, setEnabledState] = useState<boolean | null>(null);
+  const enabled = enabledPref === true;
   const [pages, setPages] = useState<ReadonlyMap<string, PageSuggestions>>(() => new Map());
   const [rejected, setRejected] = useState<ReadonlyMap<string, ReadonlySet<number>>>(() => new Map());
   const [notices, setNotices] = useState<ReadonlyMap<string, SuggestNotice>>(() => new Map());
   const [running, setRunning] = useState<Running | null>(null);
 
   // Async work reads the latest values, not the render that started it.
+  // Kept ahead of the render after our own dispatches, so two accepts in one
+  // handler each see the boxes the previous one wrote.
   const projectRef = useRef(project);
   projectRef.current = project;
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
   const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
   const rejectedRef = useRef(rejected);
   rejectedRef.current = rejected;
   const runningRef = useRef<Running | null>(null);
+  const userChoseRef = useRef(false);
   const clientRef = useRef<NeumeDetectClient | null>(null);
   const createClientRef = useRef(createClient);
   createClientRef.current = createClient;
+
+  /** Updates the pages state and its ref together (reads in the same handler see the change). */
+  const updatePages = useCallback(
+    (fn: (prev: ReadonlyMap<string, PageSuggestions>) => ReadonlyMap<string, PageSuggestions>) => {
+      const next = fn(pagesRef.current);
+      if (next === pagesRef.current) return;
+      pagesRef.current = next;
+      setPages(next);
+    },
+    [],
+  );
 
   // S8: the preference lives in the main process.
   useEffect(() => {
@@ -144,7 +161,11 @@ export function SuggestionsProvider({
     if (get) {
       get()
         .then((on) => {
-          if (alive && typeof on === "boolean") setEnabledState(on);
+          // A choice the user made meanwhile wins over the stored value.
+          if (alive && typeof on === "boolean" && !userChoseRef.current) {
+            enabledRef.current = on;
+            setEnabledState(on);
+          }
         })
         .catch(() => {});
     }
@@ -174,8 +195,8 @@ export function SuggestionsProvider({
         changed = true;
       }
     }
-    if (changed) setPages(next);
-  }, [project, pages]);
+    if (changed) updatePages(() => next);
+  }, [project, pages, updatePages]);
 
   const setNotice = useCallback((lineId: string, notice: SuggestNotice | null) => {
     setNotices((prev) => {
@@ -229,7 +250,7 @@ export function SuggestionsProvider({
         if (findLineById(projectRef.current, line.id).line) {
           const boxes: Record<number, SyllableBox> = {};
           for (const s of result.suggestions) boxes[s.index] = regionToView(s.box, plan.region);
-          setPages((prev) => new Map(prev).set(line.id, { boxes, frame, range }));
+          updatePages((prev) => new Map(prev).set(line.id, { boxes, frame, range }));
           // Task 7 turns on the area tool on needsBand.
           setNotice(line.id, result.debug.needsBand ? "needsBand" : result.suggestions.length === 0 ? "none" : null);
         }
@@ -242,7 +263,7 @@ export function SuggestionsProvider({
         finish(token);
       }
     },
-    [finish, setNotice],
+    [finish, setNotice, updatePages],
   );
 
   const cancelRunning = useCallback(() => {
@@ -260,10 +281,20 @@ export function SuggestionsProvider({
     [activePage, activeSource, activeLine],
   );
 
-  function acceptBoxes(take: Record<number, SyllableBox>) {
-    if (!activeSource || !activeLine) return;
+  /** Live suggestions of the active page from the latest project and pages (not this render's snapshot). */
+  function freshActive() {
+    const { source, line } = findLine(projectRef.current, activeSourceId, activeLineId);
+    if (!source || !line) return null;
+    return { source, line, live: liveBoxes(pagesRef.current.get(line.id), source, line) };
+  }
+
+  function acceptBoxes(pick: (live: Record<number, SyllableBox>) => Record<number, SyllableBox>) {
+    const fresh = freshActive();
+    if (!fresh) return;
+    const { source, line } = fresh;
+    const take = pick(fresh.live);
     // The page's boxes NOW: never overwrite a box or a "no neume" (null).
-    const current = boxesInView(activeLine);
+    const current = boxesInView(line);
     const merged: Record<number, SyllableBox | null> = { ...current };
     let any = false;
     for (const [key, box] of Object.entries(take)) {
@@ -273,14 +304,16 @@ export function SuggestionsProvider({
       any = true;
     }
     if (!any) return;
-    dispatch({
+    const action: ProjectAction = {
       type: "UPDATE_LINE_BOXES",
-      payload: { sourceId: activeSource.id, lineId: activeLine.id, syllableBoxes: merged, confirmed: true },
-    });
+      payload: { sourceId: source.id, lineId: line.id, syllableBoxes: merged, confirmed: true },
+    };
+    dispatch(action);
+    projectRef.current = projectReducer({ project: projectRef.current, isDirty: false, currentFilePath: null }, action).project;
   }
 
   function dropFromPage(lineId: string, idx: number) {
-    setPages((prev) => {
+    updatePages((prev) => {
       const page = prev.get(lineId);
       if (!page || !(idx in page.boxes)) return prev;
       const boxes = { ...page.boxes };
@@ -292,12 +325,13 @@ export function SuggestionsProvider({
   const value: SuggestionsValue = {
     enabled,
     setEnabled(on) {
+      userChoseRef.current = true;
       setEnabledState(on);
       enabledRef.current = on;
       window.mocquereau?.setSuggestionsEnabled?.(on).catch(() => {});
       if (!on) {
         cancelRunning();
-        setPages(new Map());
+        updatePages(() => new Map());
         setRejected(new Map());
         setNotices(new Map());
         clientRef.current?.dispose();
@@ -312,10 +346,10 @@ export function SuggestionsProvider({
     },
     cancel: cancelRunning,
     accept(idx) {
-      if (idx in active) acceptBoxes({ [idx]: active[idx] });
+      acceptBoxes((live) => (idx in live ? { [idx]: live[idx] } : {}));
     },
     acceptAll() {
-      acceptBoxes(active);
+      acceptBoxes((live) => live);
     },
     reject(idx) {
       if (!activeLineId) return;
@@ -325,7 +359,7 @@ export function SuggestionsProvider({
     discardPage() {
       if (!activeLineId) return;
       if (runningRef.current?.lineId === activeLineId) cancelRunning();
-      setPages((prev) => {
+      updatePages((prev) => {
         if (!prev.has(activeLineId)) return prev;
         const next = new Map(prev);
         next.delete(activeLineId);

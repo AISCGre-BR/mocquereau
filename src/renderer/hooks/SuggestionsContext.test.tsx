@@ -174,6 +174,26 @@ describe("SuggestionsProvider", () => {
     expect(h.line("a1").syllableBoxes).toEqual({ 0: B0, 1: DRAWN, 2: null });
   });
 
+  it("dois accept no mesmo handler: cada um lê as caixas atuais, as duas ficam", async () => {
+    const h = await setup();
+    const call = await startSuggest(h);
+    await settle(() => call.resolve(result({ 0: B0, 1: B1, 2: B2 })));
+    act(() => {
+      const v = h.value();
+      v.accept(0);
+      v.accept(1);
+    });
+    expect(h.line("a1").syllableBoxes).toEqual({ 0: B0, 1: B1 });
+    expect(h.value().active).toEqual({ 2: B2 });
+    // Same stale value again: nothing re-accepted, nothing lost.
+    act(() => {
+      const v = h.value();
+      v.accept(2);
+      v.acceptAll();
+    });
+    expect(h.line("a1").syllableBoxes).toEqual({ 0: B0, 1: B1, 2: B2 });
+  });
+
   it("girar a página descarta as sugestões dela; trocar de página conserva", async () => {
     const h = await setup();
     const call = await startSuggest(h);
@@ -242,6 +262,34 @@ describe("SuggestionsProvider", () => {
     await act(async () => {});
     expect(h.createClient).not.toHaveBeenCalled();
     expect(h.value().status).toBe("idle");
+  });
+
+  it("preferência ainda não carregada: desligada, suggest não cria cliente", async () => {
+    let answer!: (on: boolean) => void;
+    bridge.getSuggestionsEnabled.mockImplementation(() => new Promise<boolean>((res) => (answer = res)));
+    const client = fakeClient();
+    const createClient = vi.fn(() => client);
+    function Wrapper({ children }: { children: ReactNode }) {
+      const [state, dispatch, history] = useProjectReducer();
+      return (
+        <ProjectContext.Provider value={{ state, dispatch, history }}>
+          <RecortesProvider>
+            <SuggestionsProvider createClient={createClient}>{children}</SuggestionsProvider>
+          </RecortesProvider>
+        </ProjectContext.Provider>
+      );
+    }
+    const hook = renderHook(() => ({ s: useSuggestions(), p: useProject() }), { wrapper: Wrapper });
+    act(() => hook.result.current.p.dispatch({ type: "SET_PROJECT", payload: makeProject() }));
+    expect(hook.result.current.s.enabled).toBe(false);
+    act(() => hook.result.current.s.suggest());
+    await act(async () => {});
+    expect(createClient).not.toHaveBeenCalled();
+    // Once the main says on, suggest works.
+    await act(async () => answer(true));
+    expect(hook.result.current.s.enabled).toBe(true);
+    act(() => hook.result.current.s.suggest());
+    await waitFor(() => expect(client.calls.length).toBe(1));
   });
 
   it("desligar a preferência grava na main, descarta tudo e encerra o worker", async () => {
