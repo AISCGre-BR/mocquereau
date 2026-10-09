@@ -50,11 +50,11 @@ describe("resolveNotation", () => {
 });
 
 describe("collectTargets", () => {
-  it("exclui caixa, null, gap, coberta e syllableCuts legado; rejeitada fica com suggest:false", () => {
+  it("exclui caixa, null, gap, coberta e syllableCuts null; recorte legado e rejeitada ficam com suggest:false", () => {
     const l = line({ syllableBoxes: { 0: BOX, 1: null }, gaps: [2] });
     const src = source([l], [null, null, null], { 4: { dataUrl: "data:,", width: 1, height: 1, mimeType: "image/png" }, 5: null });
     const covered = new Map([[3, "other"]]);
-    expect(collectTargets(src, l, words, covered, new Set([6])).map((s) => [s.index, s.suggest !== false])).toEqual([[6, false], [7, true]]);
+    expect(collectTargets(src, l, words, covered, new Set([6])).map((s) => [s.index, s.suggest !== false])).toEqual([[4, false], [6, false], [7, true]]);
   });
 
   it("preenche text e wordIndex a partir das palavras", () => {
@@ -84,7 +84,8 @@ describe("planSuggestion", () => {
     expect(plan.input.bands).toBeUndefined();
     expect(plan.input.band).toBeUndefined();
     expect(plan.input.anchors).toEqual([{ index: 0, box: BOX }]);
-    expect(plan.input.syllables.map((s) => s.index)).toEqual([1, 2]);
+    // A sílaba da âncora vai junto (o detector só usa âncoras presentes em syllables), sem sugestão.
+    expect(plan.input.syllables.map((s) => [s.index, s.suggest !== false])).toEqual([[0, false], [1, true], [2, true]]);
   });
 
   it("com areas: regiao = uniao + margem de 2%; bands e ancoras em fracoes da regiao; ancora fora sai", () => {
@@ -107,6 +108,8 @@ describe("planSuggestion", () => {
     expect(b0.h).toBeCloseTo(0.1 / 0.44, 9);
     expect(plan.input.anchors).toHaveLength(1);
     expect(plan.input.anchors![0].index).toBe(0);
+    // Âncora fora da região não entra nem como sílaba.
+    expect(plan.input.syllables.map((s) => [s.index, s.suggest !== false])).toEqual([[0, false], [2, true], [3, true]]);
     expect(plan.input.anchors![0].box.x).toBeCloseTo(0.22 / 0.64, 9);
     expect(plan.input.anchors![0].box.y).toBeCloseTo(0.07 / 0.44, 9);
   });

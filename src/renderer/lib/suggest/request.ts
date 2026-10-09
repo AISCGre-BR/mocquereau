@@ -21,7 +21,19 @@ export function resolveNotation(source: ManuscriptSource, line: ManuscriptLine):
   return notationOf(source.metadata.classes) === "adiastematic" ? "adiastematic" : "diastematic";
 }
 
-/** Syllables of the page range that may take part in a suggestion, in reading order. */
+/** Text and word of each syllable, by global index. */
+function syllableInfo(words: SyllabifiedWord[]): (idx: number) => Omit<SuggestSyllable, "suggest"> | null {
+  const texts = flattenSyllables(words);
+  const wordOf: number[] = [];
+  words.forEach((w, wi) => w.syllables.forEach(() => wordOf.push(wi)));
+  return (idx) => (idx < 0 || idx >= texts.length ? null : { index: idx, text: texts[idx], wordIndex: wordOf[idx] });
+}
+
+/**
+ * Syllables of the page range that may take part in a suggestion, in reading order.
+ * Rejected syllables and legacy crops (an image in source.syllableCuts) keep their
+ * place with suggest:false: their neume is on the page and must not go to a neighbour.
+ */
 export function collectTargets(
   source: ManuscriptSource,
   line: ManuscriptLine,
@@ -30,17 +42,19 @@ export function collectTargets(
   rejected: ReadonlySet<number>,
 ): SuggestSyllable[] {
   const boxes = boxesInView(line);
-  const texts = flattenSyllables(words);
-  const wordOf: number[] = [];
-  words.forEach((w, wi) => w.syllables.forEach(() => wordOf.push(wi)));
+  const info = syllableInfo(words);
   const out: SuggestSyllable[] = [];
   for (let idx = line.syllableRange.start; idx <= line.syllableRange.end; idx++) {
-    if (idx < 0 || idx >= texts.length) continue;
-    if (idx in boxes) continue; // box or legacy null
+    const s = info(idx);
+    if (!s) continue;
+    if (idx in boxes) continue; // box (an anchor, see planSuggestion) or legacy null
     if (isLineGap(line, idx)) continue;
     if (covered.has(idx)) continue;
-    if (idx in source.syllableCuts) continue; // legacy crop or legacy null
-    out.push({ index: idx, text: texts[idx], wordIndex: wordOf[idx], suggest: !rejected.has(idx) });
+    if (idx in source.syllableCuts) {
+      if (source.syllableCuts[idx] !== null) out.push({ ...s, suggest: false }); // legacy crop
+      continue; // legacy null: no neume
+    }
+    out.push({ ...s, suggest: !rejected.has(idx) });
   }
   return out;
 }
@@ -82,10 +96,25 @@ export function planSuggestion(
     if (box) anchors.push({ index: idx, box });
   }
 
+  // The detector only honours anchors whose syllable is in `syllables` (reading order).
+  const info = syllableInfo(words);
+  const withAnchors = (kept: SuggestAnchor[]): SuggestSyllable[] =>
+    [
+      ...syllables,
+      ...kept.flatMap((a) => {
+        const s = info(a.index);
+        return s ? [{ ...s, suggest: false }] : [];
+      }),
+    ].sort((a, b) => a.index - b.index);
+
   const notation = resolveNotation(source, line);
   const areas = line.neumeBands ?? [];
   if (areas.length === 0) {
-    return { lineId: line.id, region: { x: 0, y: 0, w: 1, h: 1 }, input: { notation, syllables, anchors } };
+    return {
+      lineId: line.id,
+      region: { x: 0, y: 0, w: 1, h: 1 },
+      input: { notation, syllables: withAnchors(anchors), anchors },
+    };
   }
 
   const x0 = clamp01(Math.min(...areas.map((a) => a.x)) - BAND_MARGIN);
@@ -105,6 +134,6 @@ export function planSuggestion(
   return {
     lineId: line.id,
     region,
-    input: { notation, syllables, anchors: inside, bands: areas.map((a) => viewToRegion(a, region)) },
+    input: { notation, syllables: withAnchors(inside), anchors: inside, bands: areas.map((a) => viewToRegion(a, region)) },
   };
 }
