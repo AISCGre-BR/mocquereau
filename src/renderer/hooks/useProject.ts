@@ -11,8 +11,8 @@ import type {
 } from "../lib/models";
 import type { HyphenationMode } from "../lib/syllabify";
 import { normalizeRotation } from "../lib/image-adjustments";
-import { frameOf, framesEqual, hasAnyBox } from "@shared/box-frame";
-import type { BoxFrame, Classification } from "@shared/project-schema";
+import { frameOf, framesEqual, hasAnyBox, remapBox } from "@shared/box-frame";
+import type { BoxFrame, Classification, PageNotation } from "@shared/project-schema";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "@shared/classification";
 import type { PendingEdits } from "./pendingEdits";
 import {
@@ -100,6 +100,8 @@ export type ProjectAction =
       payload: { sourceId: string; lineId: string; range: { start: number; end: number } };
     }
   | { type: "SET_LINE_GAPS"; payload: { sourceId: string; lineId: string; gaps: number[] } }
+  | { type: "SET_LINE_NEUME_BANDS"; payload: { sourceId: string; lineId: string; bands: SyllableBox[] } }
+  | { type: "SET_LINE_NOTATION"; payload: { sourceId: string; lineId: string; notation: PageNotation | null } }
   | {
       type: "UPDATE_LINE_ADJUSTMENTS";
       payload: {
@@ -193,6 +195,11 @@ function withAdjustments(line: ManuscriptLine, partial: Partial<ImageAdjustments
     next = rest as ManuscriptLine;
   } else {
     next = { ...line, imageAdjustments: merged };
+  }
+  const fromFrame = frameOf(current);
+  const toFrame = frameOf(merged);
+  if (next.neumeBands && !framesEqual(fromFrame, toFrame)) {
+    next = { ...next, neumeBands: next.neumeBands.map((b) => remapBox(b, line.image, fromFrame, toFrame)) };
   }
   return pinFrame ? { ...next, boxFrame: pinFrame } : next;
 }
@@ -539,6 +546,31 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       );
     }
 
+    case "SET_LINE_NEUME_BANDS": {
+      const { sourceId, lineId } = action.payload;
+      const bands = [...action.payload.bands].sort((a, b) => a.y - b.y || a.x - b.x);
+      return updateLine(state, sourceId, lineId, (l) => {
+        if (!bands.length) {
+          if (!l.neumeBands) return l;
+          const { neumeBands: _drop, ...rest } = l;
+          return rest as ManuscriptLine;
+        }
+        return { ...l, neumeBands: bands };
+      });
+    }
+
+    case "SET_LINE_NOTATION": {
+      const { sourceId, lineId, notation } = action.payload;
+      return updateLine(state, sourceId, lineId, (l) => {
+        if ((l.notationOverride ?? null) === notation) return l;
+        if (notation === null) {
+          const { notationOverride: _drop, ...rest } = l;
+          return rest as ManuscriptLine;
+        }
+        return { ...l, notationOverride: notation };
+      });
+    }
+
     case "SET_LINE_BOX_FRAME": {
       if (!state.project) return state;
       const updates = Array.isArray(action.payload) ? action.payload : [action.payload];
@@ -611,6 +643,8 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
       };
     case "UPDATE_LINE_BOXES":
     case "SET_LINE_GAPS":
+    case "SET_LINE_NEUME_BANDS":
+    case "SET_LINE_NOTATION":
       // Arrow nudges pass meta.coalesceKey `UPDATE_LINE_BOXES:${lineId}:${syllable}:nudge`
       // (one undo step per run of nudges on one box).
       return { focus: { sourceId: action.payload.sourceId, lineId: action.payload.lineId } };

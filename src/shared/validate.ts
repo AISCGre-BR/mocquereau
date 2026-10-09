@@ -113,6 +113,31 @@ function boxes(v: unknown, path: string, ctx: Ctx): Record<number, SyllableBox |
   return out;
 }
 
+function readBands(v: unknown, path: string, ctx: Ctx): SyllableBox[] {
+  if (!Array.isArray(v)) {
+    ctx.warnings.push(`${path}: invalid, dropped`);
+    return [];
+  }
+  const out: SyllableBox[] = [];
+  v.forEach((b, i) => {
+    if (!isObj(b) || !isNum(b.x) || !isNum(b.y) || !isNum(b.w) || !isNum(b.h)) {
+      ctx.warnings.push(`${path}[${i}]: invalid, dropped`);
+      return;
+    }
+    const x0 = Math.max(0, Math.min(1, b.x)), y0 = Math.max(0, Math.min(1, b.y));
+    const x1 = Math.max(0, Math.min(1, b.x + b.w)), y1 = Math.max(0, Math.min(1, b.y + b.h));
+    if (x1 - x0 <= 0 || y1 - y0 <= 0) {
+      ctx.warnings.push(`${path}[${i}]: empty, dropped`);
+      return;
+    }
+    // Inside [0,1]: keep w/h untouched (no float noise on round trips).
+    const w = x0 === b.x && x1 === b.x + b.w ? b.w : x1 - x0;
+    const h = y0 === b.y && y1 === b.y + b.h ? b.h : y1 - y0;
+    out.push({ x: x0, y: y0, w, h });
+  });
+  return out.sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
 function line(v: unknown, path: string, ctx: Ctx): LineOf<ImageRef> | null {
   if (!isObj(v) || !isStr(v.id)) {
     ctx.errors.push(`${path}: line without id`);
@@ -140,6 +165,14 @@ function line(v: unknown, path: string, ctx: Ctx): LineOf<ImageRef> | null {
   if (folio !== undefined) out.folio = folio;
   const label = optText(v.label, `${path}.label`, ctx);
   if (label !== undefined) out.label = label;
+  if (v.notationOverride !== undefined) {
+    if (v.notationOverride === "adiastematic" || v.notationOverride === "diastematic") out.notationOverride = v.notationOverride;
+    else ctx.warnings.push(`${path}.notationOverride: invalid, dropped`);
+  }
+  if (v.neumeBands !== undefined) {
+    const bands = readBands(v.neumeBands, `${path}.neumeBands`, ctx);
+    if (bands.length) out.neumeBands = bands;
+  }
 
   if (v.imageAdjustments !== undefined) {
     const a = v.imageAdjustments;

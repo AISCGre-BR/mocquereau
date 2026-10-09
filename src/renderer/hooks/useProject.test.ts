@@ -722,3 +722,49 @@ describe("projectReducer — COPY_LINE_ADJUSTMENTS_TO_SOURCE", () => {
     expect(projectReducer(s, { type: "COPY_LINE_ADJUSTMENTS_TO_SOURCE", payload: { sourceId: "S1", fromLineId: "L1" } })).toBe(s);
   });
 });
+
+describe("projectReducer — áreas de neumas e notação por página", () => {
+  const sourceId = "S1";
+  const lineId = "L1";
+  const stateWithOneLine = (o: Partial<ManuscriptLine> = {}): ProjectState => {
+    const source: ManuscriptSource = {
+      ...makeSource(sourceId, 1),
+      lines: [mkLine(lineId, o)],
+    };
+    return makeStateWithSources([source]);
+  };
+  const lineOf = (s: ProjectState) => s.project!.sources[0].lines[0];
+
+  it("SET_LINE_NEUME_BANDS grava, ordena de cima para baixo e lista vazia remove o campo", () => {
+    let s = stateWithOneLine();
+    s = projectReducer(s, { type: "SET_LINE_NEUME_BANDS", payload: { sourceId, lineId, bands: [
+      { x: 0, y: 0.6, w: 1, h: 0.1 }, { x: 0, y: 0.2, w: 1, h: 0.1 } ] } });
+    expect(lineOf(s).neumeBands!.map((b) => b.y)).toEqual([0.2, 0.6]);
+    s = projectReducer(s, { type: "SET_LINE_NEUME_BANDS", payload: { sourceId, lineId, bands: [] } });
+    expect("neumeBands" in lineOf(s)).toBe(false);
+  });
+
+  it("girar 90 graus remapeia as áreas para o novo referencial", () => {
+    let s = stateWithOneLine({
+      image: { dataUrl: "data:,", width: 200, height: 100, mimeType: "image/png" },
+      neumeBands: [{ x: 0, y: 0, w: 0.5, h: 0.5 }],
+    });
+    s = projectReducer(s, { type: "UPDATE_LINE_ADJUSTMENTS", payload: { sourceId, lineId, adjustments: { rotation: 90 } } });
+    // Canto (0,0) vai para (VW,0); o retângulo 100x50 vira 50x100 no canto superior direito da vista 100x200.
+    const b = lineOf(s).neumeBands![0];
+    expect(b.x).toBeCloseTo(0.5, 9);
+    expect(b.y).toBeCloseTo(0, 9);
+    expect(b.w).toBeCloseTo(0.5, 9);
+    expect(b.h).toBeCloseTo(0.5, 9);
+  });
+
+  it("SET_LINE_NOTATION grava e null remove; mesma notação não cria estado novo", () => {
+    let s = stateWithOneLine();
+    s = projectReducer(s, { type: "SET_LINE_NOTATION", payload: { sourceId, lineId, notation: "adiastematic" } });
+    expect(lineOf(s).notationOverride).toBe("adiastematic");
+    const same = projectReducer(s, { type: "SET_LINE_NOTATION", payload: { sourceId, lineId, notation: "adiastematic" } });
+    expect(same.project).toBe(s.project);
+    s = projectReducer(s, { type: "SET_LINE_NOTATION", payload: { sourceId, lineId, notation: null } });
+    expect("notationOverride" in lineOf(s)).toBe(false);
+  });
+});
