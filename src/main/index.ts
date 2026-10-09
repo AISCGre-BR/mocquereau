@@ -18,11 +18,13 @@ interface UserPrefs {
   language: string;
   theme: ThemePreference;
   classification?: Classification;
+  /** "Sugestões de neumas" (S8). */
+  suggestionsEnabled?: boolean;
 }
 
 const userPrefs = new Conf<UserPrefs>({
   name: 'user-prefs',
-  defaults: { language: 'pt-BR', theme: 'system' },
+  defaults: { language: 'pt-BR', theme: 'system', suggestionsEnabled: true },
 });
 
 // Barra de título nativa quando o overlay não é confiável (heurística do Linux
@@ -202,6 +204,11 @@ function registerSystemHandlers(): void {
     nativeTheme.themeSource = value;
     refreshTitleBarOverlays();
     return true;
+  });
+  ipcMain.handle("settings:get-suggestions", async () => userPrefs.get('suggestionsEnabled') !== false);
+  ipcMain.handle("settings:set-suggestions", async (_event, value: unknown) => {
+    if (typeof value === "boolean") userPrefs.set('suggestionsEnabled', value);
+    return userPrefs.get('suggestionsEnabled') !== false;
   });
 }
 

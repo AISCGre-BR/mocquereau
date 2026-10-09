@@ -24,6 +24,7 @@ import { RecortesTools } from "./components/recortes/RecortesTools";
 import { TabelaTools } from "./components/table-preview/TabelaTools";
 import { TableZoomProvider } from "./hooks/useTableZoom";
 import { RecortesProvider, useRecortesCommands, useRecortesContext } from "./hooks/RecortesContext";
+import { SuggestionsProvider } from "./hooks/SuggestionsContext";
 import { createEmptySource } from "./lib/sources";
 import { resetSourceTreeSession } from "./components/sources/SourceTree";
 import { toSupportedLang, type SupportedLang } from "./i18n";
@@ -38,9 +39,11 @@ export function App() {
     <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
       <RecortesProvider>
         <TableZoomProvider>
-          <Toaster dismissLabel={t("toast.dismiss")}>
-            <Workbench />
-          </Toaster>
+          <SuggestionsProvider>
+            <Toaster dismissLabel={t("toast.dismiss")}>
+              <Workbench />
+            </Toaster>
+          </SuggestionsProvider>
         </TableZoomProvider>
       </RecortesProvider>
     </ProjectContext.Provider>

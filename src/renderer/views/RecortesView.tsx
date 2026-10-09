@@ -27,26 +27,7 @@ import { flattenSyllables } from "../lib/sliceUtils";
 import { planGapToggle } from "../lib/syllable-gap";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
-
-/**
- * Global syllables confirmed by OTHER pages of the source, each with the label
- * of the (first) page that covers it: its folio, else its position.
- */
-function coveredByOtherPages(
-  source: ManuscriptSource,
-  excludeLineId: string | null,
-  pageLabel: string,
-): Map<number, string> {
-  const covered = new Map<number, string>();
-  source.lines.forEach((line, n) => {
-    if (line.id === excludeLineId || !line.confirmed) return;
-    const label = line.folio || `${pageLabel} ${n + 1}`;
-    for (let i = line.syllableRange.start; i <= line.syllableRange.end; i++) {
-      if (!covered.has(i)) covered.set(i, label);
-    }
-  });
-  return covered;
-}
+import { coveredByOtherPages } from "../lib/sources";
 
 /**
  * Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas):

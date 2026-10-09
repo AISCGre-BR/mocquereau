@@ -118,6 +118,8 @@ const stub = ({ theme, data, emptyRecent }) => {
     setClassification: async () => {},
     getTheme: async () => theme,
     setTheme: async () => true,
+    getSuggestionsEnabled: async () => true,
+    setSuggestionsEnabled: async (on) => on,
   };
 };
 

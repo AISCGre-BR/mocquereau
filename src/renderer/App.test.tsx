@@ -36,6 +36,8 @@ beforeEach(() => {
     platform: "linux",
     getTheme: vi.fn().mockResolvedValue("system"),
     setTheme: vi.fn().mockResolvedValue(true),
+    getSuggestionsEnabled: vi.fn().mockResolvedValue(true),
+    setSuggestionsEnabled: vi.fn().mockResolvedValue(true),
     getClassification: vi.fn().mockResolvedValue(cloneClassification(SUGGESTED_CLASSIFICATION)),
     setClassification: vi.fn().mockResolvedValue(undefined),
     getLanguage: vi.fn().mockResolvedValue("pt-BR"),

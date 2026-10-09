@@ -123,3 +123,23 @@ export function resolveUnsetRanges(project: MocquereauProject): MocquereauProjec
   });
   return changed ? { ...project, sources } : project;
 }
+
+/**
+ * Global syllables confirmed by OTHER pages of the source, each with the label
+ * of the (first) page that covers it: its folio, else its position.
+ */
+export function coveredByOtherPages(
+  source: ManuscriptSource,
+  excludeLineId: string | null,
+  pageLabel: string,
+): Map<number, string> {
+  const covered = new Map<number, string>();
+  source.lines.forEach((line, n) => {
+    if (line.id === excludeLineId || !line.confirmed) return;
+    const label = line.folio || `${pageLabel} ${n + 1}`;
+    for (let i = line.syllableRange.start; i <= line.syllableRange.end; i++) {
+      if (!covered.has(i)) covered.set(i, label);
+    }
+  });
+  return covered;
+}

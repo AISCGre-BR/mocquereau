@@ -271,6 +271,10 @@ export interface MocquereauAPI {
   setClassification: (c: Classification) => Promise<void>;
   getTheme: () => Promise<ThemePreference>;
   setTheme: (theme: ThemePreference) => Promise<boolean>;
+  /** "Sugestões de neumas" (S8); padrão true. */
+  getSuggestionsEnabled: () => Promise<boolean>;
+  /** Grava a preferência; devolve o valor gravado (não booleano é ignorado). */
+  setSuggestionsEnabled: (on: boolean) => Promise<boolean>;
   platform: string;
 }
 

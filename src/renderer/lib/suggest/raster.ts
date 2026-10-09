@@ -49,3 +49,11 @@ export function renderSuggestRaster(imgEl: CanvasImageSource, img: Size, frame: 
   const data = ctx.getImageData(0, 0, width, height);
   return { data: data.data, width, height };
 }
+
+/** DOM: decodes the page image for renderSuggestRaster. */
+export async function loadSuggestImage(dataUrl: string): Promise<HTMLImageElement> {
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode();
+  return img;
+}

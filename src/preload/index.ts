@@ -96,4 +96,10 @@ contextBridge.exposeInMainWorld("mocquereau", {
 
   setTheme: (theme: string) =>
     ipcRenderer.invoke("settings:set-theme", theme),
+
+  getSuggestionsEnabled: () =>
+    ipcRenderer.invoke("settings:get-suggestions"),
+
+  setSuggestionsEnabled: (on: boolean) =>
+    ipcRenderer.invoke("settings:set-suggestions", on),
 });
