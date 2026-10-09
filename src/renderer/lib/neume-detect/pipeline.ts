@@ -17,7 +17,7 @@ import {
 } from './image';
 import { darkBlobs } from './mask';
 import { mergeBoxesIndexed } from './merge';
-import { deriveParams, estimateStrokeWidth, staffMetrics, type Params, type StaffMetrics } from './scale';
+import { deriveParams, estimateStrokeWidth, staffMetrics, strokeWidthOutside, type Params, type StaffMetrics } from './scale';
 import {
   classifySpecialGlyphs,
   cropStaff,
@@ -204,17 +204,35 @@ function workFrac(work: Work, W: number, H: number): FracRect {
 }
 
 /**
+ * Espessura do traco medida fora da linha de texto: a caneta do texto costuma ser mais grossa que a
+ * dos neumas e, com mais pixels, domina a moda (M4a). Sem linha de texto, ou se nada sobra fora dela,
+ * fica a medida da faixa inteira; a medida de fora so e aceita se for menor.
+ */
+function measureU(grayInk: Mask): number {
+  const u0 = estimateStrokeWidth(grayInk);
+  if (u0 === 0) return 0;
+  const comps = labelComponents(grayInk).components.filter((c) => c.area >= 4);
+  const tl = findTextLine(comps, grayInk.width, { kind: 'lowest' });
+  if (!tl) return u0;
+  const u1 = strokeWidthOutside(grayInk, [{ y0: tl.top, y1: tl.bottom }]);
+  // So para baixo: fora do texto pode sobrar uma mancha cheia (run ~ seu tamanho) que domina a moda.
+  return u1 > 0 ? Math.min(u1, u0) : u0;
+}
+
+/**
  * Etapa 0: raster de trabalho (recorte, reducao a MAX_LONG_SIDE, ampliacao 2x se u < 2) e espessura
  * de traco. Unico ponto de preparacao do raster de trabalho de uma faixa.
  */
-function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; grayInk: Mask; u: number } {
+function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; grayInk: Mask; u: number; up: number } {
   const scale = Math.min(1, MAX_LONG_SIDE / Math.max(rect.w, rect.h));
   let work: Work = { ...prepareWork(image, rect, scale), ox: rect.x, oy: rect.y, sx: 1, sy: 1 };
   work.sx = work.r.width / rect.w;
   work.sy = work.r.height / rect.h;
   let grayInk = binarizeOtsu(work.gray, work.valid);
-  let u = estimateStrokeWidth(grayInk);
+  let u = measureU(grayInk);
+  let up = 1;
   if (u > 0 && u < 2) {
+    up = 2;
     work = {
       r: upscale2xGray(work.r),
       gray: upscale2xGray(work.gray),
@@ -225,9 +243,9 @@ function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; gra
       sy: work.sy * 2,
     };
     grayInk = binarizeOtsu(work.gray, work.valid);
-    u = estimateStrokeWidth(grayInk);
+    u = measureU(grayInk);
   }
-  return { work, grayInk, u };
+  return { work, grayInk, u, up };
 }
 
 /**
@@ -295,6 +313,9 @@ function analyzeBand(
   debug.bandSource = band.source;
   debug.strokeWidth = u;
   const p = deriveParams(u, staff ? metrics : null);
+  // O piso de 2 px do minSide vale em pixels da imagem: ampliada 2x, um ponto isolado do pergaminho
+  // vira 2 x 2 e passaria pelo filtro.
+  if (prep.up > 1) p.minSide = Math.max(p.minSide, 2 * prep.up);
 
   // Etapa 1: binarizacao comum (com repeticao k = 0,1 e canal auto se faltarem componentes)
   const blobs = darkBlobs(work.gray, work.valid, p); // independe de canal e de k: calculado uma vez

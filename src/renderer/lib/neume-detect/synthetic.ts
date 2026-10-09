@@ -85,27 +85,27 @@ export function drawPolyline(r: RasterRGBA, pts: [number, number][], t: number, 
 export type NeumeShape = 'punctum' | 'virga' | 'pes' | 'clivis' | 'torculus';
 
 /** Neuma adiastematico com traco u, canto superior esquerdo (x, y). Um componente conexo. */
-export function drawNeume(r: RasterRGBA, shape: NeumeShape, x: number, y: number, u: number): PxBox {
+export function drawNeume(r: RasterRGBA, shape: NeumeShape, x: number, y: number, u: number, c: RGB = INK): PxBox {
   switch (shape) {
     case 'punctum':
-      return fillRect(r, x, y + 4 * u, u + 1, u + 1);
+      return fillRect(r, x, y + 4 * u, u + 1, u + 1, c);
     case 'virga':
-      return drawPolyline(r, [[x + u, y], [x, y + 6 * u]], u);
+      return drawPolyline(r, [[x + u, y], [x, y + 6 * u]], u, c);
     case 'pes':
-      return drawPolyline(r, [[x, y + 5 * u], [x + 2 * u, y + 6 * u], [x + 3 * u, y]], u);
+      return drawPolyline(r, [[x, y + 5 * u], [x + 2 * u, y + 6 * u], [x + 3 * u, y]], u, c);
     case 'clivis':
-      return drawPolyline(r, [[x, y + 6 * u], [x + u, y], [x + 3 * u, y + 6 * u]], u);
+      return drawPolyline(r, [[x, y + 6 * u], [x + u, y], [x + 3 * u, y + 6 * u]], u, c);
     case 'torculus':
-      return drawPolyline(r, [[x, y + 6 * u], [x + u, y], [x + 2 * u, y + 6 * u], [x + 3 * u, y + 2 * u]], u);
+      return drawPolyline(r, [[x, y + 6 * u], [x + u, y], [x + 2 * u, y + 6 * u], [x + 3 * u, y + 2 * u]], u, c);
   }
 }
 
 /** Contorno retangular (letra "o"). */
-function outline(r: RasterRGBA, x: number, y: number, w: number, h: number, u: number): PxBox {
-  fillRect(r, x, y, w, u);
-  fillRect(r, x, y + h - u, w, u);
-  fillRect(r, x, y, u, h);
-  fillRect(r, x + w - u, y, u, h);
+function outline(r: RasterRGBA, x: number, y: number, w: number, h: number, u: number, c: RGB = INK): PxBox {
+  fillRect(r, x, y, w, u, c);
+  fillRect(r, x, y + h - u, w, u, c);
+  fillRect(r, x, y, u, h, c);
+  fillRect(r, x + w - u, y, u, h, c);
   return { x, y, w, h };
 }
 
@@ -114,20 +114,20 @@ function outline(r: RasterRGBA, x: number, y: number, w: number, h: number, u: n
  * b d f h k l t) ganham haste ate base - 2xh; descendentes (g p q y) ate base + 0,6xh.
  * Devolve a largura usada.
  */
-export function drawLetter(r: RasterRGBA, ch: string, x: number, baseline: number, xh: number, u: number): number {
+export function drawLetter(r: RasterRGBA, ch: string, x: number, baseline: number, xh: number, u: number, c: RGB = INK): number {
   const w = Math.round(0.75 * xh);
-  const boxes = [outline(r, x, baseline - xh, w, xh, u)];
-  if (/[A-Zbdfhklt]/.test(ch)) boxes.push(fillRect(r, x, baseline - 2 * xh, u, xh));
-  if (/[gpqy]/.test(ch)) boxes.push(fillRect(r, x, baseline, u, Math.round(0.6 * xh)));
+  const boxes = [outline(r, x, baseline - xh, w, xh, u, c)];
+  if (/[A-Zbdfhklt]/.test(ch)) boxes.push(fillRect(r, x, baseline - 2 * xh, u, xh, c));
+  if (/[gpqy]/.test(ch)) boxes.push(fillRect(r, x, baseline, u, Math.round(0.6 * xh), c));
   return w;
 }
 
 export const LETTER_GAP = 4;
 
 /** Escreve o texto de uma silaba a partir de x; devolve a caixa do texto. */
-export function drawText(r: RasterRGBA, text: string, x: number, baseline: number, xh: number, u: number): PxBox {
+export function drawText(r: RasterRGBA, text: string, x: number, baseline: number, xh: number, u: number, c: RGB = INK): PxBox {
   let cx = x;
-  for (const ch of text) cx += drawLetter(r, ch, cx, baseline, xh, u) + LETTER_GAP;
+  for (const ch of text) cx += drawLetter(r, ch, cx, baseline, xh, u, c) + LETTER_GAP;
   return { x, y: baseline - 2 * xh, w: cx - LETTER_GAP - x, h: Math.round(2.6 * xh) };
 }
 
@@ -228,6 +228,8 @@ export interface AdiastematicOptions {
   noise?: boolean;
   /** Indice global da primeira silaba. */
   firstIndex?: number;
+  /** Espessura da caneta do texto (padrão u). */
+  textU?: number;
 }
 
 /**
@@ -269,7 +271,7 @@ export function buildAdiastematicLine(opts: AdiastematicOptions = {}): LineFixtu
     neumes[s.index] = boxes;
     ink[s.index] = unionBox(boxes);
     truth[s.index] = padBox(ink[s.index], Math.max(2, u));
-    drawText(r, s.text, cx + Math.round(0.1 * colW), baseline, xh, u);
+    drawText(r, s.text, cx + Math.round(0.1 * colW), baseline, xh, opts.textU ?? u);
   });
   if (opts.stain) {
     const gx = Math.round(margin + 3 * colW - 0.2 * colW);
