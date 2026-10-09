@@ -68,6 +68,12 @@ export interface SuggestInput {
   anchors?: SuggestAnchor[];
   /** Faixa de neumas desenhada pelo usuario, em fracoes do raster. */
   band?: FracRect;
+  /**
+   * Varias faixas de neumas desenhadas pelo usuario (fracoes do raster), em ordem de leitura (o
+   * chamador entrega de cima para baixo). Tem prioridade sobre `band`. As faixas formam uma unica
+   * linha virtual: as silabas se distribuem por elas em ordem e nenhuma caixa atravessa faixas.
+   */
+  bands?: FracRect[];
 }
 
 export type BandSource = 'user' | 'anchors' | 'staff' | 'image' | 'none';
@@ -89,6 +95,13 @@ export interface StaffDebug {
   red: boolean;
 }
 
+export interface BandDebug {
+  /** Faixa efetivamente processada, em fracoes do raster. */
+  band: FracRect;
+  mode: 'A' | 'D';
+  glyphs: number;
+}
+
 export interface SuggestDebug {
   mode: 'A' | 'D';
   bandSource: BandSource;
@@ -105,6 +118,8 @@ export interface SuggestDebug {
   counts: { components: number; text: number; glyphs: number; bars: number; ignored: number };
   /** true quando a imagem e um folio sem faixa inferivel: a UI deve pedir a faixa. */
   needsBand: boolean;
+  /** Com `bands`: uma entrada por faixa, na ordem dada. */
+  bands?: BandDebug[];
   ms: Record<string, number>;
 }
 

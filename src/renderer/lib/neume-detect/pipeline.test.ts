@@ -298,3 +298,111 @@ describe('suggestBoxes — escalas x e y distintas', () => {
     expect(b.y + b.h).toBeGreaterThanOrEqual(1524);
   });
 });
+
+describe('suggestBoxes — varias areas', () => {
+  it('uma area em bands da o mesmo resultado que band', () => {
+    const fx = buildAdiastematicLine({ seed: 31 });
+    const band = { x: 0, y: 0, w: 1, h: 1 };
+    const a = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, band });
+    const b = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, bands: [band] });
+    expect(a.suggestions.length).toBeGreaterThan(0);
+    expect(b.suggestions).toEqual(a.suggestions);
+  });
+
+  it('duas linhas empilhadas: silabas distribuidas em ordem, nenhuma atravessa areas', () => {
+    const a = buildAdiastematicLine({ seed: 41, words: [['Ky', 'ri', 'e'], ['e', 'lei', 'son']] });
+    const b = buildAdiastematicLine({ seed: 42, words: [['Chri', 'ste'], ['e', 'lei', 'son']] });
+    const W = a.raster.width;
+    const H = a.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4);
+    data.set(a.raster.data, 0);
+    data.set(b.raster.data, W * H * 4);
+    const raster = { data, width: W, height: 2 * H };
+    const syllables = [
+      ...a.syllables,
+      ...b.syllables.map((s) => ({ ...s, index: s.index + a.syllables.length, wordIndex: s.wordIndex + 2 })),
+    ];
+    const res = suggestBoxes({
+      image: raster,
+      notation: 'adiastematic',
+      syllables,
+      bands: [
+        { x: 0, y: 0, w: 1, h: 0.5 },
+        { x: 0, y: 0.5, w: 1, h: 0.5 },
+      ],
+    });
+    expect(res.suggestions.map((s) => s.index)).toEqual(syllables.map((s) => s.index));
+    expect(res.debug.bandSource).toBe('user');
+    expect(res.debug.bands).toHaveLength(2);
+    const got = boxesPx(res, W, 2 * H);
+    a.syllables.forEach((s) => {
+      expect(got[s.index].y + got[s.index].h).toBeLessThanOrEqual(H + 1);
+      expect(iou(got[s.index], a.truth[s.index])).toBeGreaterThanOrEqual(0.8);
+    });
+    b.syllables.forEach((s) => {
+      const i = s.index + a.syllables.length;
+      expect(got[i].y).toBeGreaterThanOrEqual(H - 1);
+      expect(iou(got[i], { ...b.truth[s.index], y: b.truth[s.index].y + H })).toBeGreaterThanOrEqual(0.8);
+    });
+  });
+
+  it('ancora na segunda area e ancora fora de todas: sem sugestao para elas, demais em ordem', () => {
+    const a = buildAdiastematicLine({ seed: 41, words: [['Ky', 'ri', 'e'], ['e', 'lei', 'son']] });
+    const b = buildAdiastematicLine({ seed: 42, words: [['Chri', 'ste'], ['e', 'lei', 'son']] });
+    const W = a.raster.width;
+    const H = a.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4);
+    data.set(a.raster.data, 0);
+    data.set(b.raster.data, W * H * 4);
+    const n = a.syllables.length;
+    const syllables = [
+      ...a.syllables,
+      ...b.syllables.map((s) => ({ ...s, index: s.index + n, wordIndex: s.wordIndex + 2 })),
+    ];
+    const t = (i: number) => ({ ...b.truth[i], y: b.truth[i].y + H });
+    const anchors = [
+      { index: n + 2, box: pxToFrac(t(2), W, 2 * H) },
+      // fora das duas areas (faixa estreita a direita)
+      { index: 0, box: { x: 0.99, y: 0.9, w: 0.005, h: 0.05 } },
+    ];
+    const res = suggestBoxes({
+      image: { data, width: W, height: 2 * H },
+      notation: 'adiastematic',
+      syllables,
+      anchors,
+      bands: [
+        { x: 0, y: 0, w: 0.98, h: 0.5 },
+        { x: 0, y: 0.5, w: 0.98, h: 0.5 },
+      ],
+    });
+    const want = syllables.map((s) => s.index).filter((i) => i !== 0 && i !== n + 2);
+    expect(res.suggestions.map((s) => s.index)).toEqual(want);
+    const got = boxesPx(res, W, 2 * H);
+    for (const i of want) {
+      if (i < n) {
+        expect(got[i].y + got[i].h).toBeLessThanOrEqual(H + 1);
+      } else {
+        expect(got[i].y).toBeGreaterThanOrEqual(H - 1);
+        expect(iou(got[i], t(i - n))).toBeGreaterThanOrEqual(0.8);
+      }
+    }
+  });
+
+  it('area vazia no meio nao rouba silabas', () => {
+    const fx = buildAdiastematicLine({ seed: 43 });
+    const W = fx.raster.width;
+    const H = fx.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4).fill(235);
+    data.set(fx.raster.data, 0);
+    const res = suggestBoxes({
+      image: { data, width: W, height: 2 * H },
+      notation: 'adiastematic',
+      syllables: fx.syllables,
+      bands: [
+        { x: 0, y: 0, w: 1, h: 0.5 },
+        { x: 0, y: 0.5, w: 1, h: 0.5 },
+      ],
+    });
+    expect(res.suggestions.map((s) => s.index)).toEqual(fx.syllables.map((s) => s.index));
+  });
+});

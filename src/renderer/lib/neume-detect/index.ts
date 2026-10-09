@@ -4,6 +4,7 @@ export { suggestBoxes, MAX_LONG_SIDE, MIN_CONFIDENCE } from './pipeline';
 export { createNeumeDetectClient, NeumeDetectCancelledError } from './client';
 export type { NeumeDetectClient, NeumeDetectClientOptions, WorkerLike } from './client';
 export type {
+  BandDebug,
   BandSource,
   ChannelName,
   FracRect,
