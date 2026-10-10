@@ -143,7 +143,9 @@ export const EXTRA_COST = 0.5;
  * soma(cortes usados) - soma(lambda * |centro_j - e_j| / ((R - L) / K)) - 3 x vazios. O(K * M^2).
  * `open`: a contagem K e uma estimativa (fitCount); ver BOUNDARY_COST e TAIL_COST. Uma contagem de
  * menos deixa a cauda a direita sem silaba em vez de juntar colunas (e empurrar as seguintes); uma
- * de mais deixa as ultimas silabas sem grupo em vez de partir uma coluna.
+ * de mais deixa as ultimas silabas sem grupo em vez de partir uma coluna. `boundaryCost` (padrao
+ * BOUNDARY_COST) substitui o custo da fronteira (menor quando a contagem veio do texto: no canto
+ * silabico os vaos sao todos parecidos, cortes ~1, e o custo cheio faria a particao desistir).
  */
 export function partitionDP(
   glyphs: Glyph[],
@@ -151,10 +153,10 @@ export function partitionDP(
   L: number,
   R: number,
   cuts: Float64Array,
-  opts: { open?: boolean; lastExtra?: boolean } = {},
+  opts: { open?: boolean; lastExtra?: boolean; boundaryCost?: number } = {},
 ): Partition {
   const open = !!opts.open;
-  const bcost = open ? BOUNDARY_COST : 0;
+  const bcost = open ? (opts.boundaryCost ?? BOUNDARY_COST) : 0;
   const K = expected.length;
   const M = glyphs.length;
   const unit = Math.max(1, (R - L) / Math.max(1, K));

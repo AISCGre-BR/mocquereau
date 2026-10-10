@@ -1040,3 +1040,23 @@ describe('folga das caixas segue as caixas da própria página', () => {
     for (const s of fx.syllables) expect(iou(got[s.index], fx.truth[s.index])).toBeGreaterThanOrEqual(0.8);
   });
 });
+
+describe('M2 — contagem pelo texto de menos (sem pauta)', () => {
+  it('uma sílaba a menos pelo texto: as 4 primeiras nos seus neumas, sem deslocar; a cauda fica sem sílaba', () => {
+    const fx = buildAdiastematicLine({ seed: 74, words: [['Pu', 'er'], ['na', 'tus'], ['est']] });
+    const { width: W, height: H } = fx.raster;
+    // a fila diz 'Puxxx' (3 letras a mais que o escrito): o texto mede 4 sílabas para 5 colunas
+    const syllables = fx.syllables.map((s) => (s.index === 0 ? { ...s, text: 'Puxxx' } : s));
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables, bands: [{ x: 0, y: 0, w: 1, h: 1 }] });
+    expect(res.suggestions.map((s) => s.index)).toEqual([0, 1, 2, 3]);
+    const got = boxesPx(res, W, H);
+    for (const i of [0, 1, 2, 3]) expect(iou(got[i], fx.truth[i])).toBeGreaterThanOrEqual(0.8);
+  });
+});
+
+describe('M2 — pauta (partição fechada)', () => {
+  // Tentado na rodada 2 da Task 10: cortes normalizados pelo espaço da pauta + partição aberta na
+  // pauta derrubaram o eval (todas, frio: 34% -> 10% achados); a pauta segue com a partição fechada.
+  it.todo('contagem pelo texto em pauta desloca');
+  it.todo('normalização dos cortes na pauta');
+});

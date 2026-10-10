@@ -653,6 +653,13 @@ function placeBox(
   return { x: X0 / W, y: Y0 / H, w: (X1 - X0) / W, h: (Y1 - Y0) / H };
 }
 
+/**
+ * Particao aberta com a contagem medida pelo texto: custo de cada fronteira (1 = um vao igual a
+ * mediana nao conta). 0 deixava a particao trocar colunas por cauda; BOUNDARY_COST (2) fazia o
+ * canto silabico de vaos parecidos (L239) desistir das silabas.
+ */
+const TEXT_BOUNDARY_COST = 1;
+
 /** Uma faixa analisada, em ordem de leitura, com as ancoras em px de trabalho dela. */
 interface BandLine {
   a: BandAnalysis;
@@ -675,10 +682,9 @@ function portionOf(l: BandLine, L: number, R: number): { glyphs: Glyph[]; text: 
 
 /**
  * Etapa 6 numa porcao [L, R] de uma faixa: prior desta porcao (palavras do texto dela), particao e
- * caixa por grupo. `open`: a contagem veio dos agrupamentos de glifos (fitCount sem texto), que se
- * fundem ou partem; a particao pode deixar a cauda de glifos e as ultimas silabas sem par. Com a
- * contagem medida pelo texto, ou na pauta (vaos entre notas de um neuma quadrado, normalizados pela
- * mediana ~0, viram cortes enormes e nao medem silabas), a particao usa todos os glifos. Devolve a borda direita do ultimo grupo usado (L se
+ * caixa por grupo. `open` (sem pauta): a contagem e uma estimativa; a particao pode deixar a cauda
+ * de glifos e as ultimas silabas sem par. Na pauta (vaos entre notas de um neuma quadrado,
+ * normalizados pela mediana ~0, viram cortes enormes e nao medem silabas) usa todos os glifos. Devolve a borda direita do ultimo grupo usado (L se
  * nenhum) e quantas silabas foram usadas.
  */
 function assignPortion(
@@ -693,6 +699,7 @@ function assignPortion(
   H: number,
   open: boolean,
   lastExtra = false,
+  byText = false,
 ): { end: number; used: number } {
   if (!syllables.length || !glyphs.length) return { end: L, used: 0 };
   const words = new Set(syllables.map((s) => s.wordIndex)).size;
@@ -705,7 +712,7 @@ function assignPortion(
   const seg = { L: L1, R: R1, syllables, glyphs };
   const expected = expectedCenters(seg, spans);
   const cuts = cutScores(glyphs, l.a.bars.map(cxOf), wordGapXs);
-  const part = partitionDP(glyphs, expected, L1, R1, cuts, { open, lastExtra });
+  const part = partitionDP(glyphs, expected, L1, R1, cuts, { open, lastExtra, boundaryCost: byText ? TEXT_BOUNDARY_COST : undefined });
   const conf = groupConfidence(part, cuts, glyphs.length);
   let end = L;
   part.groups.forEach((g, j) => {
@@ -732,14 +739,15 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
   const anchorAt = new Map<number, { line: number; box: PxBox }>();
   lines.forEach((l, k) => l.anchorsLocal.forEach((an) => anchorAt.set(an.index, { line: k, box: an.box })));
   const out: Suggestion[] = [];
-  // Contagem por agrupamentos sem pauta: agrupamentos se fundem (neumas de silabas vizinhas quase
-  // encostados), entao a particao aberta recebe uma silaba a mais (EXTRA_COST) e decide se parte um
-  // vao fraco ou deixa a ultima sem grupo (BOUNDARY_COST, TAIL_COST).
+  // Sem pauta a particao e aberta: a contagem e uma estimativa e os glifos sao a evidencia (cauda sem
+  // silaba, ultimas silabas para a area seguinte). Contagem por agrupamentos: eles se fundem (neumas
+  // de silabas vizinhas quase encostados), entao recebe uma silaba a mais (EXTRA_COST) para partir um
+  // vao fraco se o prior pagar.
   const fit = (l: BandLine, rest: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]) => {
     const d = fitDetail(rest, glyphs, text, { u: l.a.u, xHeight: l.a.tl?.xHeight });
-    const open = d.n > 0 && !d.byText && !l.a.staff;
-    const n = open ? Math.min(rest.length, d.n + 1) : d.n;
-    return { n, open, extra: open && n > d.n };
+    const open = d.n > 0 && !l.a.staff;
+    const extra = open && !d.byText && d.n < rest.length;
+    return { n: extra ? d.n + 1 : d.n, open, extra, byText: d.byText };
   };
   let li = 0;
   let x = 0;
@@ -763,8 +771,8 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
       for (; li < bound.line && rest.length; li++, x = 0) {
         const l = lines[li];
         const { glyphs, text } = portionOf(l, x, l.a.work.r.width);
-        const { n, open, extra } = fit(l, rest, glyphs, text);
-        if (n > 0) rest = rest.slice(assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H, open, extra).used);
+        const { n, open, extra, byText } = fit(l, rest, glyphs, text);
+        if (n > 0) rest = rest.slice(assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText).used);
       }
       if (rest.length) {
         const l = lines[bound.line];
@@ -777,9 +785,9 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
         const l = lines[li];
         const R = l.a.work.r.width;
         const { glyphs, text } = portionOf(l, x, R);
-        const { n, open, extra } = fit(l, rest, glyphs, text);
+        const { n, open, extra, byText } = fit(l, rest, glyphs, text);
         if (n > 0) {
-          const r = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H, open, extra);
+          const r = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText);
           x = r.end;
           rest = rest.slice(r.used);
         }
