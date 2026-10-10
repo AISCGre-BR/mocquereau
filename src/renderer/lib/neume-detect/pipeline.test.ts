@@ -647,3 +647,31 @@ describe('M4c — manchas escuras no modo D', () => {
     expect(measureU(ink, 'diastematic')).toBe(measureU(ink, 'adiastematic'));
   });
 });
+
+describe('M4d — margem é contexto', () => {
+  it('M4d — área cortando o texto: pedaços de letra na margem não viram candidatos; neumas ficam', () => {
+    const fx = buildAdiastematicLine({ seed: 67, noise: false });
+    const H = fx.raster.height, W = fx.raster.width;
+    const y0 = 30;
+    // borda inferior do raster (área + 10%) a 4 px abaixo do topo da altura-x: só pedaços de 4 px das letras
+    const bottom = fx.baseline - fx.xHeight + 4;
+    const y1 = Math.round((bottom + 0.1 * y0) / 1.1);
+    const band = { x: 0, y: y0 / H, w: 1, h: (y1 - y0) / H };
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates', bands: [band] });
+    const cands = res.candidates!.map((c) => fracToPx(c.box, W, H));
+    for (const c of cands) expect(c.y + c.h / 2).toBeLessThanOrEqual(y1);
+    for (const c of cands) expect(c.y + c.h).toBeLessThanOrEqual(fx.baseline - fx.xHeight + 2);
+    for (const s of fx.syllables)
+      for (const n of fx.neumes[s.index])
+        expect(cands.some((c) => c.x <= n.x + n.w / 2 && n.x + n.w / 2 <= c.x + c.w)).toBe(true);
+  });
+
+  it('measureU: a margem acima e abaixo da área fica fora da medida', () => {
+    const m = { data: new Uint8Array(60 * 60), width: 60, height: 60 };
+    const fill = (x: number, y: number, w: number, h: number) => { for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) m.data[yy * 60 + xx] = 1; };
+    fill(5, 20, 2, 15); fill(15, 20, 2, 15);   // tracos finos (2) dentro da area [18, 40)
+    fill(5, 2, 40, 7); fill(5, 48, 40, 7);     // caneta grossa (7) so na margem, mais pixels
+    expect(measureU(m, 'adiastematic')).toBe(7);
+    expect(measureU(m, 'adiastematic', { x: 0, y: 18, w: 60, h: 22 })).toBe(2);
+  });
+});

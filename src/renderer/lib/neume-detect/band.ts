@@ -31,17 +31,18 @@ export const BAND_MARGIN = 0.1;
  * vertical das ancoras +50% da altura mediana para cada lado);
  * modo D: imagem inteira para buscar a pauta ('staff', confirmado ou rebaixado pelo pipeline);
  * recorte de linha (largura/altura >= 3): imagem inteira; senao 'none' (pedir a faixa).
- * Faixas do usuario e das ancoras recebem margem vertical de 10% da propria altura.
+ * Faixas do usuario e das ancoras recebem margem vertical de 10% da propria altura; `inner` e a faixa
+ * sem a margem (so a tinta centrada nela conta; a margem e contexto).
  */
 export function selectBand(
   input: Pick<SuggestInput, 'band' | 'anchors' | 'notation'>,
   width: number,
   height: number,
-): { source: BandSource; rect: PxBox } {
+): { source: BandSource; rect: PxBox; inner?: PxBox } {
   const whole = { x: 0, y: 0, w: width, h: height };
   if (input.band) {
     const b = fracToPxRect(input.band, width, height);
-    if (b.w > 0 && b.h > 0) return { source: 'user', rect: expandY(b, BAND_MARGIN * b.h, height) };
+    if (b.w > 0 && b.h > 0) return { source: 'user', rect: expandY(b, BAND_MARGIN * b.h, height), inner: b };
   }
   const anchors = (input.anchors ?? []).map((a) => fracToPxRect(a.box, width, height)).filter((b) => b.w > 0 && b.h > 0);
   if (anchors.length) {
@@ -52,7 +53,7 @@ export function selectBand(
     const y0 = Math.min(...anchors.map((a) => a.y));
     const y1 = Math.max(...anchors.map((a) => a.y + a.h));
     const v = expandY({ x: 0, y: y0, w: width, h: y1 - y0 }, 0.5 * medH, height);
-    return { source: 'anchors', rect: expandY(v, BAND_MARGIN * v.h, height) };
+    return { source: 'anchors', rect: expandY(v, BAND_MARGIN * v.h, height), inner: v };
   }
   if (input.notation === 'diastematic') return { source: 'staff', rect: whole };
   return lineOrNone(width, height);

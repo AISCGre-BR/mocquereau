@@ -179,6 +179,8 @@ type Lap = (name: string) => void;
 interface SelectedBand {
   source: BandSource;
   rect: PxBox;
+  /** Area desenhada sem a margem de contexto, em px do raster. */
+  inner?: PxBox;
 }
 
 /** Resultado das etapas 0 a 5 numa faixa: tudo em px do raster de trabalho dessa faixa. */
@@ -193,6 +195,11 @@ interface BandAnalysis {
   text: Component[];
   bars: Component[];
   red: boolean;
+}
+
+/** px do raster -> px do raster de trabalho. */
+function rasterToWork(b: PxBox, work: Work): PxBox {
+  return { x: (b.x - work.ox) * work.sx, y: (b.y - work.oy) * work.sy, w: b.w * work.sx, h: b.h * work.sy };
 }
 
 /** Fracao do raster -> px do raster de trabalho. */
@@ -220,6 +227,9 @@ function workFrac(work: Work, W: number, H: number): FracRect {
 const SOLID_FILL = 0.85;
 /** Sem as notas cheias, sobra ao menos esta fracao da tinta para a medida valer. */
 const SOLID_MIN_RESIDUAL = 0.1;
+// SOLID_FILL, SOLID_MIN_RESIDUAL e o fator 2x de withoutSolidNotes foram escolhidos nas fixtures
+// sinteticas da Task 5 (notas 12x12 sem pauta, pontos soltos, resto sem medida, pauta com pontos
+// grossos); no eval dos 3 projetos do usuario nao mudaram nenhum numero.
 
 /**
  * Notacao quadrada: notas cheias (quase quadradas, preenchidas, lado >= 4 px) nao sao traco; cada
@@ -257,16 +267,27 @@ function withoutSolidNotes(ink: Mask): Mask {
  * Espessura do traco medida fora da linha de texto: a caneta do texto costuma ser mais grossa que a
  * dos neumas e, com mais pixels, domina a moda (M4a). Sem linha de texto, ou se nada sobra fora dela,
  * fica a medida da faixa inteira; a medida de fora so e aceita se for menor. Na notacao quadrada
- * as notas cheias ficam fora da medida (`withoutSolidNotes`).
+ * as notas cheias ficam fora da medida (`withoutSolidNotes`). `inner` (px de trabalho) = area
+ * desenhada: as faixas da margem acima e abaixo tambem ficam fora (M4d).
  */
-export function measureU(grayInk: Mask, notation: SuggestInput['notation']): number {
+export function measureU(grayInk: Mask, notation: SuggestInput['notation'], inner?: PxBox): number {
   const ink = notation === 'diastematic' ? withoutSolidNotes(grayInk) : grayInk;
   const u0 = estimateStrokeWidth(ink);
   if (u0 === 0) return 0;
+  // margem de contexto acima e abaixo da area desenhada (meias-letras, caneta do texto): fora da medida
+  const margins = inner
+    ? [
+        { y0: 0, y1: inner.y },
+        { y0: inner.y + inner.h, y1: ink.height },
+      ]
+    : [];
   const comps = labelComponents(ink).components.filter((c) => c.area >= 4);
   const tl = findTextLine(comps, ink.width, { kind: 'lowest' });
-  if (!tl) return u0;
-  const u1 = strokeWidthOutside(ink, [{ y0: tl.top, y1: tl.bottom }]);
+  if (!tl) {
+    const um = margins.length ? strokeWidthOutside(ink, margins) : 0;
+    return um > 0 ? Math.min(um, u0) : u0;
+  }
+  const u1 = strokeWidthOutside(ink, [{ y0: tl.top, y1: tl.bottom }, ...margins]);
   // So para baixo: fora do texto pode sobrar uma mancha cheia (run ~ seu tamanho) que domina a moda.
   return u1 > 0 ? Math.min(u1, u0) : u0;
 }
@@ -279,13 +300,14 @@ function buildWork(
   image: SuggestInput['image'],
   rect: PxBox,
   notation: SuggestInput['notation'],
+  inner?: PxBox,
 ): { work: Work; grayInk: Mask; u: number; up: number } {
   const scale = Math.min(1, MAX_LONG_SIDE / Math.max(rect.w, rect.h));
   let work: Work = { ...prepareWork(image, rect, scale), ox: rect.x, oy: rect.y, sx: 1, sy: 1 };
   work.sx = work.r.width / rect.w;
   work.sy = work.r.height / rect.h;
   let grayInk = binarizeOtsu(work.gray, work.valid);
-  let u = measureU(grayInk, notation);
+  let u = measureU(grayInk, notation, inner && rasterToWork(inner, work));
   let up = 1;
   if (u > 0 && u < 2) {
     up = 2;
@@ -301,7 +323,7 @@ function buildWork(
       sy: work.sy * 2,
     };
     grayInk = binarizeOtsu(work.gray, work.valid);
-    u = measureU(grayInk, notation);
+    u = measureU(grayInk, notation, inner && rasterToWork(inner, work));
   }
   return { work, grayInk, u, up };
 }
@@ -321,7 +343,7 @@ function analyzeBand(
   const W = input.image.width;
   const H = input.image.height;
   let band = selected;
-  const prep = buildWork(input.image, band.rect, input.notation);
+  const prep = buildWork(input.image, band.rect, input.notation, band.inner);
   let work = prep.work;
   const { grayInk } = prep;
   let u = prep.u;
@@ -429,11 +451,20 @@ function analyzeBand(
       });
     debug.textLine = { baseline: work.oy + tl.baseline / work.sy, xHeight: tl.xHeight / work.sy };
   }
+  // M4d: so a tinta centrada na area desenhada conta (a margem de 10% e contexto); componentes
+  // cortados pela borda inferior do raster de trabalho, na metade de baixo da area, sao texto.
+  const workH = work.r.height;
+  const innerW = band.inner ? rasterToWork(band.inner, work) : { x: 0, y: 0, w: work.r.width, h: workH };
+  neumes = neumes.filter((c) => {
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    return cx >= innerW.x && cx <= innerW.x + innerW.w && cy >= innerW.y && cy <= innerW.y + innerW.h;
+  });
+  neumes = neumes.filter((c) => !(c.y + c.h >= workH - 1 && c.y > innerW.y + 0.5 * innerW.h));
   if (staff) {
     // fragmentos de texto cortados pela borda inferior da faixa da pauta
     const bottom = staffBottom(staff);
-    const h = work.r.height;
-    neumes = neumes.filter((c) => !(c.y > bottom && c.y + c.h >= h - 1));
+    neumes = neumes.filter((c) => !(c.y > bottom && c.y + c.h >= workH - 1));
   }
   debug.counts.text = text.length;
   lap('text');
