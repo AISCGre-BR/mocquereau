@@ -637,11 +637,22 @@ describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
       "Remover caixaDelete",
       "Limpar página…",
       "Realinhar caixas…",
+      "Sugestões",
       "Próxima fonteCtrl+Enter",
     ]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Remover caixa/ }));
     expect(v.line().syllableBoxes![0]).toBeUndefined();
     expect(v.queryByRole("menu")).toBeNull();
+  });
+
+  it("submenu Sugestões na folha: escolher Candidatos troca o modo", async () => {
+    const v = mount(projectWith());
+    window.mocquereau = { ...window.mocquereau, setSuggestionsMode: vi.fn(async (m: string) => m) } as never;
+    const menu = openSheetMenu(v);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Sugestões" }));
+    fireEvent.click(within(v.getByRole("menu", { name: "Sugestões" })).getByRole("menuitemcheckbox", { name: "Candidatos" }));
+    expect(window.mocquereau.setSuggestionsMode).toHaveBeenCalledWith("candidates");
+    expect(v.ref.suggestions!.mode).toBe("candidates");
   });
 
   it("tecla Menu ou Shift+F10 abrem o menu da folha no centro da caixa ativa", () => {
@@ -698,9 +709,9 @@ describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
     fireEvent.click(within(v.getByRole("dialog")).getByRole("button", { name: "Cancelar" }));
     fireEvent.click(within(openSheetMenu(v)).getByRole("menuitem", { name: /Próxima fonte/ }));
     expect(v.shownRange()).toEqual(["1", "2"]);
-    // Na última fonte, sem caixas: Remover, Limpar, Realinhar e Próxima ficam desabilitados.
+    // Na última fonte, sem caixas: Remover, Limpar, Realinhar e Próxima ficam desabilitados (o submenu Sugestões não).
     const items = within(openSheetMenu(v)).getAllByRole("menuitem") as HTMLButtonElement[];
-    expect(items.map((i) => i.disabled)).toEqual([true, true, true, true]);
+    expect(items.map((i) => i.disabled)).toEqual([true, true, true, false, true]);
   });
 
   it("a barra antiga (sigla, Ajustes, Limpar tudo) saiu da vista", () => {
@@ -728,8 +739,8 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const v = mount(projectWith([mkSource("A", lines)]), client);
@@ -969,8 +980,8 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const blank = (id: string) => mkLine(id, { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
@@ -998,8 +1009,8 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const blank = mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
@@ -1207,8 +1218,8 @@ describe("RecortesView: áreas da linha de neumas (S7)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const blank = mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });

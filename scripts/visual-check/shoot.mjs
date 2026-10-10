@@ -118,8 +118,8 @@ const stub = ({ theme, data, emptyRecent }) => {
     setClassification: async () => {},
     getTheme: async () => theme,
     setTheme: async () => true,
-    getSuggestionsEnabled: async () => true,
-    setSuggestionsEnabled: async (on) => on,
+    getSuggestionsMode: async () => globalThis.__mocqSuggestionsMode ?? "sequential",
+    setSuggestionsMode: async (m) => (globalThis.__mocqSuggestionsMode = m),
   };
 };
 

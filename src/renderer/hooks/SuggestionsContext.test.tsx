@@ -9,6 +9,7 @@ import { syllabifyText } from "../lib/syllabify";
 import { NeumeDetectCancelledError } from "../lib/neume-detect";
 import type { NeumeDetectClient, SuggestInput, SuggestResult } from "../lib/neume-detect";
 import type { ManuscriptLine, ManuscriptSource, MocquereauAPI, MocquereauProject, SyllableBox } from "../lib/models";
+import type { SuggestionsMode } from "@shared/suggestions-mode";
 
 const planControl = vi.hoisted(() => ({ throws: false }));
 vi.mock("../lib/suggest/request", async (importOriginal) => {
@@ -93,12 +94,12 @@ function makeProject(lines: ManuscriptLine[] = [page("a1"), page("a2")]): Mocque
   return { ...createNewProject("T", ""), text: { raw, words: syllabifyText(raw, "sung"), hyphenationMode: "sung" }, sources: [src] };
 }
 
-let bridge: { getSuggestionsEnabled: ReturnType<typeof vi.fn>; setSuggestionsEnabled: ReturnType<typeof vi.fn> };
+let bridge: { getSuggestionsMode: ReturnType<typeof vi.fn>; setSuggestionsMode: ReturnType<typeof vi.fn> };
 
 beforeEach(() => {
   bridge = {
-    getSuggestionsEnabled: vi.fn().mockResolvedValue(true),
-    setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+    getSuggestionsMode: vi.fn().mockResolvedValue("sequential"),
+    setSuggestionsMode: vi.fn(async (m: string) => m),
   };
   window.mocquereau = bridge as unknown as MocquereauAPI;
 });
@@ -109,8 +110,8 @@ afterEach(() => {
   planControl.throws = false;
 });
 
-async function setup(opts: { enabled?: boolean; project?: MocquereauProject } = {}) {
-  bridge.getSuggestionsEnabled.mockResolvedValue(opts.enabled ?? true);
+async function setup(opts: { mode?: SuggestionsMode; project?: MocquereauProject } = {}) {
+  bridge.getSuggestionsMode.mockResolvedValue(opts.mode ?? "sequential");
   const client = fakeClient();
   const createClient = vi.fn(() => client);
   function Wrapper({ children }: { children: ReactNode }) {
@@ -281,7 +282,7 @@ describe("SuggestionsProvider", () => {
   });
 
   it("preferência desligada: suggest não cria cliente", async () => {
-    const h = await setup({ enabled: false });
+    const h = await setup({ mode: "off" });
     expect(h.value().enabled).toBe(false);
     act(() => h.value().suggest());
     await act(async () => {});
@@ -290,8 +291,8 @@ describe("SuggestionsProvider", () => {
   });
 
   it("preferência ainda não carregada: desligada, suggest não cria cliente", async () => {
-    let answer!: (on: boolean) => void;
-    bridge.getSuggestionsEnabled.mockImplementation(() => new Promise<boolean>((res) => (answer = res)));
+    let answer!: (mode: SuggestionsMode) => void;
+    bridge.getSuggestionsMode.mockImplementation(() => new Promise<SuggestionsMode>((res) => (answer = res)));
     const client = fakeClient();
     const createClient = vi.fn(() => client);
     function Wrapper({ children }: { children: ReactNode }) {
@@ -311,7 +312,7 @@ describe("SuggestionsProvider", () => {
     await act(async () => {});
     expect(createClient).not.toHaveBeenCalled();
     // Once the main says on, suggest works.
-    await act(async () => answer(true));
+    await act(async () => answer("sequential"));
     expect(hook.result.current.s.enabled).toBe(true);
     act(() => hook.result.current.s.suggest());
     await waitFor(() => expect(client.calls.length).toBe(1));
@@ -322,7 +323,7 @@ describe("SuggestionsProvider", () => {
     const call = await startSuggest(h);
     await settle(() => call.resolve(result({ 0: B0 })));
     act(() => h.value().setMode("off"));
-    expect(bridge.setSuggestionsEnabled).toHaveBeenCalledWith(false);
+    expect(bridge.setSuggestionsMode).toHaveBeenCalledWith("off");
     expect(h.value().enabled).toBe(false);
     expect(h.value().active).toEqual({});
     expect(h.client.dispose).toHaveBeenCalledTimes(1);
@@ -551,12 +552,11 @@ describe("SuggestionsProvider", () => {
     expect(h.client.dispose).toHaveBeenCalled();
   });
 
-  it("modo candidatos sem nenhum candidato: aviso none; setMode grava só ligado/desligado", async () => {
+  it("modo candidatos sem nenhum candidato: aviso none", async () => {
     const h = await setup();
     act(() => h.value().setMode("candidates"));
     expect(h.value().mode).toBe("candidates");
     expect(h.value().enabled).toBe(true);
-    expect(bridge.setSuggestionsEnabled).toHaveBeenLastCalledWith(true);
     const call = await startSuggest(h);
     await settle(() => call.resolve(cands([])));
     expect(h.value().notice).toBe("none");
@@ -569,5 +569,29 @@ describe("SuggestionsProvider", () => {
     expect(h.value().candidates).toHaveLength(2);
     act(() => h.dispatch({ type: "SET_LINE_NEUME_BANDS", payload: { sourceId: "A", lineId: "a1", bands: [{ x: 0, y: 0, w: 1, h: 0.5 }] } }));
     expect(h.value().candidates).toEqual([]);
+  });
+
+  it("modo off vindo da main: Sugerir não cria cliente", async () => {
+    const h = await setup({ mode: "off" });
+    act(() => h.value().suggest());
+    expect(h.createClient).not.toHaveBeenCalled();
+  });
+
+  it("setMode grava na main", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    expect(bridge.setSuggestionsMode).toHaveBeenCalledWith("candidates");
+  });
+
+  it("modo candidatos vindo da main", async () => {
+    const h = await setup({ mode: "candidates" });
+    expect(h.value().mode).toBe("candidates");
+    const call = await startSuggest(h);
+    expect(call.input.mode).toBe("candidates");
+  });
+
+  it("valor inválido vindo da main: desligado", async () => {
+    const h = await setup({ mode: "auto" as SuggestionsMode });
+    expect(h.value().mode).toBe("off");
   });
 });

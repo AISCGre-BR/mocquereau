@@ -21,7 +21,8 @@ import { ImageCanvas } from "../components/slice-editor/ImageCanvas";
 import { RealignBoxesDialog } from "../components/slice-editor/RealignBoxesDialog";
 import { Dialog } from "../ui/Dialog";
 import { Button } from "../ui/Button";
-import { MenuItem, MenuSeparator, MenuSurface } from "../ui/Menu";
+import { MenuItem, MenuSeparator, MenuSubmenu, MenuSurface } from "../ui/Menu";
+import { isSubmenu } from "../shell/menuTypes";
 import { recortesMenuItems } from "../shell/menus";
 import { formatAccelerator } from "../shell/accelerator";
 import { flattenSyllables } from "../lib/sliceUtils";
@@ -480,6 +481,16 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
             {sheetMenuItems.map((item, i) =>
               item === "separator" ? (
                 <MenuSeparator key={`sep-${i}`} />
+              ) : isSubmenu(item) ? (
+                <MenuSubmenu key={item.id} label={item.label}>
+                  {item.items.map((sub, j) =>
+                    sub === "separator" ? (
+                      <MenuSeparator key={`sep-${i}-${j}`} />
+                    ) : (
+                      <MenuItem key={sub.id} label={sub.label} checked={sub.checked} disabled={sub.disabled} onSelect={sub.onSelect} />
+                    ),
+                  )}
+                </MenuSubmenu>
               ) : (
                 <MenuItem
                   key={item.id}

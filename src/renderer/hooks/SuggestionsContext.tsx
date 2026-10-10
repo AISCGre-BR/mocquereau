@@ -18,7 +18,7 @@ import type { BoxFrame } from "@shared/project-schema";
 import { createNeumeDetectClient, NeumeDetectCancelledError, type NeumeDetectClient, type SuggestResult } from "../lib/neume-detect";
 import { planCandidates, planSuggestion, regionToView, type SuggestPlan } from "../lib/suggest/request";
 import { liveCandidates, type LiveCandidate } from "../lib/suggest/candidates";
-import type { SuggestionsMode } from "@shared/suggestions-mode";
+import { isSuggestionsMode, type SuggestionsMode } from "@shared/suggestions-mode";
 import { orderNeumeBands } from "@shared/band-order";
 import { loadSuggestImage, renderSuggestRaster } from "../lib/suggest/raster";
 import { isLineGap } from "../lib/syllable-gap";
@@ -217,14 +217,13 @@ export function SuggestionsProvider({
   // S8: the preference lives in the main process.
   useEffect(() => {
     let alive = true;
-    const get = window.mocquereau?.getSuggestionsEnabled;
+    const get = window.mocquereau?.getSuggestionsMode;
     if (get) {
       get()
-        .then((on) => {
-          // A choice the user made meanwhile wins over the stored value.
-          // Until Task 15 only on/off is stored: on = sequential.
-          if (alive && typeof on === "boolean" && !userChoseRef.current) {
-            const loaded: SuggestionsMode = on ? "sequential" : "off";
+        .then((stored) => {
+          // A choice the user made meanwhile wins over the stored value; anything unknown is off.
+          if (alive && !userChoseRef.current) {
+            const loaded: SuggestionsMode = isSuggestionsMode(stored) ? stored : "off";
             modeRef.current = loaded;
             setModeState(loaded);
           }
@@ -475,8 +474,7 @@ export function SuggestionsProvider({
       const prev = modeRef.current;
       modeRef.current = next;
       setModeState(next);
-      // Until Task 15 only on/off persists (the candidates mode is per session).
-      window.mocquereau?.setSuggestionsEnabled?.(next !== "off").catch(() => {});
+      window.mocquereau?.setSuggestionsMode?.(next).catch(() => {});
       if (next === prev) return;
       // A run of the old mode never lands in the new one.
       cancelRunning();
