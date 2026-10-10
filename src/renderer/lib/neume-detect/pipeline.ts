@@ -57,6 +57,13 @@ import type {
 
 export const MAX_LONG_SIDE = 2400;
 export const MIN_CONFIDENCE = 0.3;
+/**
+ * Fracao minima das linhas da pauta que a tinta binarizada do canal cobre para a pauta ser removida;
+ * abaixo, a pauta sumiu no canal (pauta vermelha no R) e a remocao e pulada (`red`). Herdado da onda
+ * A3 (#7), nunca ajustado pelo eval. Medido (2026-10-10): fixtures sinteticas, pauta preta 1,00 e
+ * vermelha 0,02 a 0,06; eval dos 3 projetos do usuario (24 medidas distintas, todas no R): 3 a 1,00
+ * e 21 entre 0,08 e 0,39, seis delas perto do limite (0,24 a 0,39; 0,32 e 0,39 tem a remocao feita).
+ */
 const RED_COVERAGE = 0.3;
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
