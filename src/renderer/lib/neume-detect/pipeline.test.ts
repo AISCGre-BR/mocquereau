@@ -729,4 +729,32 @@ describe('M4e — restos de pauta', () => {
     for (const s of fx.syllables)
       for (const n of fx.neumes[s.index]) expect(cands.some((c) => c.x <= n.x + n.w / 2 && n.x + n.w / 2 <= c.x + c.w)).toBe(true);
   });
+
+  const coversX = (c: PxBox, b: PxBox) => c.x <= b.x + b.w / 2 && b.x + b.w / 2 <= c.x + c.w;
+
+  it('elemento plano de nota (h = 2t + 3) e traço de ligadura fundido à cabeça ficam', () => {
+    const fx = buildDiastematicLine({ seed: 70, noise: false });
+    const lc = (i: number) => fx.staff.yTop + i * 16 + 0.5;
+    const t = fx.staff.t;
+    // elemento plano logo acima do limite, centrado na 3a linha, longe das notas
+    const flat = fillRect(fx.raster, 300, Math.round(lc(2) - (2 * t + 3) / 2), 30, 2 * t + 3, INK);
+    // clivis: cabeca 12x12 sobre a 2a linha + traço plano colado a direita, centrado na linha, com
+    // h = 2t + 2 (sozinho seria resto; mais fino que isso a remocao da pauta ja o apagaria)
+    const head = fillRect(fx.raster, 600, Math.round(lc(1) - 6), 12, 12, INK);
+    const stroke = fillRect(fx.raster, 612, Math.round(lc(1) - (2 * t + 1) / 2), 24, 2 * t + 2, INK);
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    const cands = res.candidates!.map((c) => fracToPx(c.box, fx.raster.width, fx.raster.height));
+    expect(cands.some((c) => coversX(c, flat))).toBe(true);
+    expect(cands.some((c) => coversX(c, head) && coversX(c, stroke))).toBe(true);
+  });
+
+  it('pauta inclinada 5°: restos em vários x saem, notas ficam', () => {
+    const fx = buildDiastematicLine({ residue: true, tiltDeg: 5, width: 1000, height: 360, seed: 71 });
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('D');
+    const cands = res.candidates!.map((c) => fracToPx(c.box, fx.raster.width, fx.raster.height));
+    expect(fx.residues).toHaveLength(3);
+    for (const r of fx.residues!) expect(cands.some((c) => coversX(c, r))).toBe(false);
+    for (const s of fx.syllables) for (const n of fx.neumes[s.index]) expect(cands.some((c) => coversX(c, n))).toBe(true);
+  });
 });

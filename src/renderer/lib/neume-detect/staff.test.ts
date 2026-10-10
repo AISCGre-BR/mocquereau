@@ -57,6 +57,27 @@ describe('staff', () => {
     expect(isStaffResidue({ x: 300, y: Math.round(yLine + 7), w: 30, h: 4 }, st)).toBe(false);
   });
 
+  it('isStaffResidue: elemento plano com h = 2t + 3 sobre a linha não é resto (limite)', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!)[0];
+    const t = st.metrics.t;
+    const yLine = st.lines[2].ys[300];
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - (2 * t + 2) / 2), w: 30, h: 2 * t + 2 }, st)).toBe(true);
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - (2 * t + 3) / 2), w: 30, h: 2 * t + 3 }, st)).toBe(false);
+  });
+
+  it('isStaffResidue: glifo centrado fora de [x0, x1) da pauta nunca é resto', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!)[0];
+    const yR = st.lines[2].ys[st.lines[2].ys.length - 1];
+    const yL = st.lines[2].ys[0];
+    expect(isStaffResidue({ x: st.x1 + 5, y: Math.round(yR - 2), w: 30, h: 5 }, st)).toBe(false);
+    expect(isStaffResidue({ x: 0, y: Math.round(yL - 2), w: 30, h: 5 }, st)).toBe(false);
+    expect(isStaffResidue({ x: -100, y: Math.round(yL - 2), w: 30, h: 5 }, st)).toBe(false);
+  });
+
   it('acha pauta inclinada 6° (runs curtas na segunda tentativa) e devolve o ângulo', () => {
     const r = createRaster(700, 300);
     drawStaff(r, { x0: 40, x1: 660, yTop: 40, lines: 4, d: 14, t: 2, tiltDeg: 6 });
