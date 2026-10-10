@@ -1083,3 +1083,48 @@ describe('M4g — valor escolhido', () => {
     expect(MIN_CONFIDENCE).toBe(0.3);
   });
 });
+
+describe('borda escura do scan na área', () => {
+  // Linha adiastemática sob uma faixa preta de 60 px (borda do scan acima do pergaminho), com capitais
+  // laranja e um bloco pintado oliva abaixo dos neumas. A área começa dentro da faixa preta (cerca de
+  // um terço dela) e termina cortando o topo das capitais e do bloco.
+  const BORDER = 60;
+  const build = () => {
+    const fx = buildAdiastematicLine({ seed: 81, words: [['Do', 'mi', 'nus'], ['di', 'xit']], text: false });
+    const { width: W, height: h } = fx.raster;
+    const H = h + BORDER;
+    const r = createRaster(W, H);
+    r.data.set(fx.raster.data, W * BORDER * 4);
+    fillRect(r, 0, 0, W, BORDER, [10, 9, 8]);
+    const shift = (b: PxBox): PxBox => ({ ...b, y: b.y + BORDER });
+    const ORANGE = [232, 112, 58] as const;
+    drawText(r, 'DOMINUS', 70, BORDER + 200, 40, 7, ORANGE); // topo das capitais em BORDER + 120
+    fillRect(r, 900, BORDER + 122, 160, 70, [118, 120, 86]); // bloco pintado oliva
+    const truth: Record<number, PxBox> = {};
+    for (const s of fx.syllables) truth[s.index] = shift(fx.truth[s.index]);
+    // 20 px de preto na área (35 no raster, com a margem: a medida de u só ignora runs > 40); corta 10 px das capitais
+    const area = { x: 0, y: (BORDER - 20) / H, w: 1, h: 150 / H };
+    return { r, W, H, fx, truth, area };
+  };
+
+  it('sequencial: a faixa preta não infla u nem apaga os neumas; uma caixa por sílaba', () => {
+    const { r, W, H, fx, truth, area } = build();
+    const res = suggestBoxes({ image: r, notation: 'adiastematic', syllables: fx.syllables, bands: [area] });
+    expect(res.debug.strokeWidth).toBeLessThanOrEqual(2 * fx.u);
+    expect(res.suggestions.map((s) => s.index)).toEqual(fx.syllables.map((s) => s.index));
+    const got = boxesPx(res, W, H);
+    for (const s of fx.syllables) expect(iou(got[s.index], truth[s.index])).toBeGreaterThanOrEqual(0.7);
+  });
+
+  it('candidatos: cada neuma coberto; nada na faixa preta', () => {
+    const { r, W, H, fx, area } = build();
+    const res = suggestBoxes({ image: r, notation: 'adiastematic', syllables: [], mode: 'candidates', bands: [area] });
+    const cands = res.candidates!.map((c) => fracToPx(c.box, W, H));
+    for (const s of fx.syllables)
+      for (const n of fx.neumes[s.index]) {
+        const cx = n.x + n.w / 2, cy = n.y + BORDER + n.h / 2;
+        expect(cands.some((c) => c.x <= cx && cx <= c.x + c.w && c.y <= cy && cy <= c.y + c.h)).toBe(true);
+      }
+    for (const c of cands) expect(c.y + c.h / 2).toBeGreaterThan(BORDER);
+  });
+});

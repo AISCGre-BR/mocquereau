@@ -12,13 +12,14 @@ import {
   cropMask,
   bestContrastChannel,
   inkContrasts,
+  maskedMedian,
   pickInkChannel,
   prepareWork,
   rednessInk,
   upscale2xGray,
   upscale2xMask,
 } from './image';
-import { darkBlobs } from './mask';
+import { darkBlobs, scanBorder } from './mask';
 import { mergeBoxesIndexed } from './merge';
 import { deriveParams, estimateStrokeWidth, staffMetrics, strokeWidthOutside, type Params, type StaffMetrics } from './scale';
 import {
@@ -271,6 +272,29 @@ function withoutSolidNotes(ink: Mask): Mask {
 }
 
 /**
+ * So os componentes com centro na area desenhada (M4d): o que entra nela vindo da margem (topo de
+ * capitais ou de um bloco pintado cortado pela borda inferior, rubrica acima) e contexto; cortado
+ * pela borda, seus runs encurtam e podem dominar a moda de u. Sem nenhum, a mascara inteira.
+ */
+function centredIn(ink: Mask, inner: PxBox): Mask {
+  const lab = labelComponents(ink);
+  const keep = new Uint8Array(lab.count + 1);
+  let any = false;
+  for (const c of lab.components) {
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    if (cx >= inner.x && cx <= inner.x + inner.w && cy >= inner.y && cy <= inner.y + inner.h) {
+      keep[c.label] = 1;
+      any = true;
+    }
+  }
+  if (!any) return ink;
+  const data = new Uint8Array(ink.data.length);
+  for (let i = 0; i < data.length; i++) data[i] = keep[lab.labels[i]];
+  return { data, width: ink.width, height: ink.height };
+}
+
+/**
  * Espessura do traco medida fora da linha de texto: a caneta do texto costuma ser mais grossa que a
  * dos neumas e, com mais pixels, domina a moda (M4a). Sem linha de texto, ou se nada sobra fora dela,
  * fica a medida da faixa inteira; a medida de fora so e aceita se for menor. Na notacao quadrada
@@ -278,7 +302,7 @@ function withoutSolidNotes(ink: Mask): Mask {
  * desenhada: as faixas da margem acima e abaixo tambem ficam fora (M4d).
  */
 export function measureU(grayInk: Mask, notation: SuggestInput['notation'], inner?: PxBox): number {
-  const ink = notation === 'diastematic' ? withoutSolidNotes(grayInk) : grayInk;
+  const ink = notation === 'diastematic' ? withoutSolidNotes(inner ? centredIn(grayInk, inner) : grayInk) : inner ? centredIn(grayInk, inner) : grayInk;
   const u0 = estimateStrokeWidth(ink);
   if (u0 === 0) return 0;
   // margem de contexto acima e abaixo da area desenhada (meias-letras, caneta do texto): fora da medida
@@ -300,6 +324,26 @@ export function measureU(grayInk: Mask, notation: SuggestInput['notation'], inne
 }
 
 /**
+ * Borda do scan (scanBorder) vira pixel fora da imagem: invalida e, nos canais, a mediana do resto
+ * valido (o pergaminho), para nao puxar a media local do Sauvola junto a ela. Sem borda, `work` volta
+ * intacto.
+ */
+function dropScanBorder(work: Work): Work {
+  const border = scanBorder(work.gray, work.valid);
+  if (!border) return work;
+  const valid = work.valid.data.slice();
+  for (let i = 0; i < valid.length; i++) if (border.data[i]) valid[i] = 0;
+  const vmask = { data: valid, width: work.valid.width, height: work.valid.height };
+  const fill = (img: GrayImage): GrayImage => {
+    const v = maskedMedian(img, vmask);
+    const data = img.data.slice();
+    for (let i = 0; i < data.length; i++) if (border.data[i]) data[i] = v;
+    return { data, width: img.width, height: img.height };
+  };
+  return { ...work, r: fill(work.r), g: fill(work.g), b: fill(work.b), gray: fill(work.gray), valid: vmask };
+}
+
+/**
  * Etapa 0: raster de trabalho (recorte, reducao a MAX_LONG_SIDE, ampliacao 2x se u < 2) e espessura
  * de traco. Unico ponto de preparacao do raster de trabalho de uma faixa.
  */
@@ -313,6 +357,7 @@ function buildWork(
   let work: Work = { ...prepareWork(image, rect, scale), ox: rect.x, oy: rect.y, sx: 1, sy: 1 };
   work.sx = work.r.width / rect.w;
   work.sy = work.r.height / rect.h;
+  work = dropScanBorder(work);
   let grayInk = binarizeOtsu(work.gray, work.valid);
   let u = measureU(grayInk, notation, inner && rasterToWork(inner, work));
   let up = 1;
