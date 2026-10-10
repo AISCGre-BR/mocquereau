@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { liveCandidates, nextCandidate } from "./candidates";
+import { liveCandidates, nextCandidate, unionBoxes } from "./candidates";
 import type { ManuscriptLine } from "../models";
 
 const C = (x: number, band = 0) => ({ box: { x, y: 0.2, w: 0.08, h: 0.2 }, band });
@@ -22,4 +22,11 @@ describe("nextCandidate", () => {
   it("fim da área: o primeiro da área seguinte", () => expect(nextCandidate(cands, C(0.4).box, areas)).toBe(2));
   it("fim de tudo: null", () => expect(nextCandidate(cands, { x: 0.3, y: 0.6, w: 0.08, h: 0.2 }, areas)).toBeNull());
   it("sem áreas salvas: tudo é a área 0", () => expect(nextCandidate([C(0.1), C(0.4)], C(0.1).box, [])).toBe(1));
+});
+
+describe("unionBoxes", () => {
+  it("o menor retângulo que contém as duas", () => {
+    const u = unionBoxes({ x: 0.1, y: 0.3, w: 0.1, h: 0.1 }, { x: 0.3, y: 0.2, w: 0.1, h: 0.1 });
+    expect([u.x, u.y, u.w, u.h].map((n) => +n.toFixed(9))).toEqual([0.1, 0.2, 0.3, 0.2]);
+  });
 });

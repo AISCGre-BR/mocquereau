@@ -350,3 +350,63 @@ describe("ImageCanvas: áreas da linha de neumas (S7)", () => {
     }
   });
 });
+
+describe("ImageCanvas: candidatos (M3)", () => {
+  const RECT100 = { left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} };
+  const BIG = { x: 0.1, y: 0.1, w: 0.5, h: 0.5 };
+  const SMALL = { x: 0.2, y: 0.2, w: 0.1, h: 0.1 };
+
+  function setupCands() {
+    Object.assign(HTMLElement.prototype, { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn(), hasPointerCapture: () => true });
+    const onPickCandidate = vi.fn();
+    const onBoxCommit = vi.fn();
+    const utils = render(
+      <ImageCanvas
+        image={IMAGE}
+        syllableBoxes={{}}
+        activeSyllableIdx={0}
+        syllableRange={{ start: 0, end: 1 }}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onBoxCommit={onBoxCommit}
+        candidates={[BIG, SMALL]}
+        onPickCandidate={onPickCandidate}
+      />,
+    );
+    const wrapper = utils.container.querySelector("[data-image-wrapper]") as HTMLElement;
+    wrapper.getBoundingClientRect = () => RECT100 as DOMRect;
+    const ev = (type: string, x: number, y: number, shiftKey = false) =>
+      act(() => void wrapper.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, shiftKey })));
+    return { ...utils, wrapper, ev, onPickCandidate, onBoxCommit };
+  }
+
+  it("contorno neutro, sem etiqueta, sem ponteiro", () => {
+    const v = setupCands();
+    const els = v.container.querySelectorAll<HTMLElement>("[data-candidate]");
+    expect(els).toHaveLength(2);
+    expect(els[0].className).toContain("border-dashed");
+    expect(els[0].className).toContain("border-rule-strong");
+    expect(els[0].className).toContain("pointer-events-none");
+    expect(els[0].textContent).toBe("");
+  });
+
+  it("clique pega o menor candidato sob o ponto; Shift vai junto", () => {
+    const v = setupCands();
+    v.ev("pointerdown", 25, 25, true);
+    v.ev("pointerup", 25, 25, true);
+    expect(v.onPickCandidate).toHaveBeenCalledWith(1, true);
+    v.ev("pointerdown", 50, 50);
+    v.ev("pointerup", 50, 50);
+    expect(v.onPickCandidate).toHaveBeenLastCalledWith(0, false);
+    expect(v.onBoxCommit).not.toHaveBeenCalled();
+  });
+
+  it("arrastar a partir de um candidato desenha uma caixa", () => {
+    const v = setupCands();
+    v.ev("pointerdown", 25, 25);
+    v.ev("pointermove", 45, 45);
+    v.ev("pointerup", 45, 45);
+    expect(v.onPickCandidate).not.toHaveBeenCalled();
+    expect(v.onBoxCommit).toHaveBeenCalledOnce();
+  });
+});

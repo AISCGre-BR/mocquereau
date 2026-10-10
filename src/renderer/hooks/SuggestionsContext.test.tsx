@@ -561,4 +561,13 @@ describe("SuggestionsProvider", () => {
     await settle(() => call.resolve(cands([])));
     expect(h.value().notice).toBe("none");
   });
+  it("mudar as áreas da página descarta os candidatos (os índices de área deixam de valer)", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    const call = await startSuggest(h);
+    await settle(() => call.resolve(cands([B0, B1])));
+    expect(h.value().candidates).toHaveLength(2);
+    act(() => h.dispatch({ type: "SET_LINE_NEUME_BANDS", payload: { sourceId: "A", lineId: "a1", bands: [{ x: 0, y: 0, w: 1, h: 0.5 }] } }));
+    expect(h.value().candidates).toEqual([]);
+  });
 });

@@ -57,3 +57,10 @@ export function nextCandidate(cands: LiveCandidate[], prev: SyllableBox | null, 
   const later = cands.findIndex((c) => c.band > area);
   return later >= 0 ? later : null;
 }
+
+/** Shift+click: the smallest box holding both (a neume split in two groups). */
+export function unionBoxes(a: SyllableBox, b: SyllableBox): SyllableBox {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}

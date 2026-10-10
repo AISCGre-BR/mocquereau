@@ -19,6 +19,7 @@ import { createNeumeDetectClient, NeumeDetectCancelledError, type NeumeDetectCli
 import { planCandidates, planSuggestion, regionToView, type SuggestPlan } from "../lib/suggest/request";
 import { liveCandidates, type LiveCandidate } from "../lib/suggest/candidates";
 import type { SuggestionsMode } from "@shared/suggestions-mode";
+import { orderNeumeBands } from "@shared/band-order";
 import { loadSuggestImage, renderSuggestRaster } from "../lib/suggest/raster";
 import { isLineGap } from "../lib/syllable-gap";
 import { coveredByOtherPages } from "../lib/sources";
@@ -40,6 +41,8 @@ export interface PageCandidates {
   bands: number[];
   frame: BoxFrame;
   range: { start: number; end: number };
+  /** The page's areas at request time (areasKey): `bands` index them, so new areas = discard. */
+  areas: string;
 }
 
 export type SuggestStatus = "idle" | "running";
@@ -121,6 +124,16 @@ function stillValid(page: { frame: BoxFrame; range: { start: number; end: number
     page.range.start === line.syllableRange.start &&
     page.range.end === line.syllableRange.end
   );
+}
+
+/** Signature of the page's areas in reading order (the order the detector numbers them). */
+function areasKey(line: ManuscriptLine): string {
+  return JSON.stringify(orderNeumeBands(line.neumeBands ?? []));
+}
+
+/** The page's candidates still valid for the line as it is now: frame, range and areas. */
+function candidatesValid(page: PageCandidates, line: ManuscriptLine): boolean {
+  return stillValid(page, line) && page.areas === areasKey(line);
 }
 
 /** Suggested boxes a syllable can still take: no key (box or null), no gap, no legacy crop, inside the range. */
@@ -257,7 +270,7 @@ export function SuggestionsProvider({
     const next = new Map(candPages);
     for (const [lineId, page] of candPages) {
       const { line } = findLineById(project, lineId);
-      if (!line || !stillValid(page, line)) {
+      if (!line || !candidatesValid(page, line)) {
         next.delete(lineId);
         changed = true;
       }
@@ -342,6 +355,7 @@ export function SuggestionsProvider({
       // Frame and range at REQUEST time: a result for another frame is never shown.
       const frame = frameOf(line.imageAdjustments);
       const range = { start: line.syllableRange.start, end: line.syllableRange.end };
+      const areas = areasKey(line);
       const client = (clientRef.current ??= createClientRef.current());
       const token: Running = { lineId: line.id, id: null };
       runningRef.current = token;
@@ -362,7 +376,7 @@ export function SuggestionsProvider({
           let found: number;
           if (runMode === "candidates") {
             const cands = result.candidates ?? [];
-            const page: PageCandidates = { boxes: cands.map((c) => regionToView(c.box, region)), bands: cands.map((c) => c.band), frame, range };
+            const page: PageCandidates = { boxes: cands.map((c) => regionToView(c.box, region)), bands: cands.map((c) => c.band), frame, range, areas };
             updateCandPages((prev) => new Map(prev).set(line.id, page));
             found = cands.length;
           } else {
@@ -408,7 +422,7 @@ export function SuggestionsProvider({
   );
   const activeCandPage = activeLineId ? candPages.get(activeLineId) : undefined;
   const candidates = useMemo(
-    () => (activeCandPage && activeLine && stillValid(activeCandPage, activeLine) ? liveCandidates(activeCandPage, activeLine) : NO_CANDIDATES),
+    () => (activeCandPage && activeLine && candidatesValid(activeCandPage, activeLine) ? liveCandidates(activeCandPage, activeLine) : NO_CANDIDATES),
     [activeCandPage, activeLine],
   );
 

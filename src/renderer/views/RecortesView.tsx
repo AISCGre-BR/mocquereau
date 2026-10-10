@@ -25,7 +25,9 @@ import { MenuItem, MenuSeparator, MenuSurface } from "../ui/Menu";
 import { recortesMenuItems } from "../shell/menus";
 import { formatAccelerator } from "../shell/accelerator";
 import { flattenSyllables } from "../lib/sliceUtils";
-import { planGapToggle } from "../lib/syllable-gap";
+import { isLineGap, planGapToggle } from "../lib/syllable-gap";
+import { nextCandidate, unionBoxes } from "../lib/suggest/candidates";
+import { orderNeumeBands } from "@shared/band-order";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
 import { coveredByOtherPages } from "../lib/sources";
@@ -132,6 +134,43 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
         ? { start: Math.min(range.start, idx), end: Math.max(range.end, idx) }
         : undefined;
     writeBoxes({ ...viewBoxes, [idx]: box }, meta, grown);
+  }
+
+  // ── Candidates (M3): every pick is one commitBox, one undo step ───────────
+
+  const candidateBoxes = useMemo(() => suggestions.candidates.map((c) => c.box), [suggestions.candidates]);
+
+  /** After a candidate becomes the active syllable's box: the next syllable; at the range end it stays. */
+  function advanceAfterPick(active: number) {
+    const next = active + 1;
+    if (!range || next >= total || next > range.end) return;
+    recortes.setActiveSyllable(next);
+  }
+
+  /** Click: the candidate becomes the active syllable's box and the active moves on. Shift: unite, stay. */
+  function pickCandidate(index: number, union: boolean) {
+    const active = recortes.activeSyllable;
+    const cand = suggestions.candidates[index];
+    if (active === null || !cand) return;
+    if (union) {
+      const current = viewBoxes[active];
+      commitBox(active, current ? unionBoxes(current, cand.box) : cand.box);
+      return;
+    }
+    commitBox(active, cand.box);
+    advanceAfterPick(active);
+  }
+
+  /** Enter in the candidates mode on a pending syllable: the next candidate after the previous box. true = taken. */
+  function takeNextCandidate(active: number): boolean {
+    if (!activeLine || !activeSource) return false;
+    if (active in viewBoxes || isLineGap(activeLine, active) || active in activeSource.syllableCuts) return false;
+    const areas = orderNeumeBands(activeLine.neumeBands ?? []);
+    const i = nextCandidate(suggestions.candidates, viewBoxes[active - 1] ?? null, areas);
+    if (i === null) return false;
+    commitBox(active, suggestions.candidates[i].box);
+    advanceAfterPick(active);
+    return true;
   }
 
   /** Neume bands of the active page (S7); an empty list removes them. */
@@ -271,6 +310,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return;
     if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
       e.preventDefault();
+      // M3: Enter atribui o próximo candidato à ativa pendente e avança; sem candidato, só avança.
+      if (e.key === "Enter" && suggestions.mode === "candidates" && active !== null && takeNextCandidate(active)) return;
       // Enter aceita a sugestão da sílaba ativa e avança; Tab só avança (S6).
       const accepted = e.key === "Enter" && active !== null && active in suggestions.active;
       if (accepted) suggestions.accept(active);
@@ -390,6 +431,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onActivateSyllable={recortes.setActiveSyllable}
                 onBoxCommit={(idx, box) => commitBox(idx, box)}
                 suggestedBoxes={suggestions.active}
+                candidates={candidateBoxes}
+                onPickCandidate={pickCandidate}
                 neumeBands={activeLine?.neumeBands}
                 bandTool={recortes.bandTool}
                 activeBand={recortes.activeBand}
