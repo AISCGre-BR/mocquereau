@@ -16,14 +16,24 @@ export * from "./metrics";
 export { suggestBoxes, planSuggestion, regionToView, viewToRegion, coveredByOtherPages, frameOf };
 
 /**
- * The sequential plan: the page as the user starts it, nothing rejected. `anchors` (view fractions)
- * are boxes already on the page (one-anchor scenario), passed to the detector as anchors.
+ * The plan, built by the app's planSuggestion. `anchors` (one-anchor scenario) are ground-truth boxes
+ * already on the page: they go into a copy of the line as real syllableBoxes, in the line's box frame
+ * (the stored boxes), so the app skips them as targets and passes them as anchors (suggest: false),
+ * exactly as when the user has drawn them. Without anchors: the page as the user starts it.
  */
-export function planCase(c: EvalCase, anchors: { index: number; box: Rect }[] = []): SuggestPlan | null {
-  const plan = planSuggestion(c.sourceModel, c.line, c.words, coveredByOtherPages(c.sourceModel, c.line.id, ""), new Set());
-  if (!plan || !anchors.length) return plan;
-  const own = anchors.map((a) => ({ index: a.index, box: viewToRegion(a.box, plan.region) }));
-  return { ...plan, input: { ...plan.input, anchors: [...(plan.input.anchors ?? []), ...own] } };
+export function planCase(c: EvalCase, anchors: { index: number }[] = []): SuggestPlan | null {
+  let line = c.line;
+  let sourceModel = c.sourceModel;
+  if (anchors.length) {
+    const boxes = { ...(c.line.syllableBoxes ?? {}) };
+    for (const a of anchors) {
+      const stored = c.storedBoxes[a.index];
+      if (stored) boxes[a.index] = { ...stored };
+    }
+    line = { ...c.line, syllableBoxes: boxes };
+    sourceModel = { ...c.sourceModel, lines: c.sourceModel.lines.map((l) => (l.id === line.id ? line : l)) };
+  }
+  return planSuggestion(sourceModel, line, c.words, coveredByOtherPages(sourceModel, line.id, ""), new Set());
 }
 
 /** Region to rasterize for the case (the whole view when there is no plan). */
@@ -34,7 +44,7 @@ export function caseRegion(c: EvalCase): Rect {
 export function runSequential(
   c: EvalCase,
   raster: RasterRGBA,
-  opts: { minConfidence?: number; anchors?: { index: number; box: Rect }[] } = {},
+  opts: { minConfidence?: number; anchors?: { index: number }[] } = {},
 ): { sugs: Map<number, Rect>; ms: number | null } {
   const plan = planCase(c, opts.anchors);
   const sugs = new Map<number, Rect>();
@@ -48,13 +58,14 @@ export function runSequential(
 }
 
 /**
- * Candidate boxes of the detector, in view fractions. Until the candidates plan
- * exists (later task), the sequential plan with `mode: 'candidates'` and no syllables.
+ * Candidate boxes of the detector, in view fractions. There is no candidates plan in the app yet:
+ * the sequential plan with `mode: 'candidates'` and no syllables. Its anchors (the page's boxes) make
+ * the detector drop glyphs mostly inside them and set the box height on staves (Task 7b).
  */
 export function runCandidates(
   c: EvalCase,
   raster: RasterRGBA,
-  anchors: { index: number; box: Rect }[] = [],
+  anchors: { index: number }[] = [],
 ): { cands: Rect[]; ms: number | null } {
   const plan = planCase(c, anchors);
   if (!plan) return { cands: [], ms: null }; // no detector call: not a timing sample
