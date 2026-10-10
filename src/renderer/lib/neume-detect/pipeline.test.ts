@@ -18,6 +18,7 @@ import {
   fracToPx,
   iou,
   pxToFrac,
+  staffLineTop,
   rotateRaster90,
   scaleBox,
   upscaleRasterNearest,
@@ -756,5 +757,85 @@ describe('M4e — restos de pauta', () => {
     expect(fx.residues).toHaveLength(3);
     for (const r of fx.residues!) expect(cands.some((c) => coversX(c, r))).toBe(false);
     for (const s of fx.syllables) for (const n of fx.neumes[s.index]) expect(cands.some((c) => coversX(c, n))).toBe(true);
+  });
+});
+
+describe('altura das caixas segue as caixas da própria página (modo D)', () => {
+  const opts = { tiltDeg: 5, width: 1000, height: 360, seed: 72 } as const;
+  const whole = [{ x: 0, y: 0, w: 1, h: 1 }];
+  const px = (fx: ReturnType<typeof buildDiastematicLine>, b: { x: number; y: number; w: number; h: number }) => fracToPx(b, fx.raster.width, fx.raster.height);
+  const ints = (fx: ReturnType<typeof buildDiastematicLine>, bs: { x: number; y: number; w: number; h: number }[]) =>
+    bs.map((b) => { const p = px(fx, b); return [p.x, p.y, p.w, p.h].map((v) => Math.round(v)).join(','); }).join(' ');
+
+  it('sem âncoras: caixas idênticas às de antes (pauta ±0,5s)', () => {
+    const fx = buildDiastematicLine(opts);
+    const cand = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates', bands: whole });
+    const seq = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: fx.syllables, bands: whole });
+    expect(ints(fx, cand.candidates!.map((c) => c.box))).toMatchInlineSnapshot(`"98,57,16,66 98,57,30,115 120,59,16,66 305,75,16,66 305,75,30,115 331,77,16,67 358,80,16,66 512,93,16,66 512,93,30,115 535,95,16,66 562,97,16,67 719,111,16,67 719,111,30,116 743,113,16,67 765,115,16,67"`);
+    expect(ints(fx, seq.suggestions.map((c) => c.box))).toMatchInlineSnapshot(`"98,57,38,115 305,75,69,115 512,93,66,115 719,111,62,116"`);
+  });
+
+  // centro da linha i da pauta da fixture em x (topo + (t - 1) / 2)
+  const lineC = (fx: ReturnType<typeof buildDiastematicLine>, i: number, x: number) => staffLineTop(fx.staff, i, x) + (fx.staff.t - 1) / 2;
+  const S = 16;
+  /** Âncora da sílaba 0: de 1s abaixo do topo da pauta a 2s abaixo da base (inclui parte do texto). */
+  const anchorOf = (fx: ReturnType<typeof buildDiastematicLine>) => {
+    const t = fx.truth[0];
+    // inteiros: a fracao volta ao mesmo px sem o arredondamento para fora
+    const y0 = Math.round(Math.min(lineC(fx, 0, t.x), lineC(fx, 0, t.x + t.w)) + 1 * S);
+    const y1 = Math.round(Math.max(lineC(fx, 3, t.x), lineC(fx, 3, t.x + t.w)) + 2 * S);
+    return { index: 0, box: pxToFrac({ x: t.x, y: y0, w: t.w, h: y1 - y0 }, fx.raster.width, fx.raster.height) };
+  };
+
+  it('com âncora: topo e base com os mesmos deslocamentos da âncora, no x de cada caixa (pauta a 5°)', () => {
+    const fx = buildDiastematicLine(opts);
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates', bands: whole, anchors: [anchorOf(fx)] });
+    const pad = Math.max(2, res.debug.strokeWidth);
+    const notes = fx.syllables.slice(1).flatMap((s) => fx.neumes[s.index]);
+    let checked = 0;
+    for (const k of res.candidates!) {
+      const c = px(fx, k.box);
+      // so caixas de uma nota (glifo = a nota): as de letras do texto ficam de fora desta conta
+      const n = notes.find((b) => b.x >= c.x && b.x + b.w <= c.x + c.w && Math.abs(c.w - (b.w + 2 * pad)) <= 1);
+      if (!n) continue;
+      const top = Math.min(lineC(fx, 0, c.x), lineC(fx, 0, c.x + c.w)) + 1 * S;
+      const bottom = Math.max(lineC(fx, 3, c.x), lineC(fx, 3, c.x + c.w)) + 2 * S;
+      // 2 px: arredondamento para fora da caixa (<= 1) + linha rastreada vs linha desenhada a 5 graus (<= 1)
+      expect(Math.abs(c.y - Math.min(top, n.y - pad))).toBeLessThanOrEqual(2);
+      expect(Math.abs(c.y + c.h - Math.max(bottom, n.y + n.h + pad))).toBeLessThanOrEqual(2);
+      checked++;
+    }
+    expect(checked).toBeGreaterThanOrEqual(6);
+  });
+
+  it('com âncora: neuma acima do topo derivado continua inteiro na caixa', () => {
+    const fx = buildDiastematicLine(opts);
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates', bands: whole, anchors: [anchorOf(fx)] });
+    const cands = res.candidates!.map((k) => px(fx, k.box));
+    for (const s of fx.syllables.slice(1))
+      for (const n of fx.neumes[s.index])
+        expect(cands.some((c) => c.x <= n.x && n.x + n.w <= c.x + c.w && c.y <= n.y && n.y + n.h <= c.y + c.h)).toBe(true);
+  });
+
+  it('duas faixas empilhadas, âncora só na primeira: a segunda fica no padrão', () => {
+    const a = buildDiastematicLine({ seed: 73 });
+    const b = buildDiastematicLine({ seed: 74 });
+    const W = a.raster.width, H = a.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4);
+    data.set(a.raster.data, 0);
+    data.set(b.raster.data, W * H * 4);
+    const image = { data, width: W, height: 2 * H };
+    const bands = [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }];
+    const an = anchorOf(a);
+    const anchor = { index: 0, box: { ...an.box, y: an.box.y / 2, h: an.box.h / 2 } }; // fracoes da imagem empilhada
+    const withA = suggestBoxes({ image, notation: 'diastematic', syllables: [], mode: 'candidates', bands, anchors: [anchor] });
+    const without = suggestBoxes({ image, notation: 'diastematic', syllables: [], mode: 'candidates', bands });
+    const second = (r: SuggestResult) => r.candidates!.filter((c) => c.band === 1).map((c) => c.box);
+    expect(second(withA).length).toBeGreaterThan(0);
+    expect(second(withA)).toEqual(second(without));
+    // e a primeira muda: alguma caixa da faixa 1 com âncora não existe sem âncora
+    const first = (r: SuggestResult) => r.candidates!.filter((c) => c.band === 0).map((c) => JSON.stringify(c.box));
+    const old = new Set(first(without));
+    expect(first(withA).some((k) => !old.has(k))).toBe(true);
   });
 });

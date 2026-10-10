@@ -507,6 +507,29 @@ function analyzeBand(
   return { band, work, staff, metrics, tl, u, glyphs, text, bars: st.bars, red: st.red };
 }
 
+function median(v: number[]): number {
+  const s = [...v].sort((p, q) => p - q);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/**
+ * Deslocamentos (em s) do topo e da base das caixas da pagina em relacao a pauta, no x de cada uma:
+ * (y - topo da pauta) / s e (y + h - base da pauta) / s; mediana sobre as ancoras da faixa.
+ * null sem ancoras.
+ */
+function anchorStaffOffsets(staff: Staff, s: number, anchors: { box: PxBox }[]): { top: number; bottom: number } | null {
+  if (!anchors.length || s <= 0) return null;
+  const tops: number[] = [];
+  const bottoms: number[] = [];
+  for (const { box } of anchors) {
+    const span = staffSpanAt(staff, box.x, box.x + box.w);
+    tops.push((box.y - span.top) / s);
+    bottoms.push((box.y + box.h - span.bottom) / s);
+  }
+  return { top: median(tops), bottom: median(bottoms) };
+}
+
 /**
  * Caixa de um grupo de glifos (px de trabalho da faixa `a`): pad, extensao da pauta, corte na linha
  * de texto, recuo diante das ancoras; trabalho -> raster (arredondando para fora) -> fracoes.
@@ -524,12 +547,16 @@ function placeBox(
   let x1 = Math.max(...members.map((m) => m.x + m.w)) + pad;
   let y0 = Math.min(...members.map((m) => m.y)) - pad;
   let y1 = Math.max(...members.map((m) => m.y + m.h)) + pad;
+  // Altura na pauta: deslocamentos do topo e da base em relacao a pauta, em s. Com caixas da propria
+  // pagina nesta faixa, os delas (mediana); senao +-0,5s. A tinta do glifo sempre cabe.
+  const offs = staff && metrics ? anchorStaffOffsets(staff, metrics.s, anchorsWork) : null;
   if (staff && metrics) {
     const span = staffSpanAt(staff, x0, x1);
-    y0 = Math.min(y0, span.top - 0.5 * metrics.s);
-    y1 = Math.max(y1, span.bottom + 0.5 * metrics.s);
+    y0 = Math.min(y0, span.top + (offs ? offs.top : -0.5) * metrics.s);
+    y1 = Math.max(y1, span.bottom + (offs ? offs.bottom : 0.5) * metrics.s);
   }
-  if (tl) y1 = Math.min(y1, Math.max(y0 + 1, tl.top + 0.2 * tl.xHeight));
+  // corte na linha de texto, salvo quando a altura vem das caixas da pagina (que podem incluir o texto)
+  if (tl && !offs) y1 = Math.min(y1, Math.max(y0 + 1, tl.top + 0.2 * tl.xHeight));
   x0 = Math.max(0, x0);
   y0 = Math.max(0, y0);
   x1 = Math.min(work.r.width, x1);
