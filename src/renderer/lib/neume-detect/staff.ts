@@ -160,19 +160,51 @@ export function findStaves(ink: Mask, metrics: StaffMetrics, minRun = Math.max(8
   return staves;
 }
 
-/** Na segunda tentativa (runs curtas), a pauta precisa cobrir ao menos esta fracao da largura. */
-const SHORT_RUN_MIN_EXTENT = 0.5;
+/** Pautas das tentativas de recurso (runs curtas, mapa r - g) precisam cobrir esta fracao das colunas. */
+export const FALLBACK_MIN_COVERAGE = 0.5;
+
+/**
+ * Fracao das colunas da mascara em que ao menos metade das linhas da pauta tem tinta a +- ceil(t)
+ * de ys[x]. Ao contrario de x1 - x0, nao conta os vaos entre rubricas nas duas pontas.
+ */
+export function staffColumnCoverage(ink: Mask, staff: Staff): number {
+  const { width: w, height: h, data } = ink;
+  const r = Math.max(1, Math.ceil(staff.metrics.t));
+  const need = Math.ceil(staff.lines.length / 2);
+  let present = 0;
+  for (let x = staff.x0; x < staff.x1; x++) {
+    let n = 0;
+    for (const l of staff.lines) {
+      const yc = Math.round(l.ys[x]);
+      for (let y = Math.max(0, yc - r); y <= Math.min(h - 1, yc + r); y++)
+        if (data[y * w + x]) {
+          n++;
+          break;
+        }
+    }
+    if (n >= need) present++;
+  }
+  return w ? present / w : 0;
+}
+
+/** Linhas minimas de uma pauta das tentativas de recurso: o topo e a base de uma linha de letras sao 2. */
+export const FALLBACK_MIN_LINES = 3;
+
+/** Pauta aceitavel numa tentativa de recurso: >= FALLBACK_MIN_LINES linhas e cobertura das colunas. */
+export function isFallbackStaff(ink: Mask, st: Staff): boolean {
+  return st.lines.length >= FALLBACK_MIN_LINES && staffColumnCoverage(ink, st) >= FALLBACK_MIN_COVERAGE;
+}
 
 /**
  * Primeiro com runs >= 3d; sem pauta, de novo com runs >= max(8, 2t + 4): numa pauta inclinada os
  * runs horizontais de uma linha medem ~ t / tan(angulo), curtos demais para 3d a partir de ~3 graus.
+ * Runs curtas tambem casam com tracos horizontais alinhados de letras grandes (rubricas): na segunda
+ * tentativa so ficam pautas que cobrem FALLBACK_MIN_COVERAGE das colunas.
  */
 export function findStavesRobust(ink: Mask, metrics: StaffMetrics): Staff[] {
   const first = findStaves(ink, metrics);
   if (first.length) return first;
-  // runs curtas tambem casam com tracos horizontais alinhados de letras grandes (rubricas): so linhas
-  // que atravessam boa parte da faixa
-  return findStaves(ink, metrics, Math.max(8, 2 * metrics.t + 4)).filter((st) => st.x1 - st.x0 >= SHORT_RUN_MIN_EXTENT * ink.width);
+  return findStaves(ink, metrics, Math.max(8, 2 * metrics.t + 4)).filter((st) => isFallbackStaff(ink, st));
 }
 
 function median3(a: number, b: number, c: number): number {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { extractChannel } from './image';
 import { suggestBoxes } from './pipeline';
+import { estimateStrokeWidth } from './scale';
+import { binarizeOtsu } from './threshold';
 import type { RasterRGBA } from './types';
 import {
   buildAdiastematicLine,
@@ -7,6 +10,8 @@ import {
   createRaster,
   fillRect,
   INK,
+  drawNeume,
+  drawStaff,
   drawText,
   LIGHT_RED_LINE,
   RED_LINE,
@@ -564,5 +569,33 @@ describe('M4b — pauta inclinada e vermelha', () => {
     drawText(fx.raster, 'DOMINUS', 80, 150, 40, 6, RED_LINE); // letras grandes vermelhas
     const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
     expect(res.debug.mode).toBe('A');
+  });
+
+  it('rubricas vermelhas nas duas pontas da faixa não viram pauta (extensão sem cobertura)', () => {
+    const fx = buildAdiastematicLine({ seed: 66, words: [['Do', 'mi', 'nus'], ['di', 'xit']] });
+    drawText(fx.raster, 'DOMINUS', 20, 150, 40, 6, RED_LINE);
+    drawText(fx.raster, 'DIXIT', 960, 150, 40, 6, RED_LINE);
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('A');
+  });
+
+  it('uma linha inteira de capitais vermelhas não vira pauta', () => {
+    const fx = buildAdiastematicLine({ seed: 67, words: [['Do', 'mi', 'nus'], ['di', 'xit']] });
+    drawText(fx.raster, 'DOMINUSDIXITADMEFILIUSMEUS', 20, 150, 40, 6, RED_LINE);
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('A');
+  });
+
+  it('pauta preta reta achada de primeira: o limite de u do modo D não se aplica', () => {
+    const fx = buildDiastematicLine({ seed: 68, noise: false, staff: false });
+    drawStaff(fx.raster, { x0: 40, x1: 700, yTop: 60, lines: 4, d: 14, t: 2 });
+    // tracos grossos (6 px) em quantidade: a moda da espessura fica acima de max(t, s/4) = 4
+    for (let i = 0; i < 24; i++) for (const y of [5, 95]) drawNeume(fx.raster, 'virga', 760 + i * 25, y, 6);
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'));
+    const u = estimateStrokeWidth(ink);
+    expect(u).toBeGreaterThan(4);
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('D');
+    expect(res.debug.strokeWidth).toBe(u);
   });
 });

@@ -23,6 +23,7 @@ import {
   classifySpecialGlyphs,
   cropStaff,
   findStavesRobust,
+  isFallbackStaff,
   isBarLine,
   removeStaffLines,
   staffBottom,
@@ -120,9 +121,6 @@ interface InkStage {
  * componente maior a ate 6u (vaos internos de um grupo de neumas). Escolhido pelo eval (2u a 6u).
  */
 const SPECK_REACH = 6;
-
-/** Pauta achada so no mapa r - g precisa cobrir ao menos esta fracao da largura da faixa. */
-const RED_MIN_EXTENT = 0.5;
 
 /** Etapas 1 e 3: binarizacao, manchas, remocao da pauta, rotulagem, barras, filtros, pontos isolados. */
 function inkStage(
@@ -294,6 +292,7 @@ function analyzeBand(
   // Etapa 3: pauta
   let staff: Staff | null = null;
   let metrics: StaffMetrics | null = null;
+  let fromRed = false;
   if (input.notation === 'diastematic') {
     const anchorBoxes = () => anchors.map((a) => fracToWork(a.box, work, W, H));
     metrics = staffMetrics(grayInk);
@@ -303,10 +302,11 @@ function analyzeBand(
       const redInk = binarizeOtsu(rednessInk(work.r, work.g), work.valid);
       const m2 = staffMetrics(redInk);
       // so linhas longas: rubricas (letras vermelhas grandes) tambem tem tracos horizontais alinhados
-      const s2 = (m2 ? findStavesRobust(redInk, m2) : []).filter((st) => st.x1 - st.x0 >= RED_MIN_EXTENT * redInk.width);
+      const s2 = (m2 ? findStavesRobust(redInk, m2) : []).filter((st) => isFallbackStaff(redInk, st));
       if (s2.length) {
         metrics = m2;
         staves = s2;
+        fromRed = true;
       }
     }
     if (staves.length > 1 && band.source === 'staff') {
@@ -340,9 +340,9 @@ function analyzeBand(
   lap('staff');
   debug.mode = staff ? 'D' : 'A';
   debug.bandSource = band.source;
-  // Notas quadradas cheias (~d) nao sao traco: sem linhas de pauta e texto na medida (pauta vermelha
-  // invisivel no cinza, texto apagado por measureU), a moda vira o tamanho da nota.
-  if (staff && metrics) u = Math.min(u, Math.max(metrics.t, metrics.s / 4));
+  // Pauta so no mapa r - g: as linhas nao estao no cinza e measureU apaga o texto, entao a moda da
+  // espessura vira o lado das notas quadradas cheias (~d). So nesse caso u e limitado.
+  if (staff && metrics && fromRed) u = Math.min(u, Math.max(metrics.t, metrics.s / 4));
   debug.strokeWidth = u;
   const p = deriveParams(u, staff ? metrics : null, prep.up);
 

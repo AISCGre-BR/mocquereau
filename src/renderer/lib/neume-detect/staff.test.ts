@@ -63,8 +63,9 @@ describe('staff', () => {
     const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
     const st = findStavesRobust(ink, staffMetrics(ink)!);
     expect(st[0].angleDeg).toBe(0);
-    // mesma formula do teste reto acima: centro = topo + (t - 1) / 2
-    st[0].lines.forEach((l, i) => expect(Math.abs(l.mean - (fx.staff.yTop + i * 16 + 0.5))).toBeLessThanOrEqual(0.5));
+    // medias do findStaves anterior a Task 4 (o rastreador centra a linha de 2 px em y inteiro)
+    expect(st[0].lines.map((l) => l.mean)).toEqual([60, 76, 92, 108]);
+    expect([st[0].x0, st[0].x1]).toEqual([40, 1360]);
   });
 
   it('rastreia inclinacao de 1 grau e curvatura leve (+-1 px)', () => {

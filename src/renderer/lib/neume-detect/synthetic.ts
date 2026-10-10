@@ -340,7 +340,8 @@ export interface DiastematicOptions {
  * entre a 3a e a 4a silaba, custos no fim e texto 3,5s abaixo da ultima linha.
  * Verdade = x da tinta + max(2, u); y = [linha superior - 0,5s, linha inferior + 0,5s] uniao tinta + pad.
  * Colunas, barra e custos escalam com width / 1400. Com tiltDeg, tudo em x desce
- * dy(x) = round(tan(tilt) * (x - x0)); `baseline` e a da primeira coluna.
+ * dy(x) = round(tan(tilt) * (x - x0)); `baseline` e a linha de base em x = staff.x0 (dy = 0); o texto da
+ * coluna j fica em baseline + dy(cols[j]).
  */
 export function buildDiastematicLine(opts: DiastematicOptions = {}): DiastematicFixture {
   const width = opts.width ?? 1400;
@@ -393,8 +394,11 @@ export function buildDiastematicLine(opts: DiastematicOptions = {}): Diastematic
     ink[syl.index] = unionBox(boxes);
     const pad = Math.max(2, u);
     const b = ink[syl.index];
-    const y0 = Math.min(lineCenter(0) - 0.5 * s + dy(b.x), b.y - pad);
-    const y1 = Math.max(lineCenter(3) + 0.5 * s + dy(b.x + b.w), b.y + b.h + pad);
+    // pauta sob a tinta: com inclinacao negativa a ponta direita e a mais alta
+    const dyLo = Math.min(dy(b.x), dy(b.x + b.w));
+    const dyHi = Math.max(dy(b.x), dy(b.x + b.w));
+    const y0 = Math.min(lineCenter(0) - 0.5 * s + dyLo, b.y - pad);
+    const y1 = Math.max(lineCenter(3) + 0.5 * s + dyHi, b.y + b.h + pad);
     truth[syl.index] = { x: b.x - pad, y: y0, w: b.w + 2 * pad, h: y1 - y0 };
     drawText(r, syl.text, cols[j], baseline0 + dy(cols[j]), xh, u);
   });
