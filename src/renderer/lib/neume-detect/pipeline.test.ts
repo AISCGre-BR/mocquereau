@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractChannel } from './image';
-import { anchorStaffOffsets, measureU, suggestBoxes } from './pipeline';
+import { anchorStaffOffsets, measureU, MIN_CONFIDENCE, suggestBoxes } from './pipeline';
 import { estimateStrokeWidth, staffMetrics } from './scale';
 import { findStavesRobust } from './staff';
 import { binarizeOtsu } from './threshold';
@@ -1008,7 +1008,9 @@ describe('M2 — sequencial por área', () => {
 
   it('área sem texto: uma sílaba por agrupamento de neumas', () => {
     const fx = buildAdiastematicLine({ seed: 77, text: false });
-    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [...fx.syllables, ...extra(5, 10, 3)], bands: [{ x: 0, y: 0, w: 1, h: 1 }] });
+    // mede a atribuicao, nao o corte de confianca: sem texto o prior de posicao e fraco e as duas
+    // ultimas ficam com 0,24-0,26 (abaixo de MIN_CONFIDENCE = 0,3, Task 16)
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [...fx.syllables, ...extra(5, 10, 3)], bands: [{ x: 0, y: 0, w: 1, h: 1 }], minConfidence: 0 });
     expect(ids(res)).toEqual([0, 1, 2, 3, 4]);
   });
 });
@@ -1059,4 +1061,25 @@ describe('M2 — pauta (partição fechada)', () => {
   // pauta derrubaram o eval (todas, frio: 34% -> 10% achados); a pauta segue com a partição fechada.
   it.todo('contagem pelo texto em pauta desloca');
   it.todo('normalização dos cortes na pauta');
+});
+
+describe('M4g — MIN_CONFIDENCE', () => {
+  it('minConfidence 0 sugere todo grupo não vazio; o padrão é MIN_CONFIDENCE', () => {
+    const fx = buildAdiastematicLine({ seed: 81, noise: true });
+    const all = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, minConfidence: 0 });
+    const def = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables });
+    expect(all.suggestions.length).toBeGreaterThanOrEqual(def.suggestions.length);
+    expect(def.suggestions.every((s) => s.confidence >= MIN_CONFIDENCE)).toBe(true);
+  });
+  it('minConfidence alto corta as sugestões abaixo dele', () => {
+    const fx = buildAdiastematicLine({ seed: 81, noise: true });
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, minConfidence: 0.99 });
+    expect(res.suggestions.every((s) => s.confidence >= 0.99)).toBe(true);
+  });
+});
+
+describe('M4g — valor escolhido', () => {
+  it('MIN_CONFIDENCE é o valor escolhido pela avaliação de 2026-10 (ver commit)', () => {
+    expect(MIN_CONFIDENCE).toBe(0.3);
+  });
 });

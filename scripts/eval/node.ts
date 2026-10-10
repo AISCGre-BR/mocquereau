@@ -58,10 +58,11 @@ export function runSequential(
   const sugs = new Map<number, Rect>();
   if (!plan) return { sugs, ms: null }; // no detector call: not a timing sample
   const t0 = performance.now();
-  const res = suggestBoxes({ ...plan.input, image: raster });
+  // --min-confidence goes into the detector (Task 16): a lower value than MIN_CONFIDENCE must also
+  // bring back the groups the default drops, not only filter the default's output
+  const res = suggestBoxes({ ...plan.input, image: raster, ...(opts.minConfidence === undefined ? {} : { minConfidence: opts.minConfidence }) });
   const ms = performance.now() - t0;
-  const min = opts.minConfidence ?? 0;
-  for (const s of res.suggestions) if (s.confidence >= min) sugs.set(s.index, regionToView(s.box, plan.region));
+  for (const s of res.suggestions) sugs.set(s.index, regionToView(s.box, plan.region));
   return { sugs, ms };
 }
 

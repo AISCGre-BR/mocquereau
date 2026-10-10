@@ -77,6 +77,8 @@ export interface SuggestInput {
   bands?: FracRect[];
   /** 'candidates': todos os grupos de neumas das áreas, sem sílaba; `syllables` é ignorado. Padrão 'sequential'. */
   mode?: SuggestMode;
+  /** Confiança mínima de uma sugestão (modo sequencial). Padrão MIN_CONFIDENCE; a avaliação varre o valor. */
+  minConfidence?: number;
 }
 
 export type BandSource = 'user' | 'anchors' | 'staff' | 'image' | 'none';

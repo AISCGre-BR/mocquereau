@@ -56,7 +56,7 @@ import type {
 } from './types';
 
 export const MAX_LONG_SIDE = 2400;
-export const MIN_CONFIDENCE = 0.2;
+export const MIN_CONFIDENCE = 0.3;
 const RED_COVERAGE = 0.3;
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -700,6 +700,7 @@ function assignPortion(
   open: boolean,
   lastExtra = false,
   byText = false,
+  minConf = MIN_CONFIDENCE,
 ): { end: number; used: number } {
   if (!syllables.length || !glyphs.length) return { end: L, used: 0 };
   const words = new Set(syllables.map((s) => s.wordIndex)).size;
@@ -720,7 +721,7 @@ function assignPortion(
     const members = glyphs.slice(g[0], g[1]);
     end = Math.max(end, ...members.map((m) => m.x + m.w));
     const syl = syllables[j];
-    if (syl.suggest === false || conf[j] < MIN_CONFIDENCE) return;
+    if (syl.suggest === false || conf[j] < minConf) return;
     const box = placeBox(members, l.a, l.anchorsLocal, W, H);
     if (box) out.push({ index: syl.index, box, confidence: conf[j] });
   });
@@ -735,7 +736,13 @@ function assignPortion(
  * faixa a partir do cursor recebe o que cabe; o que sobra fica sem sugestao. `queue` so contem
  * ancoradas que estao em `anchorsLocal` de alguma faixa.
  */
-function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number, H: number): Suggestion[] {
+function assignSequential(
+  lines: BandLine[],
+  queue: SuggestSyllable[],
+  W: number,
+  H: number,
+  minConf = MIN_CONFIDENCE,
+): Suggestion[] {
   const anchorAt = new Map<number, { line: number; box: PxBox }>();
   lines.forEach((l, k) => l.anchorsLocal.forEach((an) => anchorAt.set(an.index, { line: k, box: an.box })));
   const out: Suggestion[] = [];
@@ -772,12 +779,12 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
         const l = lines[li];
         const { glyphs, text } = portionOf(l, x, l.a.work.r.width);
         const { n, open, extra, byText } = fit(l, rest, glyphs, text);
-        if (n > 0) rest = rest.slice(assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText).used);
+        if (n > 0) rest = rest.slice(assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText, minConf).used);
       }
       if (rest.length) {
         const l = lines[bound.line];
         const { glyphs, text } = portionOf(l, x, bound.box.x);
-        assignPortion(l, x, bound.box.x, rest, glyphs, text, out, W, H, false);
+        assignPortion(l, x, bound.box.x, rest, glyphs, text, out, W, H, false, false, false, minConf);
       }
       // o cursor vai para a ancora, que e consumida na proxima volta
     } else {
@@ -787,7 +794,7 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
         const { glyphs, text } = portionOf(l, x, R);
         const { n, open, extra, byText } = fit(l, rest, glyphs, text);
         if (n > 0) {
-          const r = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText);
+          const r = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText, minConf);
           x = r.end;
           rest = rest.slice(r.used);
         }
@@ -1034,7 +1041,7 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   // Etapa 6: atribuicao sequencial; ancoras fora de todas as faixas saem da fila
   const placed = new Set(lines.flatMap((l) => l.anchorsLocal.map((an) => an.index)));
   const queue = ordered.filter((s) => !anchored.has(s.index) || placed.has(s.index));
-  const suggestions = assignSequential(lines, queue, W, H);
+  const suggestions = assignSequential(lines, queue, W, H, input.minConfidence ?? MIN_CONFIDENCE);
   lap('assign');
   ms.total = now() - t0;
   return { suggestions, debug };
