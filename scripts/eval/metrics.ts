@@ -10,9 +10,6 @@ export interface Rect {
   h: number;
 }
 
-/** Diastematic boxes include the text below the staff: the neumes are the top 65%. */
-export const SQUARE_TOP = 0.65;
-
 export function iou(a: Rect, b: Rect): number {
   const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
   const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
@@ -30,9 +27,11 @@ export function unionRect(rs: Rect[]): Rect | null {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-/** Zona dos neumas: a caixa (A) ou os 65% superiores dela (D: a caixa quadrada inclui o texto). */
-export const zoneOf = (box: Rect, notation: "adiastematic" | "diastematic"): Rect =>
-  notation === "diastematic" ? { ...box, h: box.h * SQUARE_TOP } : { ...box };
+/**
+ * Zona pontuada: a caixa inteira do usuario, nos dois modos (o que ele de fato desenha; na notacao
+ * quadrada inclui o texto). Ate a Task 7c a zona D era so os 65% superiores da caixa.
+ */
+export const zoneOf = (box: Rect, _notation: "adiastematic" | "diastematic"): Rect => ({ ...box });
 
 const centerIn = (c: Rect, z: Rect): boolean => {
   const x = c.x + c.w / 2;
@@ -62,6 +61,20 @@ export function wrongCount(sugs: ReadonlyMap<number, Rect>, gt: { index: number;
     const s = sugs.get(g.index);
     return s !== undefined && iou(s, g.zone) < 0.3;
   }).length;
+}
+
+/**
+ * Cenario "uma ancora": em cada area (ordem de leitura), a primeira caixa do gabarito (menor indice
+ * de silaba com centro na area) vira caixa existente da pagina; as demais sao pontuadas.
+ */
+export function oneAnchorScenario<G extends { index: number; box: Rect }>(gt: G[], areas: Rect[]): { anchors: G[]; scored: G[] } {
+  const sorted = [...gt].sort((a, b) => a.index - b.index);
+  const anchors: G[] = [];
+  for (const a of areas) {
+    const first = sorted.find((g) => centerIn(g.box, a) && !anchors.includes(g));
+    if (first) anchors.push(first);
+  }
+  return { anchors, scored: sorted.filter((g) => !anchors.includes(g)) };
 }
 
 export function median(v: number[]): number {

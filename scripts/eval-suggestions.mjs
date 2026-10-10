@@ -3,7 +3,10 @@
 // Suggestion evaluation over the user's own projects (passed as arguments; never
 // copied into the repo). Builds cases from legacy .mocquereau.json files, rasterizes
 // each page with the app's renderSuggestRaster in headless Chromium and runs the
-// detector in Node, then prints one markdown table per source and mode.
+// detector in Node, then prints one markdown table per source, scenario and mode.
+// Scenarios: "frio" (page with no boxes) and "uma âncora" (the first ground-truth box of each
+// area is already on the page, given to the detector as an anchor, and left out of the score).
+// Score: IoU against the user's whole box (both notations).
 //
 // uso: node scripts/eval-suggestions.mjs <projeto>... [--modes sequential,candidates]
 //        [--json <arquivo>] [--out <arquivo.md>] [--dump <dir>] [--othmar <arquivo.json>]
@@ -95,15 +98,17 @@ if (opts.othmar) {
 }
 
 const fileSafe = (s) => s.replace(/[^\w.-]+/g, "_");
-const rows = []; // { project, source, mode, minConf, ious[], wrong, ms[] }
+const rows = []; // { project, source, scenario, mode, minConf, ious[], wrong, ms[] }
+/** Cenários: "frio" = página sem caixas; "uma âncora" = a primeira caixa de cada área já está na página. */
+const SCENARIOS = ["frio", "uma âncora"];
 const raw = { projects: [], skipped: [] };
 const seenPages = []; // { c, name }: first occurrence of each page
 const duplicates = [];
 
 /** One row per source and mode; pages already seen elsewhere go to their row but not to "todas". */
-function bucket(project, source, mode, minConf, dup) {
-  let r = rows.find((x) => x.project === project && x.source === source && x.mode === mode && x.minConf === minConf);
-  if (!r) rows.push((r = { project, source, mode, minConf, ious: [], wrong: 0, ms: [], uniq: { ious: [], wrong: 0, ms: [] }, dup: false }));
+function bucket(project, source, scenario, mode, minConf, dup) {
+  let r = rows.find((x) => x.project === project && x.source === source && x.scenario === scenario && x.mode === mode && x.minConf === minConf);
+  if (!r) rows.push((r = { project, source, scenario, mode, minConf, ious: [], wrong: 0, ms: [], uniq: { ious: [], wrong: 0, ms: [] }, dup: false }));
   r.dup ||= dup;
   return r;
 }
@@ -164,30 +169,35 @@ try {
       });
       const buf = Buffer.from(r.b64, "base64");
       const raster = { data: new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.length), width: r.width, height: r.height };
-      const zones = c.gt.map((g) => g.zone);
       const caseRaw = { name: c.name, source: c.source, notation: c.notation, region, raster: { width: r.width, height: r.height }, gt: c.gt, areas: c.areas, firstGt: c.firstGt, modes: {} };
       projRaw.cases.push(caseRaw);
 
-      if (opts.modes.includes("sequential")) {
-        for (const mc of opts.minConf) {
-          const { sugs, ms } = E.runSequential(c, raster, { minConfidence: mc });
-          const ious = E.sequentialIous(sugs, c.gt);
-          add(bucket(label, c.source, "sequential", mc, !!dupOf), !!dupOf, ious, E.wrongCount(sugs, c.gt), ms);
-          caseRaw.modes[`sequential${mc === undefined ? "" : `@${mc}`}`] = { ious, ms, suggestions: Object.fromEntries(sugs) };
+      for (const scenario of SCENARIOS) {
+        const { anchors, scored } = scenario === "frio" ? { anchors: [], scored: c.gt } : E.oneAnchorScenario(c.gt, c.areas);
+        const zones = scored.map((g) => g.zone);
+        const key = (m) => (scenario === "frio" ? m : `${scenario}:${m}`);
+        if (scenario !== "frio") caseRaw[`anchors:${scenario}`] = anchors.map((g) => g.index);
+        if (opts.modes.includes("sequential")) {
+          for (const mc of opts.minConf) {
+            const { sugs, ms } = E.runSequential(c, raster, { minConfidence: mc, anchors });
+            const ious = E.sequentialIous(sugs, scored);
+            add(bucket(label, c.source, scenario, "sequential", mc, !!dupOf), !!dupOf, ious, E.wrongCount(sugs, scored), ms);
+            caseRaw.modes[key(`sequential${mc === undefined ? "" : `@${mc}`}`)] = { ious, ms, suggestions: Object.fromEntries(sugs) };
+          }
         }
-      }
-      if (opts.modes.includes("candidates")) {
-        const res = E.runCandidates(c, raster);
-        const ious = E.candidateIous(res.cands, zones);
-        add(bucket(label, c.source, "candidates", undefined, !!dupOf), !!dupOf, ious, 0, res.ms);
-        caseRaw.modes.candidates = { ious, ms: res.ms, candidates: res.cands };
+        if (opts.modes.includes("candidates")) {
+          const res = E.runCandidates(c, raster, anchors);
+          const ious = E.candidateIous(res.cands, zones);
+          add(bucket(label, c.source, scenario, "candidates", undefined, !!dupOf), !!dupOf, ious, 0, res.ms);
+          caseRaw.modes[key("candidates")] = { ious, ms: res.ms, candidates: res.cands };
+        }
       }
       if (othmar) {
         const boxes = othmar[c.name];
         if (Array.isArray(boxes)) {
           const cands = boxes.map(([x, y, w, h]) => E.regionToView({ x: x / r.width, y: y / r.height, w: w / r.width, h: h / r.height }, region));
-          const ious = E.candidateIous(cands, zones);
-          add(bucket(label, c.source, "Othmar", undefined, !!dupOf), !!dupOf, ious, 0, undefined);
+          const ious = E.candidateIous(cands, c.gt.map((g) => g.zone));
+          add(bucket(label, c.source, "frio", "Othmar", undefined, !!dupOf), !!dupOf, ious, 0, undefined);
           caseRaw.modes.othmar = { ious };
         }
       }
@@ -217,19 +227,24 @@ if (failure) fail(`eval falhou: ${failure?.stack ?? failure}`);
 const pct = (v) => `${Math.round(v * 100)}%`;
 const dec = (v) => v.toFixed(2).replace(".", ",");
 const modeName = (m, mc) => (mc === undefined ? m : `${m} (conf ≥ ${String(mc).replace(".", ",")})`);
-function line(name, mode, ious, wrong, ms) {
+function line(name, scenario, mode, ious, wrong, ms) {
   const s = E.summarize(ious);
   const msCol = ms.length ? String(Math.round(E.p95(ms))) : "-";
   const wrongCol = mode.startsWith("sequential") ? String(wrong) : "-";
-  return `| ${name} | ${mode} | ${s.n} | ${pct(s.found)} | ${pct(s.p50)} | ${pct(s.p70)} | ${dec(s.median)} | ${wrongCol} | ${msCol} |`;
+  return `| ${name} | ${scenario} | ${mode} | ${s.n} | ${pct(s.found)} | ${pct(s.p50)} | ${pct(s.p70)} | ${dec(s.median)} | ${wrongCol} | ${msCol} |`;
 }
-const out = ["| fonte | modo | n | achados | IoU≥0,5 | IoU≥0,7 | IoU med | erradas | p95 ms |", "|---|---|---|---|---|---|---|---|---|"];
-const groups = [...new Set(rows.map((r) => `${r.mode}\u0000${r.minConf}`))];
-for (const r of rows) out.push(line(`${r.source} (${r.project})${r.dup ? " [duplicata]" : ""}`, modeName(r.mode, r.minConf), r.ious, r.wrong, r.ms));
+const out = [
+  "| fonte | cenário | modo | n | achados | IoU≥0,5 | IoU≥0,7 | IoU med | erradas | p95 ms |",
+  "|---|---|---|---|---|---|---|---|---|---|",
+];
+const gkey = (r) => `${r.scenario}\u0000${r.mode}\u0000${r.minConf}`;
+const groups = [...new Set(rows.map(gkey))];
+for (const r of rows)
+  out.push(line(`${r.source} (${r.project})${r.dup ? " [duplicata]" : ""}`, r.scenario, modeName(r.mode, r.minConf), r.ious, r.wrong, r.ms));
 for (const g of groups) {
-  const rs = rows.filter((r) => `${r.mode}\u0000${r.minConf}` === g);
+  const rs = rows.filter((r) => gkey(r) === g);
   const u = rs.map((r) => r.uniq);
-  out.push(line("todas", modeName(rs[0].mode, rs[0].minConf), u.flatMap((r) => r.ious), u.reduce((s, r) => s + r.wrong, 0), u.flatMap((r) => r.ms)));
+  out.push(line("todas", rs[0].scenario, modeName(rs[0].mode, rs[0].minConf), u.flatMap((r) => r.ious), u.reduce((s, r) => s + r.wrong, 0), u.flatMap((r) => r.ms)));
 }
 const notes = [...raw.skipped.map((s) => `skipped: ${s}`), ...duplicates.map((d) => `duplicata: ${d}`)];
 const table = [...out, ...(notes.length ? ["", ...notes] : [])].join("\n");
@@ -237,6 +252,6 @@ console.log(table);
 
 if (opts.out) await writeFile(opts.out, table + "\n");
 if (opts.json) {
-  const summary = rows.map((r) => ({ project: r.project, source: r.source, mode: r.mode, minConfidence: r.minConf ?? null, duplicate: r.dup, ...E.summarize(r.ious), wrong: r.wrong, p95ms: E.p95(r.ms) }));
+  const summary = rows.map((r) => ({ project: r.project, source: r.source, scenario: r.scenario, mode: r.mode, minConfidence: r.minConf ?? null, duplicate: r.dup, ...E.summarize(r.ious), wrong: r.wrong, p95ms: E.p95(r.ms) }));
   await writeFile(opts.json, JSON.stringify({ summary, duplicates, ...raw }, null, 1));
 }

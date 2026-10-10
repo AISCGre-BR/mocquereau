@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateIous, iou, median, p95, sequentialIous, summarize, wrongCount, zoneOf } from "./metrics";
+import { candidateIous, iou, median, oneAnchorScenario, p95, sequentialIous, summarize, wrongCount, zoneOf } from "./metrics";
 
 const R = (x: number, y: number, w: number, h: number) => ({ x, y, w, h });
 
@@ -10,9 +10,28 @@ describe("métricas do eval", () => {
     expect(iou(R(0, 0, 10, 10), R(5, 0, 10, 10))).toBeCloseTo(1 / 3, 9);
   });
 
-  it("zona: A = caixa; D = 65% superiores", () => {
+  it("zona = a caixa inteira do usuário, nos dois modos (o que o usuário desenha)", () => {
     expect(zoneOf(R(0, 10, 10, 100), "adiastematic")).toEqual(R(0, 10, 10, 100));
-    expect(zoneOf(R(0, 10, 10, 100), "diastematic")).toEqual(R(0, 10, 10, 65));
+    expect(zoneOf(R(0, 10, 10, 100), "diastematic")).toEqual(R(0, 10, 10, 100));
+  });
+
+  it("cenário uma âncora: a primeira caixa (ordem de leitura) de cada área vira âncora e sai da conta", () => {
+    const gt = [
+      { index: 4, box: R(30, 0, 5, 10), zone: R(30, 0, 5, 10) },
+      { index: 2, box: R(10, 0, 5, 10), zone: R(10, 0, 5, 10) },
+      { index: 3, box: R(20, 0, 5, 10), zone: R(20, 0, 5, 10) },
+    ];
+    const one = oneAnchorScenario(gt, [R(0, 0, 50, 10)]);
+    expect(one.anchors.map((g) => g.index)).toEqual([2]);
+    expect(one.scored.map((g) => g.index)).toEqual([3, 4]);
+    expect(summarize(candidateIous([], one.scored.map((g) => g.zone))).n).toBe(2);
+    // duas áreas: uma âncora por área
+    const two = oneAnchorScenario(
+      [...gt, { index: 7, box: R(10, 50, 5, 10), zone: R(10, 50, 5, 10) }, { index: 8, box: R(20, 50, 5, 10), zone: R(20, 50, 5, 10) }],
+      [R(0, 0, 50, 10), R(0, 50, 50, 10)],
+    );
+    expect(two.anchors.map((g) => g.index)).toEqual([2, 7]);
+    expect(two.scored.map((g) => g.index)).toEqual([3, 4, 8]);
   });
 
   it("candidato achado = centro na zona; IoU = união dos candidatos da zona", () => {

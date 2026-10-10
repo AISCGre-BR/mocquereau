@@ -15,9 +15,15 @@ export { loadCases, gtAreas, samePage } from "./cases";
 export * from "./metrics";
 export { suggestBoxes, planSuggestion, regionToView, viewToRegion, coveredByOtherPages, frameOf };
 
-/** The sequential plan: the page as the user starts it, nothing rejected. */
-export function planCase(c: EvalCase): SuggestPlan | null {
-  return planSuggestion(c.sourceModel, c.line, c.words, coveredByOtherPages(c.sourceModel, c.line.id, ""), new Set());
+/**
+ * The sequential plan: the page as the user starts it, nothing rejected. `anchors` (view fractions)
+ * are boxes already on the page (one-anchor scenario), passed to the detector as anchors.
+ */
+export function planCase(c: EvalCase, anchors: { index: number; box: Rect }[] = []): SuggestPlan | null {
+  const plan = planSuggestion(c.sourceModel, c.line, c.words, coveredByOtherPages(c.sourceModel, c.line.id, ""), new Set());
+  if (!plan || !anchors.length) return plan;
+  const own = anchors.map((a) => ({ index: a.index, box: viewToRegion(a.box, plan.region) }));
+  return { ...plan, input: { ...plan.input, anchors: [...(plan.input.anchors ?? []), ...own] } };
 }
 
 /** Region to rasterize for the case (the whole view when there is no plan). */
@@ -28,9 +34,9 @@ export function caseRegion(c: EvalCase): Rect {
 export function runSequential(
   c: EvalCase,
   raster: RasterRGBA,
-  opts: { minConfidence?: number } = {},
+  opts: { minConfidence?: number; anchors?: { index: number; box: Rect }[] } = {},
 ): { sugs: Map<number, Rect>; ms: number | null } {
-  const plan = planCase(c);
+  const plan = planCase(c, opts.anchors);
   const sugs = new Map<number, Rect>();
   if (!plan) return { sugs, ms: null }; // no detector call: not a timing sample
   const t0 = performance.now();
@@ -45,8 +51,12 @@ export function runSequential(
  * Candidate boxes of the detector, in view fractions. Until the candidates plan
  * exists (later task), the sequential plan with `mode: 'candidates'` and no syllables.
  */
-export function runCandidates(c: EvalCase, raster: RasterRGBA): { cands: Rect[]; ms: number | null } {
-  const plan = planCase(c);
+export function runCandidates(
+  c: EvalCase,
+  raster: RasterRGBA,
+  anchors: { index: number; box: Rect }[] = [],
+): { cands: Rect[]; ms: number | null } {
+  const plan = planCase(c, anchors);
   if (!plan) return { cands: [], ms: null }; // no detector call: not a timing sample
   const t0 = performance.now();
   const res = suggestBoxes({ ...plan.input, image: raster, mode: "candidates", syllables: [] });
