@@ -149,10 +149,13 @@ export function sequentialStart(
 }
 
 /**
- * The detector request for a page. The sequential queue starts at `sequentialStart` (M2): targets
- * from there on (suggest:false ones keep their place), boxes from there on, and the nearest box
- * before the start, which opens the queue. Pending syllables before the start stay out. Areas go
- * to the detector in reading order (rows top to bottom, left to right).
+ * The detector request for a page. The sequential queue starts at `sequentialStart` (M2) and opens
+ * at the nearest box before it (or at the range start when there is none): every target from there
+ * on keeps its place, so the glyphs of the syllables before the start are consumed in order and the
+ * active syllable lands on its own neume. Targets before the start (pending, rejected or legacy)
+ * get suggest:false: they take their glyphs but receive no suggestion. Boxes from the start on and
+ * the opening one are anchors. Areas go to the detector in reading order (rows top to bottom, left
+ * to right).
  */
 export function planSuggestion(
   source: ManuscriptSource,
@@ -164,34 +167,36 @@ export function planSuggestion(
 ): SuggestPlan | null {
   const start = sequentialStart(source, line, words, covered, rejected, active);
   if (start === null) return null;
-  const syllables = collectTargets(source, line, words, covered, rejected).filter((s) => s.index >= start);
+  const targets = collectTargets(source, line, words, covered, rejected);
 
-  const all = pageAnchors(line);
   /** Boxes from the start on, plus the nearest one before it (it opens the queue). */
   const fromStart = (list: SuggestAnchor[]): SuggestAnchor[] => {
     const before = list.filter((a) => a.index < start);
     return [...(before.length ? [before[before.length - 1]] : []), ...list.filter((a) => a.index >= start)];
   };
-  const anchors = fromStart(all);
 
   // The detector only honours anchors whose syllable is in `syllables` (reading order).
   const info = syllableInfo(words);
-  const withAnchors = (kept: SuggestAnchor[]): SuggestSyllable[] =>
-    [
-      ...syllables,
+  const queueOf = (kept: SuggestAnchor[]): SuggestSyllable[] => {
+    const open = kept.length && kept[0].index < start ? kept[0].index : line.syllableRange.start;
+    return [
+      ...targets.filter((s) => s.index >= open).map((s) => (s.index < start ? { ...s, suggest: false } : s)),
       ...kept.flatMap((a) => {
         const s = info(a.index);
         return s ? [{ ...s, suggest: false }] : [];
       }),
     ].sort((a, b) => a.index - b.index);
+  };
 
+  const all = pageAnchors(line);
   const notation = resolveNotation(source, line);
   const areas = orderNeumeBands(line.neumeBands ?? []);
   if (areas.length === 0) {
+    const anchors = fromStart(all);
     return {
       lineId: line.id,
       region: { x: 0, y: 0, w: 1, h: 1 },
-      input: { notation, syllables: withAnchors(anchors), anchors },
+      input: { notation, syllables: queueOf(anchors), anchors },
     };
   }
 
@@ -204,6 +209,6 @@ export function planSuggestion(
   return {
     lineId: line.id,
     region,
-    input: { notation, syllables: withAnchors(inside), anchors: inside, bands: areas.map((a) => viewToRegion(a, region)) },
+    input: { notation, syllables: queueOf(inside), anchors: inside, bands: areas.map((a) => viewToRegion(a, region)) },
   };
 }

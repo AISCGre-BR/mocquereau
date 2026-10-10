@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ManuscriptLine, ManuscriptSource, StoredImage, SyllabifiedWord } from "../models";
 import { collectTargets, planCandidates, planSuggestion, regionToView, resolveNotation, sequentialStart, viewToRegion } from "./request";
 import { IMAGE_ADJUSTMENTS_DEFAULT } from "../image-adjustments";
+import { suggestBoxes } from "../neume-detect/pipeline";
+import { buildAdiastematicLine, fracToPx, iou, pxToFrac } from "../neume-detect/synthetic";
 
 const IMG: StoredImage = { dataUrl: "data:,", width: 100, height: 200, mimeType: "image/png" };
 const BOX = { x: 0.1, y: 0.1, w: 0.1, h: 0.1 };
@@ -169,9 +171,26 @@ describe("planSuggestion — fila a partir da ativa (M2)", () => {
     expect(p!.input.anchors!.map((a) => a.index)).toEqual([2, 5]);
   });
 
-  it("pendentes antes da ativa ficam fora", () => {
+  it("sem caixa antes da ativa: a fila abre no início do intervalo e as pendentes antes da ativa consomem seus neumas sem sugestão", () => {
     const l = line();
-    expect(rows(planSuggestion(source([l]), l, words, none, noRej, 4))).toEqual([[4, true], [5, true], [6, true], [7, true]]);
+    expect(rows(planSuggestion(source([l]), l, words, none, noRej, 4))).toEqual([
+      [0, false], [1, false], [2, false], [3, false], [4, true], [5, true], [6, true], [7, true],
+    ]);
+  });
+
+  it("pendentes entre a âncora que abre a fila e a ativa ficam na fila com suggest:false", () => {
+    const l = line({ syllableBoxes: { 0: BOX, 1: B2 } });
+    const p = planSuggestion(source([l]), l, words, none, noRej, 5);
+    expect(rows(p)).toEqual([[1, false], [2, false], [3, false], [4, false], [5, true], [6, true], [7, true]]);
+    expect(p!.input.anchors!.map((a) => a.index)).toEqual([1]);
+  });
+
+  it("rejeitada e recorte legado no início do intervalo mantêm o lugar (Sugerir na fonte, sem ativa)", () => {
+    const l = line();
+    const src = source([l], [null, null, null], { 1: IMG });
+    expect(rows(planSuggestion(src, l, words, none, new Set([0]), null))).toEqual([
+      [0, false], [1, false], [2, true], [3, true], [4, true], [5, true], [6, true], [7, true],
+    ]);
   });
 
   it("só a âncora mais próxima antes do início entra", () => {
@@ -219,5 +238,35 @@ describe("planCandidates", () => {
     expect(p.region).toEqual({ x: 0, y: 0, w: 1, h: 1 });
     expect(p.input.anchors!.map((a) => a.index)).toEqual([0, 3]);
     expect(p.input.bands).toBeUndefined();
+  });
+});
+
+describe("planSuggestion + suggestBoxes — pendentes antes da ativa (linha sintética)", () => {
+  const fx = buildAdiastematicLine({ seed: 5 });
+  const { width: W, height: H } = fx.raster;
+  const fxWords: SyllabifiedWord[] = [
+    { original: "Puer", syllables: ["Pu", "er"] },
+    { original: "natus", syllables: ["na", "tus"] },
+    { original: "est", syllables: ["est"] },
+  ];
+  const run = (l: ManuscriptLine, active: number) => {
+    const plan = planSuggestion(source([l]), l, fxWords, none, noRej, active)!;
+    const res = suggestBoxes({ image: fx.raster, ...plan.input });
+    return Object.fromEntries(res.suggestions.map((s) => [s.index, fracToPx(regionToView(s.box, plan.region), W, H)]));
+  };
+
+  it("caixa na 0, ativa 3: a 3 recebe o próprio neuma (1 e 2 consomem os seus sem sugestão)", () => {
+    const l = line({ syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: pxToFrac(fx.truth[0], W, H) } });
+    const got = run(l, 3);
+    expect(Object.keys(got).map(Number)).toEqual([3, 4]);
+    expect(iou(got[3], fx.truth[3])).toBeGreaterThanOrEqual(0.9);
+    expect(iou(got[4], fx.truth[4])).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("sem caixas, ativa 2: a 2 recebe o próprio neuma", () => {
+    const l = line({ syllableRange: { start: 0, end: 4 } });
+    const got = run(l, 2);
+    expect(Object.keys(got).map(Number)).toEqual([2, 3, 4]);
+    for (const i of [2, 3, 4]) expect(iou(got[i], fx.truth[i])).toBeGreaterThanOrEqual(0.9);
   });
 });
