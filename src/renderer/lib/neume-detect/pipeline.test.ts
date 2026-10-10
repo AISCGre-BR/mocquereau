@@ -674,4 +674,37 @@ describe('M4d — margem é contexto', () => {
     expect(measureU(m, 'adiastematic')).toBe(7);
     expect(measureU(m, 'adiastematic', { x: 0, y: 18, w: 60, h: 22 })).toBe(2);
   });
+
+  describe('regra da área sobre grupos inteiros', () => {
+    // área desenhada y em [60, 160); com a margem de 10%, o raster de trabalho vai de 50 a 170
+    const build = () => {
+      const r = createRaster(1000, 200);
+      for (let i = 0; i < 8; i++) drawNeume(r, i % 2 ? 'virga' : 'clivis', 600 + i * 45, 90, 3);
+      return r;
+    };
+    const run = (r: RasterRGBA) =>
+      suggestBoxes({ image: r, notation: 'adiastematic', syllables: [], mode: 'candidates', bands: [{ x: 0, y: 0.3, w: 1, h: 0.5 }] })
+        .candidates!.map((c) => fracToPx(c.box, r.width, r.height));
+    const covers = (c: PxBox, x: number, y: number) => c.x <= x && x <= c.x + c.w && c.y <= y && y <= c.y + c.h;
+
+    it('neuma atravessando a borda com centro dentro fica inteiro', () => {
+      const r = build();
+      const n = drawNeume(r, 'virga', 100, 52, 3); // caixa 52..73: centro dentro, topo na margem
+      const cands = run(r);
+      expect(cands.some((c) => c.y <= n.y + 0.5 && c.y + c.h >= n.y + n.h - 0.5 && covers(c, n.x + n.w / 2, n.y + n.h / 2))).toBe(true);
+    });
+
+    it('fragmento de um neuma de dentro que cruza a borda fica no grupo', () => {
+      const r = build();
+      fillRect(r, 300, 64, 3, 20, INK); // traço dentro (centro 74)
+      fillRect(r, 300, 57, 3, 3, INK); // ponta separada na margem (centro 58,5), vão de 4 px
+      expect(run(r).some((c) => covers(c, 301.5, 58.5) && covers(c, 301.5, 74))).toBe(true);
+    });
+
+    it('tinta centrada fora da área é descartada', () => {
+      const r = build();
+      fillRect(r, 500, 50, 6, 6, INK); // marca isolada inteira na margem de cima
+      expect(run(r).some((c) => covers(c, 503, 53))).toBe(false);
+    });
+  });
 });

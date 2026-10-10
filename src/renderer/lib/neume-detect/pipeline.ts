@@ -451,16 +451,11 @@ function analyzeBand(
       });
     debug.textLine = { baseline: work.oy + tl.baseline / work.sy, xHeight: tl.xHeight / work.sy };
   }
-  // M4d: so a tinta centrada na area desenhada conta (a margem de 10% e contexto); componentes
-  // cortados pela borda inferior do raster de trabalho, na metade de baixo da area, sao texto.
+  // M4d: com area desenhada, componentes cortados pela borda inferior do raster de trabalho, na metade
+  // de baixo da area, sao texto. (O centro na area e cobrado dos glifos, depois da fusao.)
   const workH = work.r.height;
-  const innerW = band.inner ? rasterToWork(band.inner, work) : { x: 0, y: 0, w: work.r.width, h: workH };
-  neumes = neumes.filter((c) => {
-    const cx = c.x + c.w / 2;
-    const cy = c.y + c.h / 2;
-    return cx >= innerW.x && cx <= innerW.x + innerW.w && cy >= innerW.y && cy <= innerW.y + innerW.h;
-  });
-  neumes = neumes.filter((c) => !(c.y + c.h >= workH - 1 && c.y > innerW.y + 0.5 * innerW.h));
+  const innerW = band.inner ? rasterToWork(band.inner, work) : null;
+  if (innerW) neumes = neumes.filter((c) => !(c.y + c.h >= workH - 1 && c.y > innerW.y + 0.5 * innerW.h));
   if (staff) {
     // fragmentos de texto cortados pela borda inferior da faixa da pauta
     const bottom = staffBottom(staff);
@@ -472,6 +467,14 @@ function analyzeBand(
   // Etapa 5: glifos
   const merged = mergeBoxesIndexed(neumes, p.mergeGapX, p.mergeGapY, p.mergeMaxW, p.mergeMaxH);
   let glyphs: Glyph[] = merged.map((m) => ({ x: m.x, y: m.y, w: m.w, h: m.h, area: m.members.reduce((s, i) => s + neumes[i].area, 0) }));
+  // M4d: so grupos centrados na area desenhada contam (a margem de 10% e contexto). Depois da fusao:
+  // a ponta de uma virga ou a cauda de uma liquescente que cruza a borda fica no grupo inteiro.
+  if (innerW)
+    glyphs = glyphs.filter((g) => {
+      const cx = g.x + g.w / 2;
+      const cy = g.y + g.h / 2;
+      return cx >= innerW.x && cx <= innerW.x + innerW.w && cy >= innerW.y && cy <= innerW.y + innerW.h;
+    });
   if (staff) {
     const tx = text.length
       ? { firstX: Math.min(...text.map((c) => c.x)), lastX: Math.max(...text.map((c) => c.x + c.w)) }
