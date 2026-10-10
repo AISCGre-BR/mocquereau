@@ -83,3 +83,14 @@ describe('text-line', () => {
     expect(wordSpans([], 2)).toBeNull();
   });
 });
+
+describe('findTextLine — fileira de neumas sem texto', () => {
+  it("'lowest': uma fileira de traços curtos com mais tinta embaixo dela não é texto", () => {
+    const comps: { x: number; y: number; w: number; h: number; area: number }[] = [];
+    // fileira de cima: pares de traços de 6 x 12 a 3 px um do outro (parecem letras), base em 30
+    for (let g = 0; g < 6; g++) for (let k = 0; k < 2; k++) comps.push({ x: 40 + g * 150 + k * 9, y: 18, w: 6, h: 12, area: 40 });
+    // embaixo: neumas maiores e esparsos, sem alinhamento de letra
+    for (let g = 0; g < 6; g++) comps.push({ x: 100 + g * 150, y: 40 + (g % 3) * 7, w: 22, h: 20 + (g % 2) * 9, area: 160 });
+    expect(findTextLine(comps, 1000, { kind: 'lowest' }, 8)).toBeNull();
+  });
+});

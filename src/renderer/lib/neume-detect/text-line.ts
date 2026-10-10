@@ -73,6 +73,19 @@ export function findTextLine(comps: Comp[], bandWidth: number, pref: TextPrefere
     for (let k = 0; k + 1 < byX.length; k++) if (byX[k + 1].x - (byX[k].x + byX[k].w) <= 0.6 * xh) tight++;
     if (tight < 0.4 * (byX.length - 1)) continue;
     const baseline = median(similar.map((c) => c.y + c.h));
+    if (pref.kind === 'lowest') {
+      // a linha mais baixa nao tem tinta embaixo: mais tinta abaixo dela do que nela e uma fileira de
+      // neumas (grupos de tracos curtos parecem letras), nao o texto
+      const bottom = baseline + 0.8 * xh;
+      const set = new Set(members);
+      let below = 0;
+      let own = 0;
+      for (const c of comps) {
+        if (set.has(c)) own += c.area;
+        else if (c.y + c.h / 2 > bottom) below += c.area;
+      }
+      if (below > own) continue;
+    }
     candidates.push({ y: baseline, line: { baseline, xHeight: xh, top: baseline - 2 * xh, bottom: baseline + 0.8 * xh } });
   }
   if (candidates.length === 0) return null;
