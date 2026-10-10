@@ -217,17 +217,41 @@ function workFrac(work: Work, W: number, H: number): FracRect {
 }
 
 /**
+ * Notacao quadrada: notas cheias (quase quadradas, preenchidas, lado >= 4 px) nao sao traco; cada
+ * pixel conta com o lado da nota e, sem pauta nem texto suficientes, a moda vira o tamanho da nota.
+ * Devolve a mascara sem elas (a propria mascara se nao houver nenhuma ou se nada sobrar).
+ */
+function withoutSolidNotes(ink: Mask): Mask {
+  const lab = labelComponents(ink);
+  const solid = new Set<number>();
+  for (const c of lab.components) {
+    const lo = Math.min(c.w, c.h);
+    const hi = Math.max(c.w, c.h);
+    if (lo >= 4 && hi <= 2 * lo && c.area >= SOLID_FILL * c.w * c.h) solid.add(c.label);
+  }
+  if (!solid.size || solid.size === lab.components.length) return ink;
+  const data = ink.data.slice();
+  for (let i = 0; i < data.length; i++) if (data[i] && solid.has(lab.labels[i])) data[i] = 0;
+  return { data, width: ink.width, height: ink.height };
+}
+
+/** Fracao minima de preenchimento da caixa para uma nota quadrada cheia. */
+const SOLID_FILL = 0.85;
+
+/**
  * Espessura do traco medida fora da linha de texto: a caneta do texto costuma ser mais grossa que a
  * dos neumas e, com mais pixels, domina a moda (M4a). Sem linha de texto, ou se nada sobra fora dela,
- * fica a medida da faixa inteira; a medida de fora so e aceita se for menor.
+ * fica a medida da faixa inteira; a medida de fora so e aceita se for menor. Na notacao quadrada
+ * as notas cheias ficam fora da medida (`withoutSolidNotes`).
  */
-function measureU(grayInk: Mask): number {
-  const u0 = estimateStrokeWidth(grayInk);
+function measureU(grayInk: Mask, notation: SuggestInput['notation']): number {
+  const ink = notation === 'diastematic' ? withoutSolidNotes(grayInk) : grayInk;
+  const u0 = estimateStrokeWidth(ink);
   if (u0 === 0) return 0;
-  const comps = labelComponents(grayInk).components.filter((c) => c.area >= 4);
-  const tl = findTextLine(comps, grayInk.width, { kind: 'lowest' });
+  const comps = labelComponents(ink).components.filter((c) => c.area >= 4);
+  const tl = findTextLine(comps, ink.width, { kind: 'lowest' });
   if (!tl) return u0;
-  const u1 = strokeWidthOutside(grayInk, [{ y0: tl.top, y1: tl.bottom }]);
+  const u1 = strokeWidthOutside(ink, [{ y0: tl.top, y1: tl.bottom }]);
   // So para baixo: fora do texto pode sobrar uma mancha cheia (run ~ seu tamanho) que domina a moda.
   return u1 > 0 ? Math.min(u1, u0) : u0;
 }
@@ -236,13 +260,17 @@ function measureU(grayInk: Mask): number {
  * Etapa 0: raster de trabalho (recorte, reducao a MAX_LONG_SIDE, ampliacao 2x se u < 2) e espessura
  * de traco. Unico ponto de preparacao do raster de trabalho de uma faixa.
  */
-function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; grayInk: Mask; u: number; up: number } {
+function buildWork(
+  image: SuggestInput['image'],
+  rect: PxBox,
+  notation: SuggestInput['notation'],
+): { work: Work; grayInk: Mask; u: number; up: number } {
   const scale = Math.min(1, MAX_LONG_SIDE / Math.max(rect.w, rect.h));
   let work: Work = { ...prepareWork(image, rect, scale), ox: rect.x, oy: rect.y, sx: 1, sy: 1 };
   work.sx = work.r.width / rect.w;
   work.sy = work.r.height / rect.h;
   let grayInk = binarizeOtsu(work.gray, work.valid);
-  let u = measureU(grayInk);
+  let u = measureU(grayInk, notation);
   let up = 1;
   if (u > 0 && u < 2) {
     up = 2;
@@ -258,7 +286,7 @@ function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; gra
       sy: work.sy * 2,
     };
     grayInk = binarizeOtsu(work.gray, work.valid);
-    u = measureU(grayInk);
+    u = measureU(grayInk, notation);
   }
   return { work, grayInk, u, up };
 }
@@ -278,7 +306,7 @@ function analyzeBand(
   const W = input.image.width;
   const H = input.image.height;
   let band = selected;
-  const prep = buildWork(input.image, band.rect);
+  const prep = buildWork(input.image, band.rect, input.notation);
   let work = prep.work;
   const { grayInk } = prep;
   let u = prep.u;
@@ -347,7 +375,12 @@ function analyzeBand(
   const p = deriveParams(u, staff ? metrics : null, prep.up);
 
   // Etapa 1: binarizacao comum (com repeticao k = 0,1 e canal auto se faltarem componentes)
-  const blobs = darkBlobs(work.gray, work.valid, p); // independe de canal e de k: calculado uma vez
+  // independe de canal e de k: calculado uma vez. Notacao D sem pauta: os parametros caem para os do
+  // modo A (darkOpen ~ 2,3u) e os puncta quadrados cheios sobreviveriam a abertura como "manchas" (M4c).
+  const blobs: Mask =
+    input.notation === 'diastematic' && !staff
+      ? { data: new Uint8Array(work.gray.data.length), width: work.gray.width, height: work.gray.height }
+      : darkBlobs(work.gray, work.valid, p);
   let st = inkStage(work, p, staff, 'r', p.k, blobs);
   if (st.comps.length < needed) {
     const retry = inkStage(work, p, staff, 'auto', 0.1, blobs);

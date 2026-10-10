@@ -184,7 +184,7 @@ export function staffColumnCoverage(ink: Mask, staff: Staff): number {
     }
     if (n >= need) present++;
   }
-  return w ? present / w : 0;
+  return w ? present / w : 0; // sobre a largura da mascara (da faixa), nao x1 - x0: de proposito
 }
 
 /** Linhas minimas de uma pauta das tentativas de recurso: o topo e a base de uma linha de letras sao 2. */

@@ -599,3 +599,21 @@ describe('M4b — pauta inclinada e vermelha', () => {
     expect(res.debug.strokeWidth).toBe(u);
   });
 });
+
+describe('M4c — manchas escuras no modo D', () => {
+  it('M4c — notação D sem pauta: puncta quadrados cheios não são apagados como manchas', () => {
+    const fx = buildDiastematicLine({ staff: false, seed: 66 });
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.mode).toBe('A');
+    const cands = res.candidates!.map((c) => fracToPx(c.box, fx.raster.width, fx.raster.height));
+    for (const s of fx.syllables)
+      for (const n of fx.neumes[s.index])
+        expect(cands.some((c) => c.x <= n.x + n.w / 2 && n.x + n.w / 2 <= c.x + c.w && c.y <= n.y + n.h / 2 && n.y + n.h / 2 <= c.y + c.h)).toBe(true);
+  });
+
+  it('notação D: notas quadradas cheias ficam fora da medida de u', () => {
+    const fx = buildDiastematicLine({ staff: false, seed: 66 }); // sem pauta: só notas 12x12, clave, barra e texto u = 3
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.strokeWidth).toBeLessThanOrEqual(4);
+  });
+});
