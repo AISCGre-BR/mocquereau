@@ -467,15 +467,31 @@ function analyzeBand(
 
   // Etapa 5: glifos
   const merged = mergeBoxesIndexed(neumes, p.mergeGapX, p.mergeGapY, p.mergeMaxW, p.mergeMaxH);
-  let glyphs: Glyph[] = merged.map((m) => ({ x: m.x, y: m.y, w: m.w, h: m.h, area: m.members.reduce((s, i) => s + neumes[i].area, 0) }));
-  // M4d: so grupos centrados na area desenhada contam (a margem de 10% e contexto). Depois da fusao:
-  // a ponta de uma virga ou a cauda de uma liquescente que cruza a borda fica no grupo inteiro.
-  if (innerW)
-    glyphs = glyphs.filter((g) => {
-      const cx = g.x + g.w / 2;
-      const cy = g.y + g.h / 2;
+  const toGlyph = (members: number[]): Glyph => {
+    const cs = members.map((i) => neumes[i]);
+    const x0 = Math.min(...cs.map((c) => c.x));
+    const y0 = Math.min(...cs.map((c) => c.y));
+    const x1 = Math.max(...cs.map((c) => c.x + c.w));
+    const y1 = Math.max(...cs.map((c) => c.y + c.h));
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, area: cs.reduce((sum, c) => sum + c.area, 0) };
+  };
+  let glyphs: Glyph[];
+  if (innerW) {
+    // M4d: a margem de 10% e contexto. A fusao usa todos os componentes, para que a ponta de uma virga
+    // ou a cauda de uma liquescente que cruza a borda fique no grupo; o grupo vale se algum membro tem
+    // centro na area desenhada, e a caixa sai so dos membros que tocam a area (tinta inteiramente na
+    // margem, como rubrica acima ou topo de letras abaixo, nunca alarga nem desloca o grupo).
+    const inside = (c: PxBox) => {
+      const cx = c.x + c.w / 2;
+      const cy = c.y + c.h / 2;
       return cx >= innerW.x && cx <= innerW.x + innerW.w && cy >= innerW.y && cy <= innerW.y + innerW.h;
-    });
+    };
+    const touches = (c: PxBox) =>
+      c.x <= innerW.x + innerW.w && c.x + c.w >= innerW.x && c.y <= innerW.y + innerW.h && c.y + c.h >= innerW.y;
+    glyphs = merged
+      .filter((m) => m.members.some((i) => inside(neumes[i])))
+      .map((m) => toGlyph(m.members.filter((i) => touches(neumes[i]))));
+  } else glyphs = merged.map((m) => toGlyph(m.members));
   if (staff) {
     const tx = text.length
       ? { firstX: Math.min(...text.map((c) => c.x)), lastX: Math.max(...text.map((c) => c.x + c.w)) }

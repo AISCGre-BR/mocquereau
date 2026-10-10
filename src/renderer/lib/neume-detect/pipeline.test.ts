@@ -701,6 +701,17 @@ describe('M4d — margem é contexto', () => {
       expect(run(r).some((c) => covers(c, 301.5, 58.5) && covers(c, 301.5, 74))).toBe(true);
     });
 
+    it('rubrica na margem ao alcance da fusão não alarga a caixa do neuma de dentro', () => {
+      const r = build();
+      const n = drawNeume(r, 'virga', 200, 64, 3); // inteiro dentro (64..85)
+      fillRect(r, 190, 55, 28, 4, INK); // traço de rubrica só na margem (55..59), vão de 5 px até o neuma
+      const c = run(r).find((k) => covers(k, n.x + n.w / 2, n.y + n.h / 2));
+      expect(c).toBeDefined();
+      expect(c!.y).toBeGreaterThan(59); // o topo vem do neuma (64 - pad), não da rubrica
+      expect(c!.x).toBeGreaterThan(192);
+      expect(c!.x + c!.w).toBeLessThan(226);
+    });
+
     it('tinta centrada fora da área é descartada', () => {
       const r = build();
       fillRect(r, 500, 50, 6, 6, INK); // marca isolada inteira na margem de cima
