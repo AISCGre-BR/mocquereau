@@ -49,7 +49,7 @@ interface ImageCanvasProps {
   onContextMenu?: (e: React.MouseEvent) => void;
   /** Neume suggestions of the page (S3): dashed, in the syllable's pigment. */
   suggestedBoxes?: Record<number, SyllableBox>;
-  /** Candidate neume groups of the page (M3), view fractions: neutral dashed outline, no label. */
+  /** Candidate neume groups of the page (M3), view fractions: neutral dotted outline (areas are dashed), no label. */
   candidates?: SyllableBox[];
   /** A click (no drag) over a candidate: its index, and whether Shift was held (unite). */
   onPickCandidate?: (index: number, union: boolean) => void;
@@ -571,7 +571,7 @@ export function ImageCanvas({
             <div
               key={`candidate-${i}`}
               data-candidate={i}
-              className="absolute rounded-xs border border-dashed border-rule-strong pointer-events-none"
+              className="absolute rounded-xs border border-dotted border-rule-strong pointer-events-none"
               style={{
                 left: `${box.x * 100}%`,
                 top: `${box.y * 100}%`,

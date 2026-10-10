@@ -26,7 +26,7 @@ import { recortesMenuItems } from "../shell/menus";
 import { formatAccelerator } from "../shell/accelerator";
 import { flattenSyllables } from "../lib/sliceUtils";
 import { isLineGap, planGapToggle } from "../lib/syllable-gap";
-import { nextCandidate, unionBoxes } from "../lib/suggest/candidates";
+import { areaOf, nextCandidate, unionBoxes } from "../lib/suggest/candidates";
 import { orderNeumeBands } from "@shared/band-order";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
@@ -154,7 +154,14 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if (active === null || !cand) return;
     if (union) {
       const current = viewBoxes[active];
-      commitBox(active, current ? unionBoxes(current, cand.box) : cand.box);
+      if (!current) {
+        commitBox(active, cand.box);
+        return;
+      }
+      // A neume never spans two areas: a candidate of another area is not united.
+      const area = areaOf(current, orderNeumeBands(activeLine?.neumeBands ?? []));
+      if (area >= 0 && area !== cand.band) return;
+      commitBox(active, unionBoxes(current, cand.box));
       return;
     }
     commitBox(active, cand.box);
@@ -166,7 +173,10 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if (!activeLine || !activeSource) return false;
     if (active in viewBoxes || isLineGap(activeLine, active) || active in activeSource.syllableCuts) return false;
     const areas = orderNeumeBands(activeLine.neumeBands ?? []);
-    const i = nextCandidate(suggestions.candidates, viewBoxes[active - 1] ?? null, areas);
+    // The nearest earlier syllable with a real box ("no neume", gaps and legacy crops have none).
+    let prev: SyllableBox | null = null;
+    for (let k = active - 1; k >= 0 && !prev; k--) prev = viewBoxes[k] ?? null;
+    const i = nextCandidate(suggestions.candidates, prev, areas);
     if (i === null) return false;
     commitBox(active, suggestions.candidates[i].box);
     advanceAfterPick(active);

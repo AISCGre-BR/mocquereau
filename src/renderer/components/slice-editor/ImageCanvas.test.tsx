@@ -384,7 +384,8 @@ describe("ImageCanvas: candidatos (M3)", () => {
     const v = setupCands();
     const els = v.container.querySelectorAll<HTMLElement>("[data-candidate]");
     expect(els).toHaveLength(2);
-    expect(els[0].className).toContain("border-dashed");
+    expect(els[0].className).toContain("border-dotted");
+    expect(els[0].className).not.toContain("border-dashed");
     expect(els[0].className).toContain("border-rule-strong");
     expect(els[0].className).toContain("pointer-events-none");
     expect(els[0].textContent).toBe("");

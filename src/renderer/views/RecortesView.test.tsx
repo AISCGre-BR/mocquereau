@@ -1109,6 +1109,30 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
       expect(v.line().syllableBoxes).toEqual({ 0: C0, 1: D0 });
     });
 
+    it("Enter depois de uma sílaba sem neuma usa a última caixa real antes dela", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: C1, 1: null }, confirmed: true })]);
+      act(() => v.ref.recortes!.setActiveSyllable(2));
+      v.key({ key: "Enter" });
+      expect(v.line().syllableBoxes).toEqual({ 0: C1, 1: null, 2: C2 });
+    });
+
+    it("Shift+clique num candidato de outra área não une", async () => {
+      const bands = [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }];
+      const v = await mountOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: C0 }, confirmed: true, neumeBands: bands })]);
+      act(() => v.ref.suggestions!.setMode("candidates"));
+      v.key({ key: "G", ctrlKey: true, shiftKey: true });
+      const D0 = { x: 0.25, y: 0.6, w: 0.1, h: 0.2 };
+      await v.resolve(0, cands([C1, D0], [0, 1]));
+      pointer(v.wrapper(), "pointerdown", 60, 70, 0, { shiftKey: true }); // D0, área 1
+      pointer(v.wrapper(), "pointerup", 60, 70, 0, { shiftKey: true });
+      expect(v.line().syllableBoxes).toEqual({ 0: C0 });
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+      pointer(v.wrapper(), "pointerdown", 60, 30, 0, { shiftKey: true }); // C1, mesma área
+      pointer(v.wrapper(), "pointerup", 60, 30, 0, { shiftKey: true });
+      const b = v.line().syllableBoxes![0]!;
+      expect([b.x, b.w].map((n) => +n.toFixed(9))).toEqual([0.05, 0.3]);
+    });
+
     it("Esc descarta os candidatos da página", async () => {
       const v = await candidatesOn();
       v.key({ key: "Escape" });
