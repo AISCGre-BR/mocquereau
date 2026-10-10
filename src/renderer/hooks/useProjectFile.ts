@@ -171,7 +171,12 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
 
   /** Opened from main: a legacy .mocquereau.json comes back without a writable path. */
   const adoptOpened = useCallback(
-    async (project: MocquereauProject, filePath: string | null, legacy = filePath === null) => {
+    async (
+      project: MocquereauProject,
+      filePath: string | null,
+      legacy = filePath === null,
+      recentPath: string | null = filePath,
+    ) => {
       const seq = ++openSeq.current;
       const realigned = legacy ? await realignLegacy(project, () => seq !== openSeq.current) : project;
       // Correção silenciosa na abertura, como o realinhamento: páginas sem intervalo.
@@ -184,7 +189,8 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
         .then((lib) => window.mocquereau.setClassification(mergeClassification(lib, ready.classification)))
         .catch(() => {});
       adopt(ready, filePath);
-      if (filePath !== null) publishRecentMeta(ready, filePath);
+      // Legado: sem caminho gravável, mas o main o pôs nos recentes (recentPath); a miniatura vai para lá.
+      if (recentPath) publishRecentMeta(ready, recentPath);
     },
     [adopt, realignLegacy],
   );
@@ -272,7 +278,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
   const open = useCallback(async () => {
     if (!confirmDiscard()) return;
     const result = await window.mocquereau.openProject();
-    if (result) await adoptOpened(result.project, result.filePath);
+    if (result) await adoptOpened(result.project, result.filePath, undefined, result.recentPath ?? result.filePath);
   }, [adoptOpened, confirmDiscard]);
 
   const openRecent = useCallback(
@@ -283,7 +289,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
         toast.show({ kind: "error", message: t("file.openError", { filePath }) });
         return;
       }
-      await adoptOpened(result.project, result.filePath);
+      await adoptOpened(result.project, result.filePath, undefined, result.recentPath ?? result.filePath);
     },
     [adoptOpened, confirmDiscard, t, toast],
   );
@@ -296,7 +302,7 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
       return;
     }
     // Sem caminho, mas não é arquivo legado: sem realinhamento de caixas (o exemplo não tem caixas).
-    await adoptOpened(result.project, result.filePath, false);
+    await adoptOpened(result.project, result.filePath, false, null);
   }, [adoptOpened, confirmDiscard, t, toast]);
 
   const close = useCallback(() => {

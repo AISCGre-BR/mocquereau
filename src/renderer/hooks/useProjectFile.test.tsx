@@ -209,6 +209,45 @@ describe("useProjectFile", () => {
     expect(api.updateRecentMeta).not.toHaveBeenCalled();
   });
 
+  it("legacy open publishes recent meta to the recent path main gave, keeping no writable path", async () => {
+    const api = mockApi({
+      openProjectByPath: vi.fn().mockResolvedValue({
+        project: createNewProject("Antigo", "Dom Pothier"),
+        filePath: null,
+        recentPath: "/pesquisa/antigo.mocquereau.json",
+      }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.openRecent("/pesquisa/antigo.mocquereau.json");
+    });
+    await waitFor(() =>
+      expect(api.updateRecentMeta).toHaveBeenCalledWith(
+        "/pesquisa/antigo.mocquereau.json",
+        expect.objectContaining({ title: "Antigo", author: "Dom Pothier", sources: expect.any(Array) }),
+      ),
+    );
+    expect(result.current.ctx.state.currentFilePath).toBeNull();
+  });
+
+  it("legacy open from the dialog also publishes recent meta", async () => {
+    const api = mockApi({
+      openProject: vi.fn().mockResolvedValue({
+        project: createNewProject("Antigo", ""),
+        filePath: null,
+        recentPath: "/a.mocquereau.json",
+      }),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.file.open();
+    });
+    await waitFor(() =>
+      expect(api.updateRecentMeta).toHaveBeenCalledWith("/a.mocquereau.json", expect.objectContaining({ title: "Antigo" })),
+    );
+    expect(result.current.ctx.state.currentFilePath).toBeNull();
+  });
+
   it("save sem arquivo pede o caminho, grava, limpa o Editado e confirma com toast", async () => {
     const api = mockApi();
     const { result } = setup();

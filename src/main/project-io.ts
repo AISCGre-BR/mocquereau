@@ -4,11 +4,13 @@
 // (useProjectFile):
 //   project:save(project, existingPath?)  -> { filePath } | null
 //   project:save-as(project, currentPath?) -> { filePath } | null
-//   project:open()                        -> { project, filePath | null } | null
-//   project:open-by-path(path)            -> { project, filePath | null } | null
+//   project:open()                        -> { project, filePath | null, recentPath } | null
+//   project:open-by-path(path)            -> { project, filePath | null, recentPath } | null
 //   project:open-example()                -> { project, filePath: null } | null
 // filePath null means "opened from a legacy .mocquereau.json": no writable path,
 // so autosave stays off and the next save becomes Save As (spec D8).
+// recentPath is the entry added to the recent list; the renderer only echoes it
+// back to app:update-recent-meta (title, progress, thumbnail), never writes to it.
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -35,7 +37,7 @@ export interface ProjectIoHooks {
   onSaveFinished(token: number, ok: boolean): void;
 }
 
-type OpenResult = { project: SessionProject; filePath: string | null };
+type OpenResult = { project: SessionProject; filePath: string | null; recentPath?: string };
 
 /** Legacy file the current document came from. It is never written to. */
 let legacyOrigin: LegacyOrigin | null = null;
@@ -103,10 +105,10 @@ async function openPath(filePath: string, hooks: ProjectIoHooks): Promise<OpenRe
     await addRecentFile(filePath);
     if (doc.format === 'legacy') {
       legacyOrigin = { path: filePath, createdAt: doc.project.meta.createdAt };
-      return { project: doc.project, filePath: null };
+      return { project: doc.project, filePath: null, recentPath: filePath };
     }
     legacyOrigin = null;
-    return { project: doc.project, filePath };
+    return { project: doc.project, filePath, recentPath: filePath };
   } catch (err) {
     console.error('[project-io] open failed', filePath, err);
     await showError(openErrorMessage(err));
