@@ -764,7 +764,7 @@ function assignPortion(
   const R1 = Math.max(L1 + 1, Math.min(R, Math.max(...ink.map((b) => b.x + b.w))));
   const seg = { L: L1, R: R1, syllables, glyphs };
   const expected = expectedCenters(seg, spans);
-  const cuts = cutScores(glyphs, l.a.bars.map(cxOf), wordGapXs);
+  const cuts = cutScores(glyphs, l.a.bars.map(cxOf), wordGapXs, l.a.u);
   const part = partitionDP(glyphs, expected, L1, R1, cuts, { open, lastExtra, boundaryCost: byText ? TEXT_BOUNDARY_COST : undefined });
   const conf = groupConfidence(part, cuts, glyphs.length);
   let end = L;
@@ -805,7 +805,9 @@ function assignSequential(
   const fit = (l: BandLine, rest: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]) => {
     const d = fitDetail(rest, glyphs, text, { u: l.a.u, xHeight: l.a.tl?.xHeight });
     const open = d.n > 0 && !l.a.staff;
-    const extra = open && !d.byText && d.n < rest.length;
+    // a silaba a mais so parte um agrupamento: com um glifo por agrupamento nao ha o que partir, e ela
+    // so esticaria o prior (a ultima silaba real cairia longe do seu neuma e perderia a confianca)
+    const extra = open && !d.byText && d.n < rest.length && d.n < glyphs.length;
     return { n: extra ? d.n + 1 : d.n, open, extra, byText: d.byText };
   };
   let li = 0;

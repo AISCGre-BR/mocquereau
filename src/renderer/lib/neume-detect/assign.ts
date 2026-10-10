@@ -101,15 +101,20 @@ function rawGaps(glyphs: Glyph[]): Float64Array {
  * Pontuacao de corte entre glifos i e i+1: vao / mediana dos vaos (minimo 1 px), +2 se ha barra de
  * divisao no vao, +1 se ha espaco entre palavras no vao. "No vao" = x em (cx_i, cx_{i+1}].
  */
-export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[]): Float64Array {
+export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[], u = 0): Float64Array {
   const gaps = rawGaps(glyphs);
   const sorted = Array.from(gaps).sort((a, b) => a - b);
   const med = Math.max(1, sorted.length ? sorted[sorted.length >> 1] : 1);
+  // Com u: um vao >= ABS_GAP_U·u (o corte absoluto de fitDetail) vale ao menos vao / (ABS_GAP_U·u /
+  // CLUSTER_CUT), >= CLUSTER_CUT. Com poucos glifos e todos distantes, a mediana e ela mesma um vao
+  // entre silabas: os cortes ficavam ~1, abaixo do custo de fronteira, e a particao juntava neumas
+  // isolados num grupo so (confianca ~0, nenhuma sugestao). Vaos menores seguem so a mediana.
+  const abs = u > 0 ? ABS_GAP_U * u : Infinity;
   const out = new Float64Array(gaps.length);
   for (let i = 0; i < gaps.length; i++) {
     const a = cx(glyphs[i]);
     const b = cx(glyphs[i + 1]);
-    out[i] = gaps[i] / med;
+    out[i] = Math.max(gaps[i] / med, gaps[i] >= abs ? (gaps[i] * CLUSTER_CUT) / abs : 0);
     if (barXs.some((x) => x > a && x <= b)) out[i] += BAR_BONUS;
     if (wordGapXs.some((x) => x > a && x <= b)) out[i] += WORD_BONUS;
   }

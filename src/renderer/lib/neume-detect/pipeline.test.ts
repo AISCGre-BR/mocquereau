@@ -1128,3 +1128,15 @@ describe('borda escura do scan na área', () => {
     for (const c of cands) expect(c.y + c.h / 2).toBeGreaterThan(BORDER);
   });
 });
+
+describe('neumas esparsos (poucos glifos, todos distantes)', () => {
+  it('três neumas isolados numa área sem texto: uma sugestão em cada, não um grupo só', () => {
+    const r = createRaster(1100, 140);
+    const n = [drawNeume(r, 'clivis', 80, 60, 3), drawNeume(r, 'torculus', 420, 55, 3), drawNeume(r, 'virga', 800, 58, 3)];
+    const syllables = ['Do', 'mi', 'nus', 'di', 'xit'].map((text, i) => ({ index: i, text, wordIndex: i < 3 ? 0 : 1 }));
+    const res = suggestBoxes({ image: r, notation: 'adiastematic', syllables, bands: [{ x: 0, y: 0.1, w: 1, h: 0.8 }] });
+    expect(res.suggestions.map((s) => s.index)).toEqual([0, 1, 2]);
+    const got = boxesPx(res, r.width, r.height);
+    n.forEach((b, i) => expect(iou(got[i], { x: b.x - 3, y: b.y - 3, w: b.w + 6, h: b.h + 6 })).toBeGreaterThanOrEqual(0.7));
+  });
+});
