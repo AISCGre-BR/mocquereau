@@ -85,3 +85,46 @@ describe('fitCount', () => {
     expect(fitCount(queue, [g(0), g(40), g(80)], text)).toBe(2);
   });
 });
+
+describe('fitCount — robustez (melisma, palavras unidas, canto silábico, ruído)', () => {
+  const glyphs = (n: number, step = 60) => Array.from({ length: n }, (_, i) => g(i * step));
+  const queueOf = (...t: string[]) => t.map((s, i) => syl(i, s));
+  // 6 agrupamentos nítidos de 2 glifos (vãos 5 e 55): sem texto, contariam 6
+  const clusters6 = Array.from({ length: 12 }, (_, i) => g(Math.floor(i / 2) * 80 + (i % 2) * 15));
+
+  it('melisma sobre uma vogal com 1 componente de texto: 1', () => {
+    const q = queueOf('e', 'ta', 'ta', 'ta', 'ta', 'ta');
+    expect(fitCount(q, clusters6, [{ x: 0, y: 100, w: 12, h: 16 }])).toBe(1);
+  });
+  it('melisma com 2 componentes de texto (t com haste + "us"): 1', () => {
+    const q = queueOf('tus', 'est', 'no', 'bis', 'ta', 'ta');
+    const text = [{ x: 0, y: 84, w: 12, h: 32 }, { x: 12, y: 100, w: 24, h: 16 }];
+    expect(fitCount(q, clusters6, text)).toBe(1);
+  });
+  it('palavras unidas num componente: a altura-x segura a unidade (Glo-ri-a in ex-cel-sis De-o)', () => {
+    const q = queueOf('Glo', 'ri', 'a', 'in', 'ex', 'cel', 'sis', 'De', 'o', 'et', 'in', 'ter', 'ra', 'pax');
+    // letras de 12 px encostadas; palavras com haste têm 2xh de altura
+    const text = [
+      { x: 0, y: 84, w: 72, h: 32 },
+      { x: 90, y: 100, w: 24, h: 16 },
+      { x: 130, y: 84, w: 96, h: 32 },
+      { x: 240, y: 84, w: 36, h: 32 },
+    ];
+    expect(Math.abs(fitCount(q, glyphs(20), text, { xHeight: 16 }) - 9)).toBeLessThanOrEqual(1);
+  });
+  it('canto silábico sem texto: 10 glifos igualmente espaçados com vão >= 12u: 10', () => {
+    const q = Array.from({ length: 15 }, (_, i) => syl(i, 'ta'));
+    expect(Math.abs(fitCount(q, glyphs(10, 40), [], { u: 2 }) - 10)).toBeLessThanOrEqual(1);
+  });
+  it('sem texto, com u: vãos internos de um neuma (< 12u) não cortam', () => {
+    const q = Array.from({ length: 10 }, (_, i) => syl(i, 'a'));
+    expect(fitCount(q, [0, 15, 30, 100, 115, 200].map((x) => g(x)), [], { u: 2 })).toBe(3);
+  });
+  it('ruído (pingos, traços, pontuação) não infla a contagem', () => {
+    const q = Array.from({ length: 30 }, (_, i) => syl(i, 'ta'));
+    const specks = Array.from({ length: 6 }, (_, i) => ({ x: 300 + i * 10, y: 90, w: 4, h: 4 }));
+    expect(fitCount(q, glyphs(20, 40), [...letterBoxes(18), ...specks])).toBe(9);
+  });
+  // Limitação conhecida: abreviaturas escrevem menos letras que a silabação ("dñs" por Do-mi-nus).
+  it.todo('abreviaturas ("dñs" = Do-mi-nus) contam as sílabas da forma por extenso');
+});

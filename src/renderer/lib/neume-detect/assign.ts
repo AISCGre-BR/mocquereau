@@ -12,6 +12,17 @@ export const WORD_BONUS = 1;
 export const CLUSTER_CUT = 2;
 /** Minimo de componentes de texto para medir a area em letras. */
 export const MIN_TEXT_COMPONENTS = 3;
+/**
+ * Largura de uma letra em altura-x. Minusculas sem haste ocupam aproximadamente um quadrado de
+ * altura-x incluindo o espaco de uma letra a seguinte; a largura de tinta fica em ~0,75 (a fonte
+ * sintetica usa exatamente 0,75·xh). 0,6 contaria letras de mais (componentes de uma letra viram
+ * 1,25 letra); 0,8 de menos em maos estreitas.
+ */
+export const LETTER_PER_XH = 0.75;
+/** Componentes de texto mais baixos que esta fracao da altura mediana sao ruido. */
+export const TEXT_NOISE_H = 0.5;
+/** Sem texto: vao absoluto (em u) que separa silabas; acima dos vaos internos de um neuma (<= 10u). */
+export const ABS_GAP_U = 12;
 
 export interface Segment {
   /** Limites x [L, R] em px de trabalho. */
@@ -106,11 +117,8 @@ export function expectedCenters(seg: Segment, spans: { x0: number; x1: number }[
   return pos.map((p) => seg.L + (p / acc) * (seg.R - seg.L));
 }
 
-/**
- * Pontuacao de corte entre glifos i e i+1: vao / mediana dos vaos (minimo 1 px), +2 se ha barra de
- * divisao no vao, +1 se ha espaco entre palavras no vao. "No vao" = x em (cx_i, cx_{i+1}].
- */
-export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[]): Float64Array {
+/** Vao em px entre o glifo i+1 e o alcance a direita dos glifos 0..i (ordenados por centro). */
+function rawGaps(glyphs: Glyph[]): Float64Array {
   const m = glyphs.length;
   const gaps = new Float64Array(Math.max(0, m - 1));
   let reach = -Infinity;
@@ -118,6 +126,15 @@ export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[])
     reach = Math.max(reach, glyphs[i].x + glyphs[i].w);
     gaps[i] = Math.max(0, glyphs[i + 1].x - reach);
   }
+  return gaps;
+}
+
+/**
+ * Pontuacao de corte entre glifos i e i+1: vao / mediana dos vaos (minimo 1 px), +2 se ha barra de
+ * divisao no vao, +1 se ha espaco entre palavras no vao. "No vao" = x em (cx_i, cx_{i+1}].
+ */
+export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[]): Float64Array {
+  const gaps = rawGaps(glyphs);
   const sorted = Array.from(gaps).sort((a, b) => a - b);
   const med = Math.max(1, sorted.length ? sorted[sorted.length >> 1] : 1);
   const out = new Float64Array(gaps.length);
@@ -211,19 +228,49 @@ export function groupConfidence(p: Partition, cuts: Float64Array, M: number): nu
   });
 }
 
+function median(v: number[]): number {
+  if (v.length === 0) return 0;
+  const s = [...v].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+export interface FitOptions {
+  /** Espessura do traco (px). Habilita o corte absoluto ABS_GAP_U·u no caminho sem texto. */
+  u?: number;
+  /** Altura-x da linha de texto (px), quando conhecida. Senao, a altura mediana do texto. */
+  xHeight?: number;
+}
+
 /**
- * Quantas silabas da fila cabem na area. Com texto (>= MIN_TEXT_COMPONENTS componentes): a
- * quantidade cujo total de letras mais se aproxima da largura do texto medida em letras (soma das
- * larguras / largura mediana; independe dos vaos, que esticam com os melismas). Sem texto: um por
- * agrupamento de glifos (vao >= CLUSTER_CUT x o mediano). Nunca mais que os glifos nem que a fila.
+ * Quantas silabas da fila cabem na area.
+ *
+ * Com texto (>= 1 componente, depois de descartar ruido com altura < TEXT_NOISE_H x a mediana:
+ * pingos de i, tracos de abreviacao, pontuacao): a quantidade cujo total de letras mais se aproxima
+ * da largura do texto medida em letras (soma das larguras / unidade de letra; independe dos vaos,
+ * que esticam com os melismas). Unidade = LETTER_PER_XH x altura-x, limitada pela largura mediana
+ * quando ha >= MIN_TEXT_COMPONENTS componentes (letras soltas medem a letra melhor que a altura;
+ * palavras unidas num componente so fazem a mediana crescer, e a altura a segura).
+ *
+ * Sem texto: um por agrupamento de glifos; corte quando o vao >= CLUSTER_CUT x o vao mediano ou,
+ * com u, quando o vao >= ABS_GAP_U·u (canto silabico com vaos iguais nao tem vao "destacado").
+ *
+ * Nunca mais que os glifos nem que a fila; sem glifos, 0.
+ *
+ * Limitacao conhecida: abreviaturas ("dñs" por "Dominus") escrevem menos letras que a silabacao;
+ * a area parece menor e recebe silabas de menos.
  */
-export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]): number {
+export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[], opts: FitOptions = {}): number {
   const maxN = Math.min(queue.length, glyphs.length);
   if (maxN === 0) return 0;
-  if (text.length >= MIN_TEXT_COMPONENTS) {
-    const ws = text.map((c) => c.w).sort((a, b) => a - b);
-    const wMed = Math.max(1, ws[ws.length >> 1]);
-    const units = ws.reduce((s, w) => s + w, 0) / wMed;
+  const hMed = median(text.map((c) => c.h));
+  const clean = text.filter((c) => c.h >= TEXT_NOISE_H * hMed && c.w > 0);
+  if (clean.length > 0) {
+    const xh = opts.xHeight && opts.xHeight > 0 ? opts.xHeight : median(clean.map((c) => c.h));
+    let unit = LETTER_PER_XH * xh;
+    if (clean.length >= MIN_TEXT_COMPONENTS) unit = Math.min(unit, median(clean.map((c) => c.w)));
+    unit = Math.max(1, unit);
+    const units = clean.reduce((s, c) => s + c.w, 0) / unit;
     let best = 1;
     let bestD = Infinity;
     let acc = 0;
@@ -240,7 +287,9 @@ export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[
   }
   const sorted = [...glyphs].sort((a, b) => cx(a) - cx(b));
   const cuts = cutScores(sorted, [], []);
+  const gaps = rawGaps(sorted);
+  const absCut = opts.u && opts.u > 0 ? ABS_GAP_U * opts.u : Infinity;
   let clusters = 1;
-  for (const c of cuts) if (c >= CLUSTER_CUT) clusters++;
+  for (let i = 0; i < cuts.length; i++) if (cuts[i] >= CLUSTER_CUT || gaps[i] >= absCut) clusters++;
   return Math.min(maxN, clusters);
 }
