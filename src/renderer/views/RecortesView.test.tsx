@@ -1150,6 +1150,54 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
       expect(shown(v)).toBe(0);
     });
 
+    const FAR: SyllableBox = { x: 0.8, y: 0.7, w: 0.1, h: 0.1 };
+    const click = (v: Awaited<ReturnType<typeof mountOn>>, x: number, y = 30, shiftKey = false) => {
+      pointer(v.wrapper(), "pointerdown", x, y, 0, { shiftKey });
+      pointer(v.wrapper(), "pointerup", x, y, 0, { shiftKey });
+    };
+
+    it("clique com a ativa já com caixa: não substitui; vai para a próxima pendente, que fica ativa, e avança", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: FAR }, confirmed: true })]);
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+      click(v, 60); // C1
+      expect(v.line().syllableBoxes).toEqual({ 0: FAR, 1: C1 });
+      expect(v.ref.recortes!.activeSyllable).toBe(2);
+      act(() => v.ref.history!.undo());
+      expect(v.line().syllableBoxes).toEqual({ 0: FAR });
+    });
+
+    it("clique com a ativa sem neuma (null): pula caixas e gaps até a próxima pendente", async () => {
+      const v = await candidatesOn([
+        mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: null, 1: FAR }, gaps: [2], confirmed: true }),
+      ]);
+      click(v, 60); // C1
+      expect(v.line().syllableBoxes).toEqual({ 0: null, 1: FAR, 3: C1 });
+      expect(v.ref.recortes!.activeSyllable).toBe(4);
+    });
+
+    it("clique com a ativa num gap: o gap não recebe caixa; a próxima pendente recebe", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false, gaps: [0] })]);
+      click(v, 60); // C1
+      expect(v.line().syllableBoxes).toEqual({ 1: C1 });
+      expect(v.line().gaps).toEqual([0]);
+      expect(v.ref.recortes!.activeSyllable).toBe(2);
+    });
+
+    it("Shift+clique com a ativa num gap não grava caixa", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false, gaps: [0] })]);
+      click(v, 60, 30, true);
+      expect(v.line().syllableBoxes).toEqual({});
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+    });
+
+    it("clique sem pendente depois da ativa: nada muda", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 1 }, syllableBoxes: { 0: FAR, 1: null }, confirmed: true })]);
+      click(v, 60);
+      expect(v.line().syllableBoxes).toEqual({ 0: FAR, 1: null });
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+      expect(shown(v)).toBe(3);
+    });
+
     it("clique no último do intervalo fica; Enter com caixa só avança", async () => {
       const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 1 }, syllableBoxes: { 0: BOX }, confirmed: true })]);
       v.key({ key: "Enter" }); // ativa 0 já tem caixa: só avança

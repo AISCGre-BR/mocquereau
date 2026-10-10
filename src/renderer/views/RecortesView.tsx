@@ -148,12 +148,32 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     recortes.setActiveSyllable(next);
   }
 
-  /** Click: the candidate becomes the active syllable's box and the active moves on. Shift: unite, stay. */
+  /** Pending = no box and no "no neume" (no key in the view), not a gap, not a legacy crop. */
+  function isPending(idx: number): boolean {
+    if (!activeLine || !activeSource) return false;
+    return !(idx in viewBoxes) && !isLineGap(activeLine, idx) && !(idx in activeSource.syllableCuts);
+  }
+
+  /** The syllable a plain click fills: the active one if pending, else the next pending one of the range; null = none. */
+  function clickTarget(active: number): number | null {
+    if (isPending(active)) return active;
+    if (!range) return null;
+    for (let k = Math.max(active + 1, range.start); k <= range.end && k < total; k++) if (isPending(k)) return k;
+    return null;
+  }
+
+  /**
+   * Click: the candidate becomes the box of the active syllable and the active moves on. An active
+   * syllable that already has a box (or "no neume", a gap, a legacy crop) is never overwritten: the
+   * candidate goes to the next pending syllable of the range, which becomes the active one (replacing
+   * a box takes Delete first). Shift: unite with the active syllable's box, stay.
+   */
   function pickCandidate(index: number, union: boolean) {
     const active = recortes.activeSyllable;
     const cand = suggestions.candidates[index];
     if (active === null || !cand) return;
     if (union) {
+      if (activeLine && isLineGap(activeLine, active)) return; // a gap never takes a box
       const current = viewBoxes[active];
       if (!current) {
         commitBox(active, cand.box);
@@ -165,14 +185,17 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       commitBox(active, unionBoxes(current, cand.box));
       return;
     }
-    commitBox(active, cand.box);
-    advanceAfterPick(active);
+    const target = clickTarget(active);
+    if (target === null) return;
+    if (target !== active) recortes.setActiveSyllable(target);
+    commitBox(target, cand.box);
+    advanceAfterPick(target);
   }
 
   /** Enter in the candidates mode on a pending syllable: the next candidate after the previous box. true = taken. */
   function takeNextCandidate(active: number): boolean {
     if (!activeLine || !activeSource) return false;
-    if (active in viewBoxes || isLineGap(activeLine, active) || active in activeSource.syllableCuts) return false;
+    if (!isPending(active)) return false;
     const areas = orderNeumeBands(activeLine.neumeBands ?? []);
     // The nearest earlier syllable with a real box ("no neume", gaps and legacy crops have none).
     let prev: SyllableBox | null = null;
