@@ -859,11 +859,14 @@ describe('altura das caixas segue as caixas da própria página (modo D)', () =>
       expect(off.bottom).toBeCloseTo(2, 1);
     });
 
-    it('deslocamentos limitados a ±3s', () => {
+    it('deslocamentos limitados: topo |off| ≤ 3s, base ≤ 5s', () => {
       const st = straight();
       const off = anchorStaffOffsets(st, 16, [{ box: { x: 500, y: 60 - 2 * 16, w: 30, h: 48 + 2 * 16 + 10 * 16 } }])!;
       expect(off.top).toBeCloseTo(-2, 1);
-      expect(off.bottom).toBe(3);
+      expect(off.bottom).toBe(5);
+      // topo 6s acima da pauta (dentro da janela: a caixa cruza a pauta) -> -3s
+      const hi = anchorStaffOffsets(st, 16, [{ box: { x: 500, y: 60 - 6 * 16, w: 30, h: 6 * 16 + 48 } }])!;
+      expect(hi.top).toBe(-3);
     });
 
     it('âncora com base +3s numa pauta com outra 2,5s abaixo: as caixas não chegam à pauta de baixo', () => {
@@ -882,7 +885,7 @@ describe('altura das caixas segue as caixas da própria página (modo D)', () =>
       }
     });
 
-    it('âncora com base +10s: a base das caixas fica em base da pauta + 3s', () => {
+    it('âncora com base +10s: a base das caixas fica em base da pauta + 5s', () => {
       const fx = buildDiastematicLine({ seed: 75, height: 400 });
       const W = fx.raster.width, H = fx.raster.height;
       const anchor = { index: 0, box: pxToFrac({ x: fx.truth[0].x, y: 60, w: fx.truth[0].w, h: 48 + 10 * 16 }, W, H) };
@@ -892,7 +895,7 @@ describe('altura das caixas segue as caixas da própria página (modo D)', () =>
       for (const k of res.candidates!) {
         const c = fracToPx(k.box, W, H);
         if (!notes.some((n) => n.x >= c.x && n.x + n.w <= c.x + c.w && Math.abs(c.w - n.w - 2 * Math.max(2, res.debug.strokeWidth)) <= 1)) continue;
-        expect(c.y + c.h).toBeLessThanOrEqual(108.5 + 3 * 16 + 2);
+        expect(c.y + c.h).toBeLessThanOrEqual(108.5 + 5 * 16 + 2);
         checked++;
       }
       expect(checked).toBeGreaterThanOrEqual(6);

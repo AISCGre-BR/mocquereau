@@ -518,14 +518,19 @@ function median(v: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/** Deslocamento maximo (em s) que as caixas da pagina podem impor ao topo e a base. */
-const ANCHOR_OFF_MAX = 3;
+/**
+ * Deslocamento maximo (em s) que as caixas da pagina podem impor: topo |off| <= 3s; base em
+ * [-3s, 5s] (as caixas do usuario incluem o texto abaixo da pauta; a pauta vizinha e o fundo da
+ * faixa ainda limitam).
+ */
+const ANCHOR_TOP_MAX = 3;
+const ANCHOR_BOTTOM_MAX = 5;
 
 /**
  * Deslocamentos (em s) do topo e da base das caixas da pagina em relacao a pauta, no x de cada uma:
  * (y - topo da pauta) / s e (y + h - base da pauta) / s; mediana sobre as ancoras desta pauta (as que
  * cruzam [topo - 2s, base + 3s]: num folio sem faixas chegam ancoras de outras pautas), limitada a
- * +-ANCHOR_OFF_MAX. null sem ancoras desta pauta.
+ * ANCHOR_TOP_MAX / ANCHOR_BOTTOM_MAX. null sem ancoras desta pauta.
  */
 export function anchorStaffOffsets(staff: Staff, s: number, anchors: { box: PxBox }[]): { top: number; bottom: number } | null {
   if (s <= 0) return null;
@@ -538,8 +543,10 @@ export function anchorStaffOffsets(staff: Staff, s: number, anchors: { box: PxBo
     bottoms.push((box.y + box.h - span.bottom) / s);
   }
   if (!tops.length) return null;
-  const clamp = (v: number) => Math.max(-ANCHOR_OFF_MAX, Math.min(ANCHOR_OFF_MAX, v));
-  return { top: clamp(median(tops)), bottom: clamp(median(bottoms)) };
+  return {
+    top: Math.max(-ANCHOR_TOP_MAX, Math.min(ANCHOR_TOP_MAX, median(tops))),
+    bottom: Math.max(-ANCHOR_TOP_MAX, Math.min(ANCHOR_BOTTOM_MAX, median(bottoms))),
+  };
 }
 
 /**
