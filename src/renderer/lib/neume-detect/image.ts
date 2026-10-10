@@ -5,6 +5,7 @@
 // Imagens de um canal, mascaras, escolha de canal, recorte e reamostragem.
 // contrastScore e pickChannel sao porte de othmar/candidates.py.
 // Diverge de numpy/skimage: percentis e mediana saem do histograma de 256 niveis (valores inteiros), nao de np.percentile interpolado.
+import { binarizeOtsu } from './threshold';
 import type { ChannelName, GrayImage, Mask, PxBox, RasterRGBA } from './types';
 
 /** Canal escolhido; pixels com alfa 0 viram 255 (fundo), para nunca parecerem tinta. */
@@ -71,6 +72,76 @@ export function contrastScore(img: GrayImage, mask?: Mask | null): number {
   for (let v = 0; v < 256; v++) dev[Math.abs(v - med)] += hist[v];
   const mad = 1.4826 * histPercentile(dev, 50) + 1;
   return (med - p2) / mad;
+}
+
+/**
+ * Razao de contraste sobre o do R a partir da qual outro canal substitui o R (M4f). O plano partia de
+ * 1,25; pelo criterio da tarefa (SG339 piorou com a troca: achados do sequencial com uma ancora
+ * 67% -> 33%) subiu para o menor valor que mantem o R em SG339 (razao medida 16,90 / 10,59 = 1,596).
+ */
+export const CHANNEL_SWITCH_RATIO = 1.6;
+
+type Channels = { r: GrayImage; g: GrayImage; b: GrayImage; gray: GrayImage; valid: Mask };
+
+function medianOf(hist: Float64Array): number {
+  return histPercentile(hist, 50);
+}
+
+/**
+ * Contraste da tinta num canal: (mediana do fundo - mediana da tinta) / (1,4826 MAD do fundo + 1),
+ * com tinta = pixels escuros do cinza (Otsu) e fundo = o resto. Ao contrario de contrastScore (que
+ * olha o percentil 2), nao depende de a tinta ocupar >= 2% da imagem.
+ */
+function inkContrast(img: GrayImage, ink: Uint8Array, valid: Mask): number {
+  const fg = new Float64Array(256);
+  const bg = new Float64Array(256);
+  let nf = 0;
+  let nb = 0;
+  for (let i = 0; i < img.data.length; i++) {
+    if (!valid.data[i]) continue;
+    if (ink[i]) {
+      fg[img.data[i]]++;
+      nf++;
+    } else {
+      bg[img.data[i]]++;
+      nb++;
+    }
+  }
+  if (nf < 20 || nb < 100) return 0;
+  const mb = medianOf(bg);
+  const dev = new Float64Array(256);
+  for (let v = 0; v < 256; v++) dev[Math.abs(v - mb)] += bg[v];
+  return (mb - medianOf(fg)) / (1.4826 * histPercentile(dev, 50) + 1);
+}
+
+function inkContrasts(w: Channels): Record<ChannelName, number> {
+  const ink = binarizeOtsu(w.gray, w.valid).data;
+  return {
+    r: inkContrast(w.r, ink, w.valid),
+    gray: inkContrast(w.gray, ink, w.valid),
+    g: inkContrast(w.g, ink, w.valid),
+    b: inkContrast(w.b, ink, w.valid),
+  };
+}
+
+/**
+ * Canal da tinta: R por padrao (apaga rubricas); outro canal (gray, g, b, nessa ordem de empate) so
+ * com contraste >= CHANNEL_SWITCH_RATIO x o do R (tinta avermelhada ou desbotada some no R).
+ */
+export function pickInkChannel(w: Channels): { name: ChannelName; image: GrayImage } {
+  const sc = inkContrasts(w);
+  let best: ChannelName = 'r';
+  for (const n of ['gray', 'g', 'b'] as const)
+    if (sc[n] > sc[best] && sc[n] >= CHANNEL_SWITCH_RATIO * sc.r) best = n;
+  return { name: best, image: w[best] };
+}
+
+/** Canal de maior contraste da tinta entre r, gray, g, b (empate: nessa ordem). */
+export function bestContrastChannel(w: Channels): ChannelName {
+  const sc = inkContrasts(w);
+  let best: ChannelName = 'r';
+  for (const n of ['gray', 'g', 'b'] as const) if (sc[n] > sc[best]) best = n;
+  return best;
 }
 
 /** 'auto' escolhe o canal de maior contrastScore (empate: ordem r, gray, g, b). */

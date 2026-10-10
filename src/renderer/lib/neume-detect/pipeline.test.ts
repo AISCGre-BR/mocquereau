@@ -902,3 +902,20 @@ describe('altura das caixas segue as caixas da própria página (modo D)', () =>
     });
   });
 });
+
+describe('M4f — canal automático', () => {
+  it('M4f — tinta avermelhada: canal trocado e neumas achados', () => {
+    const fx = buildAdiastematicLine({ seed: 70, inkColor: [215, 120, 90] });
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.channel).not.toBe('r');
+    const cands = res.candidates!.map((c) => fracToPx(c.box, fx.raster.width, fx.raster.height));
+    for (const s of fx.syllables)
+      for (const n of fx.neumes[s.index]) expect(cands.some((c) => c.x <= n.x + n.w / 2 && n.x + n.w / 2 <= c.x + c.w)).toBe(true);
+  });
+
+  it('tinta escura comum: continua no R', () => {
+    const fx = buildAdiastematicLine({ seed: 70 });
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.channel).toBe('r');
+  });
+});

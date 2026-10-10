@@ -11,6 +11,8 @@ import {
   cropGray,
   cropMask,
   contrastScore,
+  bestContrastChannel,
+  pickInkChannel,
   prepareWork,
   rednessInk,
   upscale2xGray,
@@ -128,17 +130,12 @@ function inkStage(
   work: Work,
   p: Params,
   staff: Staff | null,
-  channel: 'r' | 'auto',
+  channel: ChannelName,
   k: number,
   blobs: Mask = darkBlobs(work.gray, work.valid, p),
 ): InkStage {
-  let img = work.r;
-  let name: ChannelName = 'r';
-  if (channel === 'auto' && contrastScore(work.gray, work.valid) > contrastScore(work.r, work.valid)) {
-    img = work.gray;
-    name = 'gray';
-  }
-  let ink = sauvola(img, p.window, k, 128, work.valid);
+  const name = channel;
+  let ink = sauvola(work[channel], p.window, k, 128, work.valid);
   let red = false;
   if (staff) {
     if (staffCoverage(ink, staff) < RED_COVERAGE) red = true;
@@ -424,9 +421,14 @@ function analyzeBand(
     input.notation === 'diastematic' && !staff
       ? { data: new Uint8Array(work.gray.data.length), width: work.gray.width, height: work.gray.height }
       : darkBlobs(work.gray, work.valid, p);
-  let st = inkStage(work, p, staff, 'r', p.k, blobs);
+  // M4f: R por padrao; outro canal so com contraste claramente maior (pickInkChannel). Pauta vermelha
+  // (some no R) fica no R: as linhas somam "tinta" no cinza e puxariam a troca, mas o R ja as apaga.
+  let channel = pickInkChannel(work).name;
+  if (staff && channel !== 'r' && staffCoverage(sauvola(work.r, p.window, p.k, 128, work.valid), staff) < RED_COVERAGE)
+    channel = 'r';
+  let st = inkStage(work, p, staff, channel, p.k, blobs);
   if (st.comps.length < needed) {
-    const retry = inkStage(work, p, staff, 'auto', 0.1, blobs);
+    const retry = inkStage(work, p, staff, bestContrastChannel(work), 0.1, blobs);
     if (retry.comps.length > st.comps.length) st = retry;
   }
   debug.channel = st.channel;

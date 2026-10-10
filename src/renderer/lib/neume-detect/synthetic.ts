@@ -232,6 +232,8 @@ export interface AdiastematicOptions {
   firstIndex?: number;
   /** Espessura da caneta do texto (padrão u). */
   textU?: number;
+  /** Cor dos neumas e do texto (padrão INK). */
+  inkColor?: RGB;
 }
 
 /**
@@ -265,7 +267,7 @@ export function buildAdiastematicLine(opts: AdiastematicOptions = {}): LineFixtu
     for (let k = 0; k < count; k++) {
       const y = 40 + Math.floor(rnd() * 50);
       const shape = SHAPES[Math.floor(rnd() * SHAPES.length)];
-      const b = drawNeume(r, shape, x, y, u);
+      const b = drawNeume(r, shape, x, y, u, opts.inkColor ?? INK);
       boxes.push(b);
       x = b.x + b.w + 6 * u + Math.floor(rnd() * 4 * u);
       if (x + 4 * u > limit) break;
@@ -273,7 +275,7 @@ export function buildAdiastematicLine(opts: AdiastematicOptions = {}): LineFixtu
     neumes[s.index] = boxes;
     ink[s.index] = unionBox(boxes);
     truth[s.index] = padBox(ink[s.index], Math.max(2, u));
-    drawText(r, s.text, cx + Math.round(0.1 * colW), baseline, xh, opts.textU ?? u);
+    drawText(r, s.text, cx + Math.round(0.1 * colW), baseline, xh, opts.textU ?? u, opts.inkColor ?? INK);
   });
   if (opts.stain) {
     const gx = Math.round(margin + 3 * colW - 0.2 * colW);

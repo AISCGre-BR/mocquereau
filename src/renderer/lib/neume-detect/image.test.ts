@@ -4,6 +4,8 @@ import {
   alphaMask,
   downscaleMask,
   prepareWork,
+  pickInkChannel,
+  CHANNEL_SWITCH_RATIO,
   rednessInk,
   contrastScore,
   cropGray,
@@ -14,7 +16,7 @@ import {
   pickChannel,
   upscale2xGray,
 } from './image';
-import { addNoise, createRaster } from './synthetic';
+import { addNoise, buildAdiastematicLine, createRaster } from './synthetic';
 import type { GrayImage, RasterRGBA } from './types';
 
 function raster(w: number, h: number, px: (x: number, y: number) => [number, number, number, number]): RasterRGBA {
@@ -102,5 +104,22 @@ describe('image', () => {
     const r = { data: Uint8Array.from([226, 235, 45, 226, 255]), width: 5, height: 1 };
     const g = { data: Uint8Array.from([70, 150, 35, 212, 0]), width: 5, height: 1 };
     expect(Array.from(rednessInk(r, g).data)).toEqual([0, 85, 235, 227, 0]);
+  });
+
+  it('pickInkChannel: R com tinta escura; cinza quando a tinta tem R próximo do pergaminho', () => {
+    const a = buildAdiastematicLine({ seed: 69 });
+    const b = buildAdiastematicLine({ seed: 69, inkColor: [215, 120, 90] });
+    const work = (r: RasterRGBA) => prepareWork(r, { x: 0, y: 0, w: r.width, h: r.height }, 1);
+    expect(pickInkChannel(work(a.raster)).name).toBe('r');
+    expect(pickInkChannel(work(b.raster)).name).not.toBe('r');
+  });
+
+  it('pickInkChannel: sem contraste maior, fica no R', () => {
+    const img = (v: number[]) => ({ data: Uint8Array.from(v), width: v.length, height: 1 });
+    const flat = img(Array.from({ length: 200 }, () => 200));
+    const valid = { data: new Uint8Array(200).fill(1), width: 200, height: 1 };
+    // todos iguais: fica R
+    expect(pickInkChannel({ r: flat, g: flat, b: flat, gray: flat, valid }).name).toBe('r');
+    expect(CHANNEL_SWITCH_RATIO).toBe(1.6);
   });
 });
