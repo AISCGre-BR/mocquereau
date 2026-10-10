@@ -708,3 +708,14 @@ describe('M4d — margem é contexto', () => {
     });
   });
 });
+
+describe('M4e — restos de pauta', () => {
+  it('M4e — restos de linha não viram candidatos; todas as notas continuam', () => {
+    const fx = buildDiastematicLine({ residue: true, seed: 68 });
+    const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    const cands = res.candidates!.map((c) => fracToPx(c.box, fx.raster.width, fx.raster.height));
+    for (const r of fx.residues!) expect(cands.some((c) => c.x <= r.x + r.w / 2 && r.x + r.w / 2 <= c.x + c.w)).toBe(false);
+    for (const s of fx.syllables)
+      for (const n of fx.neumes[s.index]) expect(cands.some((c) => c.x <= n.x + n.w / 2 && n.x + n.w / 2 <= c.x + c.w)).toBe(true);
+  });
+});

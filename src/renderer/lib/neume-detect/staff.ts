@@ -376,6 +376,22 @@ export function staffCoverage(ink: Mask, staff: Staff): number {
   return total ? hit / total : 0;
 }
 
+/**
+ * Resto de linha: plano (h <= 2t + 2 e w >= 3h) com o centro a <= t + 1 de alguma linha da pauta
+ * naquele x. Regra estreita de proposito: um punctum sobre a linha (quase quadrado) nunca e resto.
+ */
+export function isStaffResidue(g: PxBox, staff: Staff): boolean {
+  const t = staff.metrics.t;
+  if (g.h > 2 * t + 2 || g.w < 3 * g.h) return false;
+  const cx = g.x + g.w / 2;
+  const cy = g.y + g.h / 2;
+  for (const l of staff.lines) {
+    const xi = Math.min(l.ys.length - 1, Math.max(0, Math.round(cx)));
+    if (Math.abs(cy - l.ys[xi]) <= t + 1) return true;
+  }
+  return false;
+}
+
 export function staffTop(staff: Staff): number {
   let m = Infinity;
   const l = staff.lines[0];

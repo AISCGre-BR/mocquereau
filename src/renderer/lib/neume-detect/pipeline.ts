@@ -24,6 +24,7 @@ import {
   cropStaff,
   findStavesRobust,
   isFallbackStaff,
+  isStaffResidue,
   isBarLine,
   removeStaffLines,
   staffBottom,
@@ -482,7 +483,7 @@ function analyzeBand(
     const special = classifySpecialGlyphs(glyphs, staff, tx);
     const drop = new Set([...special.clef, ...special.custos]);
     debug.counts.ignored = drop.size;
-    glyphs = glyphs.filter((_, i) => !drop.has(i));
+    glyphs = glyphs.filter((g, i) => !drop.has(i) && !isStaffResidue(g, staff));
   }
   debug.counts.glyphs = glyphs.length;
   lap('glyphs');

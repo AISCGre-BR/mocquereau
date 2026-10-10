@@ -6,6 +6,7 @@ import {
   findStaves,
   findStavesRobust,
   isBarLine,
+  isStaffResidue,
   removalLimit,
   removeStaffLines,
   staffCoverage,
@@ -44,6 +45,16 @@ describe('staff', () => {
     expect(Math.abs(st.x0 - 30)).toBeLessThanOrEqual(2);
     expect(Math.abs(st.x1 - 1170)).toBeLessThanOrEqual(2);
     st.lines.forEach((l, i) => expect(Math.abs(l.mean - center(spec, i, 600))).toBeLessThanOrEqual(1));
+  });
+
+  it('isStaffResidue: traço plano sobre a linha sim; punctum sobre a linha e traço plano fora da linha não', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!)[0];
+    const yLine = st.lines[2].ys[300];
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - 2), w: 30, h: 5 }, st)).toBe(true);
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - 6), w: 12, h: 12 }, st)).toBe(false);
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine + 7), w: 30, h: 4 }, st)).toBe(false);
   });
 
   it('acha pauta inclinada 6° (runs curtas na segunda tentativa) e devolve o ângulo', () => {

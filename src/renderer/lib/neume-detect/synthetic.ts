@@ -317,6 +317,8 @@ export interface DiastematicFixture extends LineFixture {
   clef: PxBox;
   custos: PxBox;
   bar: PxBox;
+  /** Trechos de linha engrossados (com `residue`). */
+  residues?: PxBox[];
 }
 
 export interface DiastematicOptions {
@@ -332,6 +334,11 @@ export interface DiastematicOptions {
   height?: number;
   /** false = nao desenha a pauta (so as notas). */
   staff?: boolean;
+  /**
+   * Tres trechos de 30 px da 3a linha com espessura t + 3 (acima do limite de remocao) em
+   * x = 300, 600, 850 (x width/1400), longe das notas.
+   */
+  residue?: boolean;
 }
 
 /**
@@ -409,6 +416,16 @@ export function buildDiastematicLine(opts: DiastematicOptions = {}): Diastematic
     fillRect(r, cX, lineCenter(1) - 2 + dy(cX), 6, 5),
     fillRect(r, cX + 5, lineCenter(1) - 9 + dy(cX + 5), 2, 8),
   ]);
+  let residues: PxBox[] | undefined;
+  if (opts.residue) {
+    const th = staff.t + 3;
+    residues = [300, 600, 850].map((x0) => {
+      const x = Math.round(x0 * k);
+      // centrado no centro da linha (topo + (t - 1) / 2)
+      const y = Math.round(staffLineTop(staff, 2, x) + (staff.t - 1) / 2 - (th - 1) / 2);
+      return fillRect(r, x, y, 30, th, staff.color ?? INK);
+    });
+  }
   if (opts.noise !== false) addNoise(r, (opts.seed ?? 11) + 1);
-  return { raster: r, syllables, ink, neumes, truth, u, baseline: baseline0, xHeight: xh, staff, clef, custos, bar };
+  return { raster: r, syllables, ink, neumes, truth, u, baseline: baseline0, xHeight: xh, staff, clef, custos, bar, residues };
 }
