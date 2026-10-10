@@ -94,3 +94,18 @@ describe('findTextLine — fileira de neumas sem texto', () => {
     expect(findTextLine(comps, 1000, { kind: 'lowest' }, 8)).toBeNull();
   });
 });
+
+describe('findTextLine — fileira de neumas sozinha', () => {
+  it("'lowest': traços curtos em pares, sozinhos na área (nada acima nem abaixo), não são texto", () => {
+    const comps: { x: number; y: number; w: number; h: number; area: number }[] = [];
+    for (let g = 0; g < 8; g++) for (let k = 0; k < 2; k++) comps.push({ x: 40 + g * 110 + k * 9, y: 18, w: 6, h: 12, area: 40 });
+    expect(findTextLine(comps, 1000, { kind: 'lowest', inkAbove: true }, 8)).toBeNull();
+  });
+
+  it("'lowest': texto com neumas acima continua achado", () => {
+    const comps: { x: number; y: number; w: number; h: number; area: number }[] = [];
+    for (let k = 0; k < 12; k++) comps.push({ x: 40 + k * 16, y: 80, w: 12, h: 16, area: 70 }); // letras
+    for (let g = 0; g < 4; g++) comps.push({ x: 50 + g * 50, y: 20, w: 14, h: 22, area: 90 }); // neumas acima
+    expect(findTextLine(comps, 300, { kind: 'lowest', inkAbove: true }, 6)).not.toBeNull();
+  });
+});

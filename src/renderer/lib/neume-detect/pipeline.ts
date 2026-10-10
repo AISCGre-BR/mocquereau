@@ -313,7 +313,7 @@ export function measureU(grayInk: Mask, notation: SuggestInput['notation'], inne
       ]
     : [];
   const comps = labelComponents(ink).components.filter((c) => c.area >= 4);
-  const tl = findTextLine(comps, ink.width, { kind: 'lowest' });
+  const tl = findTextLine(comps, ink.width, { kind: 'lowest' }, 0, inner && { y0: inner.y, y1: inner.y + inner.h });
   if (!tl) {
     const um = margins.length ? strokeWidthOutside(ink, margins) : 0;
     return um > 0 ? Math.min(um, u0) : u0;
@@ -494,11 +494,13 @@ function analyzeBand(
 
   // Etapa 4: linha de texto
   const bandW = work.r.width;
+  const innerW = band.inner ? rasterToWork(band.inner, work) : null;
   const tl: TextLine | null = findTextLine(
     st.comps,
     bandW,
-    staff ? { kind: 'below', y: staffBottom(staff) } : { kind: 'lowest' },
+    staff ? { kind: 'below', y: staffBottom(staff) } : { kind: 'lowest', inkAbove: true },
     2 * u,
+    innerW ? { y0: innerW.y, y1: innerW.y + innerW.h } : undefined,
   );
   let neumes: Component[] = st.comps;
   let text: Component[] = [];
@@ -517,7 +519,6 @@ function analyzeBand(
   // M4d: com area desenhada, componentes cortados pela borda inferior do raster de trabalho, na metade
   // de baixo da area, sao texto. (O centro na area e cobrado dos glifos, depois da fusao.)
   const workH = work.r.height;
-  const innerW = band.inner ? rasterToWork(band.inner, work) : null;
   if (innerW) neumes = neumes.filter((c) => !(c.y + c.h >= workH - 1 && c.y > innerW.y + 0.5 * innerW.h));
   if (staff) {
     // fragmentos de texto cortados pela borda inferior da faixa da pauta

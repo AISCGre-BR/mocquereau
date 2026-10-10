@@ -1140,3 +1140,16 @@ describe('neumas esparsos (poucos glifos, todos distantes)', () => {
     n.forEach((b, i) => expect(iou(got[i], { x: b.x - 3, y: b.y - 3, w: b.w + 6, h: b.h + 6 })).toBeGreaterThanOrEqual(0.7));
   });
 });
+
+describe('fileira de neumas sem texto na área', () => {
+  it('pares de traços curtos (como ,, e ///) sozinhos na área: todos viram candidatos inteiros', () => {
+    const r = createRaster(1200, 120);
+    const strokes: PxBox[] = [];
+    for (let g = 0; g < 9; g++) for (let k = 0; k < 2; k++) strokes.push(fillRect(r, 60 + g * 120 + k * 10, 50, 4, 12, INK));
+    const H = r.height;
+    const res = suggestBoxes({ image: r, notation: 'adiastematic', syllables: [], mode: 'candidates', bands: [{ x: 0, y: 35 / H, w: 1, h: 45 / H }] });
+    const cands = res.candidates!.map((c) => fracToPx(c.box, r.width, H));
+    expect(res.debug.counts.text).toBe(0);
+    for (const s of strokes) expect(cands.some((c) => c.x <= s.x && s.x + s.w <= c.x + c.w && c.y <= s.y && s.y + s.h <= c.y + c.h)).toBe(true);
+  });
+});
