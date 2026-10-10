@@ -77,7 +77,11 @@ describe('suggestBoxes — adiastematico', () => {
     const anchors = [{ index: 1, box: pxToFrac(fx.truth[3], W, H) }];
     const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, anchors });
     const got = boxesPx(res, W, H);
-    expect(res.suggestions).toHaveLength(4);
+    // M2: a ancora corta a fila na sua posicao: a silaba 0 fica antes dela, e depois so cabe o que
+    // ha a direita (a silaba 2 nos neumas da 4); 3 e 4 ficam para o proximo "Sugerir"
+    expect(res.suggestions.map((s) => s.index)).toEqual([0, 2]);
+    expect(got[0].x + got[0].w).toBeLessThanOrEqual(fx.truth[3].x);
+    expect(got[2].x).toBeGreaterThanOrEqual(fx.truth[3].x + fx.truth[3].w);
     for (const s of res.suggestions) {
       const b = got[s.index];
       const a = fx.truth[3];
@@ -171,7 +175,9 @@ describe('suggestBoxes — escala e transparencia', () => {
   });
 
   it('traco de 1 px (u < 2) amplia a faixa 2x e ainda acha as silabas', () => {
-    const fx = buildAdiastematicLine({ seed: 6, u: 1 });
+    // sem letras de haste: com caneta de 1 px, as hastes (32 px = 32u) passam de maxSide (30u) e
+    // somem, e a contagem por texto (M2) ficaria com uma silaba a menos
+    const fx = buildAdiastematicLine({ seed: 6, u: 1, words: [['mu', 'ne'], ['ra'], ['ve', 'ni']] });
     const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables });
     expect(res.debug.scale).toBe(2);
     const got = boxesPx(res, fx.raster.width, fx.raster.height);
@@ -924,5 +930,78 @@ describe('M4f — canal automático', () => {
     drawText(fx.raster, 'DOMINUS', 80, 150, 40, 6, RED_LINE); // letras grandes vermelhas
     const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates' });
     expect(res.debug.channel).toBe('r');
+  });
+});
+
+describe('M2 — sequencial por área', () => {
+  const extra = (from: number, n: number, word0: number) =>
+    Array.from({ length: n }, (_, k) => ({ index: from + k, text: 'ta', wordIndex: word0 + k }));
+  const ids = (res: SuggestResult) => res.suggestions.map((s) => s.index);
+
+  it('30 sílabas no pedido, área com 9: só as 9 primeiras recebem sugestão, nos seus neumas', () => {
+    const words = [['Do', 'mi', 'nus'], ['di', 'xit'], ['ad'], ['me'], ['fi', 'li']];
+    const fx = buildAdiastematicLine({ width: 1600, words, seed: 71 });
+    const { width: W, height: H } = fx.raster;
+    const syllables = [...fx.syllables, ...extra(9, 21, 5)];
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables, bands: [{ x: 0, y: 0, w: 1, h: 1 }] });
+    expect(ids(res)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    const got = boxesPx(res, W, H);
+    for (const s of fx.syllables) expect(iou(got[s.index], fx.truth[s.index])).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('continua na área seguinte de onde a anterior parou; as que sobram ficam sem sugestão', () => {
+    const a = buildAdiastematicLine({ seed: 72, words: [['Ky', 'ri', 'e'], ['e', 'lei']] });
+    const b = buildAdiastematicLine({ seed: 73, words: [['son'], ['Chri', 'ste'], ['e']], firstIndex: 5 });
+    const W = a.raster.width, H = a.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4);
+    data.set(a.raster.data, 0);
+    data.set(b.raster.data, W * H * 4);
+    const syllables = [...a.syllables, ...b.syllables.map((s) => ({ ...s, wordIndex: s.wordIndex + 2 })), ...extra(9, 6, 10)];
+    const res = suggestBoxes({
+      image: { data, width: W, height: 2 * H }, notation: 'adiastematic', syllables,
+      bands: [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }],
+    });
+    expect(ids(res)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    const got = boxesPx(res, W, 2 * H);
+    for (const i of [0, 1, 2, 3, 4]) expect(got[i].y + got[i].h).toBeLessThanOrEqual(H + 1);
+    for (const i of [5, 6, 7, 8]) expect(got[i].y).toBeGreaterThanOrEqual(H - 1);
+    for (const s of b.syllables) expect(iou(got[s.index], { ...b.truth[s.index], y: b.truth[s.index].y + H })).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('a caixa da sílaba anterior abre a fila: nada à esquerda dela, as seguintes nos seus neumas', () => {
+    const fx = buildAdiastematicLine({ seed: 74, words: [['Pu', 'er'], ['na', 'tus'], ['est'], ['no', 'bis']] });
+    const { width: W, height: H } = fx.raster;
+    const anchors = [{ index: 2, box: pxToFrac(fx.truth[2], W, H) }];
+    const syllables = [...fx.syllables.slice(2), ...extra(7, 5, 4)]; // fila começa na âncora
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables, anchors, bands: [{ x: 0, y: 0, w: 1, h: 1 }] });
+    expect(ids(res)).toEqual([3, 4, 5, 6]);
+    const got = boxesPx(res, W, H);
+    for (const i of [3, 4, 5, 6]) expect(iou(got[i], fx.truth[i])).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('corrida presa entre âncoras em áreas diferentes: o fim da primeira e o começo da segunda', () => {
+    const a = buildAdiastematicLine({ seed: 75, words: [['Ky', 'ri', 'e']] });
+    const b = buildAdiastematicLine({ seed: 76, words: [['e', 'lei', 'son']], firstIndex: 3 });
+    const W = a.raster.width, H = a.raster.height;
+    const data = new Uint8ClampedArray(W * H * 2 * 4);
+    data.set(a.raster.data, 0);
+    data.set(b.raster.data, W * H * 4);
+    const toFull = (t: PxBox, dy: number) => pxToFrac({ ...t, y: t.y + dy }, W, 2 * H);
+    const anchors = [{ index: 0, box: toFull(a.truth[0], 0) }, { index: 5, box: toFull(b.truth[5], H) }];
+    const syllables = [...a.syllables, ...b.syllables.map((s) => ({ ...s, wordIndex: 1 }))];
+    const res = suggestBoxes({
+      image: { data, width: W, height: 2 * H }, notation: 'adiastematic', syllables, anchors,
+      bands: [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }],
+    });
+    expect(ids(res)).toEqual([1, 2, 3, 4]);
+    const got = boxesPx(res, W, 2 * H);
+    for (const i of [1, 2]) expect(iou(got[i], a.truth[i])).toBeGreaterThanOrEqual(0.8);
+    for (const i of [3, 4]) expect(iou(got[i], { ...b.truth[i], y: b.truth[i].y + H })).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('área sem texto: uma sílaba por agrupamento de neumas', () => {
+    const fx = buildAdiastematicLine({ seed: 77, text: false });
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [...fx.syllables, ...extra(5, 10, 3)], bands: [{ x: 0, y: 0, w: 1, h: 1 }] });
+    expect(ids(res)).toEqual([0, 1, 2, 3, 4]);
   });
 });

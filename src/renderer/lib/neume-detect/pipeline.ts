@@ -4,7 +4,7 @@
 // Ver NOTICE.
 // suggestBoxes: pipeline puro, sincrono e deterministico (spec, etapas 0 a 6).
 // Fluxo base: find_candidates() de othmar/candidates.py.
-import { groupConfidence, cutScores, expectedCenters, overlapFraction, partitionDP, segmentByAnchors, type Glyph } from './assign';
+import { groupConfidence, cutScores, expectedCenters, fitCount, overlapFraction, partitionDP, type Glyph } from './assign';
 import { ceilPx, floorPx, fracToPxRect, lineOrNone, selectBand } from './band';
 import { dropIsolatedSpecks, filterComponents, labelComponents, labelsTouching, type Component } from './components';
 import {
@@ -413,6 +413,8 @@ function analyzeBand(
   if (staff && metrics && fromRed) u = Math.min(u, Math.max(metrics.t, metrics.s / 4));
   debug.strokeWidth = u;
   const p = deriveParams(u, staff ? metrics : null, prep.up);
+  // componentes esperados nesta faixa: os alvos, limitados ao que cabe na largura (um grupo a cada 10u)
+  needed = Math.min(needed, Math.ceil(work.r.width / (10 * u)));
 
   // Etapa 1: binarizacao comum (com repeticao k = 0,1 e canal auto se faltarem componentes)
   // independe de canal e de k: calculado uma vez. Notacao D sem pauta: os parametros caem para os do
@@ -609,61 +611,133 @@ function placeBox(
   return { x: X0 / W, y: Y0 / H, w: (X1 - X0) / W, h: (Y1 - Y0) / H };
 }
 
-/** Uma faixa analisada posta na linha virtual: x virtual = x de trabalho + offset. */
-interface VirtualLine {
+/** Uma faixa analisada, em ordem de leitura, com as ancoras em px de trabalho dela. */
+interface BandLine {
   a: BandAnalysis;
-  offset: number;
-  /** Ancoras desta faixa, em px de trabalho da faixa (sem deslocamento). */
+  /** Ancoras desta faixa: recuo e altura das caixas (placeBox) e posicao na fila. */
   anchorsLocal: { index: number; box: PxBox }[];
+  /** Todas as ancoras da pagina neste raster de trabalho: glifos >= 50% dentro de uma delas saem. */
+  allLocal: { index: number; box: PxBox }[];
 }
 
-type VGlyph = Glyph & { line: number };
+const cxOf = (b: PxBox): number => b.x + b.w / 2;
+
+/** Glifos e texto da porcao [L, R] de uma faixa (centro x dentro; glifos sob ancoras fora). */
+function portionOf(l: BandLine, L: number, R: number): { glyphs: Glyph[]; text: PxBox[] } {
+  const inside = (b: PxBox) => cxOf(b) >= L && cxOf(b) <= R;
+  const glyphs = l.a.glyphs
+    .filter((g) => inside(g) && !l.allLocal.some((an) => overlapFraction(g, an.box) >= 0.5))
+    .sort((p, q) => cxOf(p) - cxOf(q) || p.y - q.y);
+  return { glyphs, text: l.a.text.filter(inside) };
+}
 
 /**
- * Etapa 6 sobre a linha virtual [0, x1]: segmentos entre ancoras, particao e caixa por grupo.
- * `forcedXs` sao fronteiras entre faixas: entram como barra e como espaco entre palavras.
+ * Etapa 6 numa porcao [L, R] de uma faixa: prior desta porcao (palavras do texto dela), particao e
+ * caixa por grupo. Devolve a borda direita do ultimo grupo usado (L se nenhum).
  */
-function assignVirtual(
-  lines: VirtualLine[],
-  ordered: SuggestSyllable[],
-  anchorsVirtual: { index: number; box: PxBox }[],
-  x1: number,
-  forcedXs: number[],
+function assignPortion(
+  l: BandLine,
+  L: number,
+  R: number,
+  syllables: SuggestSyllable[],
+  glyphs: Glyph[],
+  text: PxBox[],
+  out: Suggestion[],
   W: number,
   H: number,
-): Suggestion[] {
-  const glyphs: VGlyph[] = lines.flatMap((l, i) => l.a.glyphs.map((g) => ({ ...g, x: g.x + l.offset, line: i })));
-  const text: PxBox[] = lines.flatMap((l) => l.a.text.map((c) => ({ x: c.x + l.offset, y: c.y, w: c.w, h: c.h })));
-  const barXs = [...lines.flatMap((l) => l.a.bars.map((b) => b.x + l.offset + b.w / 2)), ...forcedXs];
-  const segments = segmentByAnchors(ordered, anchorsVirtual, glyphs, 0, x1);
-  const suggestions: Suggestion[] = [];
-  for (const seg of segments) {
-    if (seg.glyphs.length === 0) continue;
-    const words = new Set(seg.syllables.map((s) => s.wordIndex)).size;
-    const segText = text.filter((c) => c.x + c.w / 2 >= seg.L && c.x + c.w / 2 <= seg.R);
-    const spans = wordSpans(segText, words);
-    const wordGapXs = spans ? spans.slice(1).map((sp, i) => (spans[i].x1 + sp.x0) / 2) : [];
-    const expected = expectedCenters(seg, spans);
-    const cuts = cutScores(seg.glyphs, barXs, [...wordGapXs, ...forcedXs]);
-    const part = partitionDP(seg.glyphs, expected, seg.L, seg.R, cuts);
-    const conf = groupConfidence(part, cuts, seg.glyphs.length);
-    part.groups.forEach((g, j) => {
-      const syl = seg.syllables[j];
-      if (!g || syl.suggest === false || conf[j] < MIN_CONFIDENCE) return;
-      const all = seg.glyphs.slice(g[0], g[1]) as VGlyph[];
-      // grupo que atravessa faixas: fica so a faixa majoritaria (empate: a primeira)
-      const count = new Map<number, number>();
-      for (const m of all) count.set(m.line, (count.get(m.line) ?? 0) + 1);
-      let k = all[0].line;
-      for (const [line, c] of count) if (c > count.get(k)! || (c === count.get(k)! && line < k)) k = line;
-      const l = lines[k];
-      const members = all.filter((m) => m.line === k).map((m) => ({ x: m.x - l.offset, y: m.y, w: m.w, h: m.h }));
-      const box = placeBox(members, l.a, l.anchorsLocal, W, H);
-      if (box) suggestions.push({ index: syl.index, box, confidence: conf[j] });
-    });
+): number {
+  if (!syllables.length || !glyphs.length) return L;
+  const words = new Set(syllables.map((s) => s.wordIndex)).size;
+  const spans = wordSpans(text, words);
+  const wordGapXs = spans ? spans.slice(1).map((sp, i) => (spans[i].x1 + sp.x0) / 2) : [];
+  // prior sobre a extensao da tinta da porcao (glifos e texto), nao sobre as bordas da faixa
+  const ink = [...glyphs, ...text];
+  const L1 = Math.max(L, Math.min(...ink.map((b) => b.x)));
+  const R1 = Math.max(L1 + 1, Math.min(R, Math.max(...ink.map((b) => b.x + b.w))));
+  const seg = { L: L1, R: R1, syllables, glyphs };
+  const expected = expectedCenters(seg, spans);
+  const cuts = cutScores(glyphs, l.a.bars.map(cxOf), wordGapXs);
+  const part = partitionDP(glyphs, expected, L1, R1, cuts);
+  const conf = groupConfidence(part, cuts, glyphs.length);
+  let end = L;
+  part.groups.forEach((g, j) => {
+    if (!g) return;
+    const members = glyphs.slice(g[0], g[1]);
+    end = Math.max(end, ...members.map((m) => m.x + m.w));
+    const syl = syllables[j];
+    if (syl.suggest === false || conf[j] < MIN_CONFIDENCE) return;
+    const box = placeBox(members, l.a, l.anchorsLocal, W, H);
+    if (box) out.push({ index: syl.index, box, confidence: conf[j] });
+  });
+  return end;
+}
+
+/**
+ * M2: atribuicao sequencial por area. A fila (ordem de leitura) e percorrida em corridas de silabas
+ * livres entre ancoras, com um cursor (faixa, x) que nunca recua. Corrida presa (a ancora seguinte
+ * esta adiante do cursor): as faixas antes da da ancora recebem o que cabe (fitCount) na porcao
+ * [x, largura); a faixa da ancora, todo o resto em [x, borda esquerda da ancora]. Corrida solta: cada
+ * faixa a partir do cursor recebe o que cabe; o que sobra fica sem sugestao. `queue` so contem
+ * ancoradas que estao em `anchorsLocal` de alguma faixa.
+ */
+function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number, H: number): Suggestion[] {
+  const anchorAt = new Map<number, { line: number; box: PxBox }>();
+  lines.forEach((l, k) => l.anchorsLocal.forEach((an) => anchorAt.set(an.index, { line: k, box: an.box })));
+  const out: Suggestion[] = [];
+  const fit = (l: BandLine, rest: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]) =>
+    fitCount(rest, glyphs, text, { u: l.a.u, xHeight: l.a.tl?.xHeight });
+  let li = 0;
+  let x = 0;
+  let p = 0;
+  while (p < queue.length && li < lines.length) {
+    const here = anchorAt.get(queue[p].index);
+    if (here) {
+      if (here.line > li) {
+        li = here.line;
+        x = here.box.x + here.box.w;
+      } else if (here.line === li) x = Math.max(x, here.box.x + here.box.w);
+      p++;
+      continue;
+    }
+    let q = p;
+    while (q < queue.length && !anchorAt.has(queue[q].index)) q++;
+    let rest = queue.slice(p, q);
+    const A = q < queue.length ? anchorAt.get(queue[q].index)! : null;
+    const bound = A && (A.line > li || (A.line === li && A.box.x >= x)) ? A : null;
+    if (bound) {
+      for (; li < bound.line && rest.length; li++, x = 0) {
+        const l = lines[li];
+        const { glyphs, text } = portionOf(l, x, l.a.work.r.width);
+        const n = fit(l, rest, glyphs, text);
+        if (n > 0) assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H);
+        rest = rest.slice(n);
+      }
+      if (rest.length) {
+        const l = lines[bound.line];
+        const { glyphs, text } = portionOf(l, x, bound.box.x);
+        assignPortion(l, x, bound.box.x, rest, glyphs, text, out, W, H);
+      }
+      // o cursor vai para a ancora, que e consumida na proxima volta
+    } else {
+      while (rest.length && li < lines.length) {
+        const l = lines[li];
+        const R = l.a.work.r.width;
+        const { glyphs, text } = portionOf(l, x, R);
+        const n = fit(l, rest, glyphs, text);
+        if (n > 0) {
+          x = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H);
+          rest = rest.slice(n);
+        }
+        if (rest.length) {
+          li++;
+          x = 0;
+        }
+      }
+    }
+    p = q;
   }
-  suggestions.sort((p, q) => p.index - q.index);
-  return suggestions;
+  out.sort((a, b) => a.index - b.index);
+  return out;
 }
 
 function staffDebug(a: BandAnalysis, H: number): StaffDebug | undefined {
@@ -781,25 +855,23 @@ function suggestCandidates(input: SuggestInput, debug: SuggestDebug, lap: Lap): 
   return candidates;
 }
 
-/** Varias faixas do usuario (ordem de leitura = ordem do array) como uma unica linha virtual. */
-function suggestOnBands(
+/** Varias faixas do usuario (ordem de leitura = ordem do array): analise de cada uma e debug. */
+function analyzeBands(
   input: SuggestInput,
   bands: FracRect[],
   anchors: SuggestAnchor[],
-  ordered: SuggestSyllable[],
   needed: number,
   debug: SuggestDebug,
   lap: Lap,
-): Suggestion[] {
+): BandLine[] {
   const W = input.image.width;
   const H = input.image.height;
   const anchorBand = anchorBands(bands, anchors);
-  const lines: VirtualLine[] = [];
-  const lineOf = new Map<number, number>();
+  const lines: BandLine[] = [];
   const perBand: BandDebug[] = [];
   const debugs: SuggestDebug[] = [];
-  // Componentes esperados por faixa: a parte de `needed` proporcional a largura da faixa
-  // (a de pagina inteira faria toda faixa recair na binarizacao mais ruidosa).
+  // Alvos por faixa: a parte de `needed` proporcional a largura da faixa (a de pagina inteira faria
+  // toda faixa recair na binarizacao mais ruidosa); analyzeBand ainda limita por ceil(largura / 10u).
   const selected = bands.map((b) => selectBand({ band: b, notation: input.notation }, W, H));
   const totalW = selected.reduce((sum, s) => sum + (s.source === 'user' ? s.rect.w : 0), 0);
   bands.forEach((b, k) => {
@@ -824,10 +896,8 @@ function suggestOnBands(
       channel: d.channel,
       sauvolaK: d.sauvolaK,
     });
-    // faixa sem glifos nem ancoras nao ocupa espaco na linha virtual (nao rouba silabas)
-    if (!a.glyphs.length && !own.length) return;
-    lineOf.set(k, lines.length);
-    lines.push({ a, offset: 0, anchorsLocal: own.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) })) });
+    const toWork = (list: SuggestAnchor[]) => list.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
+    lines.push({ a, anchorsLocal: toWork(own), allLocal: toWork(anchors) });
   });
 
   debug.bandSource = 'user';
@@ -846,30 +916,7 @@ function suggestOnBands(
   if (withStaff) debug.staff = staffDebug(withStaff.a, H);
   for (const d of debugs)
     for (const key of Object.keys(debug.counts) as (keyof SuggestDebug['counts'])[]) debug.counts[key] += d.counts[key];
-  if (!lines.length) return [];
-
-  const gap = 4 * Math.max(...lines.map((l) => l.a.u));
-  let x = 0;
-  for (const l of lines) {
-    l.offset = x;
-    x += l.a.work.r.width + gap;
-  }
-  const x1 = x - gap;
-  const forcedXs = lines.slice(1).map((l) => l.offset - gap / 2);
-  const anchorsVirtual: { index: number; box: PxBox }[] = [];
-  const outside = new Set<number>();
-  anchors.forEach((an, i) => {
-    const li = anchorBand[i] >= 0 ? lineOf.get(anchorBand[i]) : undefined;
-    if (li === undefined) {
-      outside.add(an.index);
-      return;
-    }
-    const l = lines[li];
-    const box = l.anchorsLocal.find((o) => o.index === an.index)!.box;
-    anchorsVirtual.push({ index: an.index, box: { ...box, x: box.x + l.offset } });
-  });
-  const inLine = ordered.filter((s) => !outside.has(s.index));
-  return assignVirtual(lines, inLine, anchorsVirtual, x1, forcedXs, W, H);
+  return lines;
 }
 
 export function suggestBoxes(input: SuggestInput): SuggestResult {
@@ -901,30 +948,31 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   const needed = free.filter((s) => s.suggest !== false).length;
   const ordered = [...input.syllables].sort((a, b) => order.get(a.index)! - order.get(b.index)!);
 
+  let lines: BandLine[];
   if (input.bands?.length) {
-    const suggestions = suggestOnBands(input, input.bands, anchors, ordered, needed, debug, lap);
-    lap('assign');
-    ms.total = now() - t0;
-    return { suggestions, debug };
+    lines = analyzeBands(input, input.bands, anchors, needed, debug, lap);
+  } else {
+    // Etapa 2 (faixa), etapas 0 a 5 (analise da faixa)
+    const band = selectBand({ ...input, anchors }, W, H);
+    if (band.source === 'none') {
+      debug.needsBand = true;
+      return { suggestions: [], debug };
+    }
+    const a = analyzeBand(input, band, anchors, needed, debug, lap);
+    if (!a || 'needsBand' in a) return { suggestions: [], debug };
+    // todas as ancoras ficam nesta faixa, mesmo fora dela
+    const anchorsWork = anchors.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
+    lines = [{ a, anchorsLocal: anchorsWork, allLocal: anchorsWork }];
+    debug.band = workFrac(a.work, W, H);
+    const sd = staffDebug(a, H);
+    if (sd) debug.staff = sd;
   }
 
-  // Etapa 2 (faixa), etapas 0 a 5 (analise da faixa)
-  const band = selectBand({ ...input, anchors }, W, H);
-  if (band.source === 'none') {
-    debug.needsBand = true;
-    return { suggestions: [], debug };
-  }
-  const a = analyzeBand(input, band, anchors, needed, debug, lap);
-  if (!a || 'needsBand' in a) return { suggestions: [], debug };
-
-  // Etapa 6: atribuicao (todas as ancoras ficam nesta faixa, mesmo fora dela)
-  const anchorsWork = anchors.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
-  const line: VirtualLine = { a, offset: 0, anchorsLocal: anchorsWork };
-  const suggestions = assignVirtual([line], ordered, anchorsWork, a.work.r.width, [], W, H);
+  // Etapa 6: atribuicao sequencial; ancoras fora de todas as faixas saem da fila
+  const placed = new Set(lines.flatMap((l) => l.anchorsLocal.map((an) => an.index)));
+  const queue = ordered.filter((s) => !anchored.has(s.index) || placed.has(s.index));
+  const suggestions = assignSequential(lines, queue, W, H);
   lap('assign');
-  debug.band = workFrac(a.work, W, H);
-  const sd = staffDebug(a, H);
-  if (sd) debug.staff = sd;
   ms.total = now() - t0;
   return { suggestions, debug };
 }

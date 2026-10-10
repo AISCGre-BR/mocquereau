@@ -234,6 +234,8 @@ export interface AdiastematicOptions {
   textU?: number;
   /** Cor dos neumas e do texto (padrão INK). */
   inkColor?: RGB;
+  /** false = não desenha o texto (padrão true). */
+  text?: boolean;
 }
 
 /**
@@ -275,7 +277,7 @@ export function buildAdiastematicLine(opts: AdiastematicOptions = {}): LineFixtu
     neumes[s.index] = boxes;
     ink[s.index] = unionBox(boxes);
     truth[s.index] = padBox(ink[s.index], Math.max(2, u));
-    drawText(r, s.text, cx + Math.round(0.1 * colW), baseline, xh, opts.textU ?? u, opts.inkColor ?? INK);
+    if (opts.text !== false) drawText(r, s.text, cx + Math.round(0.1 * colW), baseline, xh, opts.textU ?? u, opts.inkColor ?? INK);
   });
   if (opts.stain) {
     const gx = Math.round(margin + 3 * colW - 0.2 * colW);
