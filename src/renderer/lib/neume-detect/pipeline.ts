@@ -189,6 +189,8 @@ interface BandAnalysis {
   band: SelectedBand;
   work: Work;
   staff: Staff | null;
+  /** Outras pautas achadas no mesmo raster de trabalho (limitam a altura das caixas). */
+  otherStaves: Staff[];
   metrics: StaffMetrics | null;
   tl: TextLine | null;
   u: number;
@@ -359,6 +361,7 @@ function analyzeBand(
   let staff: Staff | null = null;
   let metrics: StaffMetrics | null = null;
   let fromRed = false;
+  let otherStaves: Staff[] = [];
   if (input.notation === 'diastematic') {
     const anchorBoxes = () => anchors.map((a) => fracToWork(a.box, work, W, H));
     metrics = staffMetrics(grayInk);
@@ -387,6 +390,7 @@ function analyzeBand(
     } else if (staves.length > 1 && anchors.length) {
       staff = pickStaffByAnchors(staves, anchorBoxes()) ?? staves[0];
     } else staff = staves[0] ?? null;
+    otherStaves = staff ? staves.filter((o) => o !== staff) : [];
     if (staff && metrics && band.source === 'staff') {
       const s = metrics.s;
       const y0 = Math.max(0, Math.floor(staffTop(staff) - 2.5 * s));
@@ -394,6 +398,7 @@ function analyzeBand(
       const box = { x: 0, y: y0, w: work.r.width, h: y1 - y0 };
       work = cropWork(work, box);
       staff = cropStaff(staff, 0, y0, work.r.width);
+      otherStaves = otherStaves.map((o) => cropStaff(o, 0, y0, work.r.width));
     }
     if (!staff && band.source === 'staff') {
       band = lineOrNone(W, H);
@@ -504,7 +509,7 @@ function analyzeBand(
   debug.counts.glyphs = glyphs.length;
   lap('glyphs');
 
-  return { band, work, staff, metrics, tl, u, glyphs, text, bars: st.bars, red: st.red };
+  return { band, work, staff, otherStaves, metrics, tl, u, glyphs, text, bars: st.bars, red: st.red };
 }
 
 function median(v: number[]): number {
@@ -513,21 +518,28 @@ function median(v: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+/** Deslocamento maximo (em s) que as caixas da pagina podem impor ao topo e a base. */
+const ANCHOR_OFF_MAX = 3;
+
 /**
  * Deslocamentos (em s) do topo e da base das caixas da pagina em relacao a pauta, no x de cada uma:
- * (y - topo da pauta) / s e (y + h - base da pauta) / s; mediana sobre as ancoras da faixa.
- * null sem ancoras.
+ * (y - topo da pauta) / s e (y + h - base da pauta) / s; mediana sobre as ancoras desta pauta (as que
+ * cruzam [topo - 2s, base + 3s]: num folio sem faixas chegam ancoras de outras pautas), limitada a
+ * +-ANCHOR_OFF_MAX. null sem ancoras desta pauta.
  */
-function anchorStaffOffsets(staff: Staff, s: number, anchors: { box: PxBox }[]): { top: number; bottom: number } | null {
-  if (!anchors.length || s <= 0) return null;
+export function anchorStaffOffsets(staff: Staff, s: number, anchors: { box: PxBox }[]): { top: number; bottom: number } | null {
+  if (s <= 0) return null;
   const tops: number[] = [];
   const bottoms: number[] = [];
   for (const { box } of anchors) {
     const span = staffSpanAt(staff, box.x, box.x + box.w);
+    if (box.y >= span.bottom + 3 * s || box.y + box.h <= span.top - 2 * s) continue;
     tops.push((box.y - span.top) / s);
     bottoms.push((box.y + box.h - span.bottom) / s);
   }
-  return { top: median(tops), bottom: median(bottoms) };
+  if (!tops.length) return null;
+  const clamp = (v: number) => Math.max(-ANCHOR_OFF_MAX, Math.min(ANCHOR_OFF_MAX, v));
+  return { top: clamp(median(tops)), bottom: clamp(median(bottoms)) };
 }
 
 /**
@@ -551,9 +563,21 @@ function placeBox(
   // pagina nesta faixa, os delas (mediana); senao +-0,5s. A tinta do glifo sempre cabe.
   const offs = staff && metrics ? anchorStaffOffsets(staff, metrics.s, anchorsWork) : null;
   if (staff && metrics) {
+    const s = metrics.s;
     const span = staffSpanAt(staff, x0, x1);
-    y0 = Math.min(y0, span.top + (offs ? offs.top : -0.5) * metrics.s);
-    y1 = Math.max(y1, span.bottom + (offs ? offs.bottom : 0.5) * metrics.s);
+    let top = span.top + (offs ? offs.top : -0.5) * s;
+    let bottom = span.bottom + (offs ? offs.bottom : 0.5) * s;
+    if (offs) {
+      // sem o corte do texto, a altura vinda das ancoras para antes da pauta vizinha (acima e abaixo);
+      // o fundo do raster de trabalho (area + margem) limita o resto
+      for (const o of a.otherStaves) {
+        const os = staffSpanAt(o, x0, x1);
+        if (os.top > span.bottom) bottom = Math.min(bottom, os.top - 0.5 * s);
+        else if (os.bottom < span.top) top = Math.max(top, os.bottom + 0.5 * s);
+      }
+    }
+    y0 = Math.min(y0, top);
+    y1 = Math.max(y1, bottom);
   }
   // corte na linha de texto, salvo quando a altura vem das caixas da pagina (que podem incluir o texto)
   if (tl && !offs) y1 = Math.min(y1, Math.max(y0 + 1, tl.top + 0.2 * tl.xHeight));

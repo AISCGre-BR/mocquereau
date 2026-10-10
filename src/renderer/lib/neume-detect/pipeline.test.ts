@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { extractChannel } from './image';
-import { measureU, suggestBoxes } from './pipeline';
-import { estimateStrokeWidth } from './scale';
+import { anchorStaffOffsets, measureU, suggestBoxes } from './pipeline';
+import { estimateStrokeWidth, staffMetrics } from './scale';
+import { findStavesRobust } from './staff';
 import { binarizeOtsu } from './threshold';
 import type { RasterRGBA } from './types';
 import {
@@ -837,5 +838,64 @@ describe('altura das caixas segue as caixas da própria página (modo D)', () =>
     const first = (r: SuggestResult) => r.candidates!.filter((c) => c.band === 0).map((c) => JSON.stringify(c.box));
     const old = new Set(first(without));
     expect(first(withA).some((k) => !old.has(k))).toBe(true);
+  });
+
+  describe('limites da altura vinda das âncoras', () => {
+    // pauta reta sintética: 4 linhas, centro da 1a em 60,5, s = 16, de x = 40 a 1360
+    const straight = () => {
+      const r = createRaster(1400, 400);
+      drawStaff(r, { x0: 40, x1: 1360, yTop: 60, lines: 4, d: 14, t: 2 });
+      const ink = binarizeOtsu(extractChannel(r, 'gray'), null);
+      return findStavesRobust(ink, staffMetrics(ink)!)[0];
+    };
+
+    it('âncoras só de outra pauta (fora de [topo − 2s, base + 3s]) → padrão (null)', () => {
+      const st = straight();
+      expect(anchorStaffOffsets(st, 16, [{ box: { x: 300, y: 240, w: 30, h: 60 } }])).toBeNull();
+      // misturadas: a de outra pauta não entra na mediana
+      const own = { box: { x: 500, y: 76, w: 30, h: 64 } }; // topo +1s, base +2s
+      const off = anchorStaffOffsets(st, 16, [own, { box: { x: 300, y: 240, w: 30, h: 60 } }])!;
+      expect(off.top).toBeCloseTo(1, 1);
+      expect(off.bottom).toBeCloseTo(2, 1);
+    });
+
+    it('deslocamentos limitados a ±3s', () => {
+      const st = straight();
+      const off = anchorStaffOffsets(st, 16, [{ box: { x: 500, y: 60 - 2 * 16, w: 30, h: 48 + 2 * 16 + 10 * 16 } }])!;
+      expect(off.top).toBeCloseTo(-2, 1);
+      expect(off.bottom).toBe(3);
+    });
+
+    it('âncora com base +3s numa pauta com outra 2,5s abaixo: as caixas não chegam à pauta de baixo', () => {
+      const r = createRaster(1400, 300);
+      drawStaff(r, { x0: 40, x1: 1360, yTop: 40, lines: 4, d: 14, t: 2 }); // base da 1a: 88,5
+      drawStaff(r, { x0: 40, x1: 1360, yTop: 128, lines: 4, d: 14, t: 2 }); // topo da 2a: 128,5 = base + 2,5s
+      const notes = [200, 260, 420, 480, 700, 760].map((x, i) => fillRect(r, x, 40 + (i % 3) * 16 - 6, 12, 12, INK));
+      const W = r.width, H = r.height;
+      const anchor = { index: 0, box: pxToFrac({ x: 1000, y: 40, w: 40, h: 48 + 3 * 16 + 1 }, W, H) }; // base 3s abaixo
+      const res = suggestBoxes({ image: r, notation: 'diastematic', syllables: [], mode: 'candidates', bands: [{ x: 0, y: 0, w: 1, h: 1 }], anchors: [anchor] });
+      const cands = res.candidates!.map((c) => fracToPx(c.box, W, H));
+      for (const n of notes) {
+        const c = cands.find((k) => k.x <= n.x + 6 && n.x + 6 <= k.x + k.w && k.y <= n.y + 6 && n.y + 6 <= k.y + k.h);
+        expect(c).toBeDefined();
+        expect(c!.y + c!.h).toBeLessThan(128);
+      }
+    });
+
+    it('âncora com base +10s: a base das caixas fica em base da pauta + 3s', () => {
+      const fx = buildDiastematicLine({ seed: 75, height: 400 });
+      const W = fx.raster.width, H = fx.raster.height;
+      const anchor = { index: 0, box: pxToFrac({ x: fx.truth[0].x, y: 60, w: fx.truth[0].w, h: 48 + 10 * 16 }, W, H) };
+      const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates', bands: [{ x: 0, y: 0, w: 1, h: 1 }], anchors: [anchor] });
+      const notes = fx.syllables.slice(1).flatMap((s) => fx.neumes[s.index]);
+      let checked = 0;
+      for (const k of res.candidates!) {
+        const c = fracToPx(k.box, W, H);
+        if (!notes.some((n) => n.x >= c.x && n.x + n.w <= c.x + c.w && Math.abs(c.w - n.w - 2 * Math.max(2, res.debug.strokeWidth)) <= 1)) continue;
+        expect(c.y + c.h).toBeLessThanOrEqual(108.5 + 3 * 16 + 2);
+        checked++;
+      }
+      expect(checked).toBeGreaterThanOrEqual(6);
+    });
   });
 });
