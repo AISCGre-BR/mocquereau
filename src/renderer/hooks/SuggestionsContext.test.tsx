@@ -153,7 +153,9 @@ describe("SuggestionsProvider", () => {
     const h = await setup();
     act(() => h.hook.result.current.r.setActiveSyllable(3));
     const call = await startSuggest(h);
-    expect(call.input.syllables[0].index).toBe(3);
+    // the queue opens at the range start: 0-2 consume their neumes without a suggestion
+    expect(call.input.syllables.find((s) => s.suggest !== false)?.index).toBe(3);
+    expect(call.input.syllables.filter((s) => s.index < 3).every((s) => s.suggest === false)).toBe(true);
   });
 
   it("sugerir -> caixas ativas -> aceitar todas = um UPDATE_LINE_BOXES e um passo de desfazer", async () => {
