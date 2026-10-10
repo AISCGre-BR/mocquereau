@@ -554,9 +554,47 @@ export function anchorStaffOffsets(staff: Staff, s: number, anchors: { box: PxBo
   };
 }
 
+/** Limites (em u) da folga vinda das caixas da pagina: horizontal e vertical (modo A). */
+const ANCHOR_PAD_X_MAX = 6;
+const ANCHOR_PAD_Y_MAX = 15;
+
 /**
- * Caixa de um grupo de glifos (px de trabalho da faixa `a`): pad, extensao da pauta, corte na linha
- * de texto, recuo diante das ancoras; trabalho -> raster (arredondando para fora) -> fracoes.
+ * Folga de cada lado das caixas da pagina nesta faixa: caixa menos a extensao dos glifos com centro
+ * dentro dela; mediana sobre as ancoras com glifos, limitada a [0, ANCHOR_PAD_*_MAX·u]. null sem
+ * nenhuma. As caixas do usuario costumam ter ~2x a tinta; a sugestao segue o mesmo desenho.
+ */
+export function anchorPads(
+  glyphs: PxBox[],
+  anchors: { box: PxBox }[],
+  u: number,
+): { left: number; right: number; top: number; bottom: number } | null {
+  const sides: number[][] = [[], [], [], []];
+  for (const { box } of anchors) {
+    const ins = glyphs.filter((g) => {
+      const cx = g.x + g.w / 2;
+      const cy = g.y + g.h / 2;
+      return cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h;
+    });
+    if (!ins.length) continue;
+    const x0 = Math.max(box.x, Math.min(...ins.map((g) => g.x)));
+    const y0 = Math.max(box.y, Math.min(...ins.map((g) => g.y)));
+    const x1 = Math.min(box.x + box.w, Math.max(...ins.map((g) => g.x + g.w)));
+    const y1 = Math.min(box.y + box.h, Math.max(...ins.map((g) => g.y + g.h)));
+    sides[0].push(x0 - box.x);
+    sides[1].push(box.x + box.w - x1);
+    sides[2].push(y0 - box.y);
+    sides[3].push(box.y + box.h - y1);
+  }
+  if (!sides[0].length) return null;
+  const cx = (v: number) => Math.max(0, Math.min(ANCHOR_PAD_X_MAX * u, v));
+  const cy = (v: number) => Math.max(0, Math.min(ANCHOR_PAD_Y_MAX * u, v));
+  return { left: cx(median(sides[0])), right: cx(median(sides[1])), top: cy(median(sides[2])), bottom: cy(median(sides[3])) };
+}
+
+/**
+ * Caixa de um grupo de glifos (px de trabalho da faixa `a`): pad (o das caixas da pagina nesta
+ * faixa, ou max(2, u)), extensao da pauta, corte na linha de texto, recuo diante das ancoras;
+ * trabalho -> raster (arredondando para fora) -> fracoes.
  */
 function placeBox(
   members: PxBox[],
@@ -567,10 +605,13 @@ function placeBox(
 ): FracRect | null {
   const { work, staff, metrics, tl } = a;
   const pad = Math.max(2, a.u);
-  let x0 = Math.min(...members.map((m) => m.x)) - pad;
-  let x1 = Math.max(...members.map((m) => m.x + m.w)) + pad;
-  let y0 = Math.min(...members.map((m) => m.y)) - pad;
-  let y1 = Math.max(...members.map((m) => m.y + m.h)) + pad;
+  const ap = anchorPads(a.glyphs, anchorsWork, a.u);
+  // na pauta a altura vem dos deslocamentos das ancoras (abaixo); a folga delas so vale na horizontal
+  const vp = ap && !staff ? ap : null;
+  let x0 = Math.min(...members.map((m) => m.x)) - (ap ? ap.left : pad);
+  let x1 = Math.max(...members.map((m) => m.x + m.w)) + (ap ? ap.right : pad);
+  let y0 = Math.min(...members.map((m) => m.y)) - (vp ? vp.top : pad);
+  let y1 = Math.max(...members.map((m) => m.y + m.h)) + (vp ? vp.bottom : pad);
   // Altura na pauta: deslocamentos do topo e da base em relacao a pauta, em s. Com caixas da propria
   // pagina nesta faixa, os delas (mediana); senao +-0,5s. A tinta do glifo sempre cabe.
   const offs = staff && metrics ? anchorStaffOffsets(staff, metrics.s, anchorsWork) : null;
@@ -591,8 +632,9 @@ function placeBox(
     y0 = Math.min(y0, top);
     y1 = Math.max(y1, bottom);
   }
-  // corte na linha de texto, salvo quando a altura vem das caixas da pagina (que podem incluir o texto)
-  if (tl && !offs) y1 = Math.min(y1, Math.max(y0 + 1, tl.top + 0.2 * tl.xHeight));
+  // corte na linha de texto, salvo quando a altura ou a folga vem das caixas da pagina (que podem
+  // incluir o texto)
+  if (tl && !offs && !vp) y1 = Math.min(y1, Math.max(y0 + 1, tl.top + 0.2 * tl.xHeight));
   x0 = Math.max(0, x0);
   y0 = Math.max(0, y0);
   x1 = Math.min(work.r.width, x1);

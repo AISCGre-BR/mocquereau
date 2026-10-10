@@ -802,12 +802,14 @@ describe('altura das caixas segue as caixas da própria página (modo D)', () =>
     const fx = buildDiastematicLine(opts);
     const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates', bands: whole, anchors: [anchorOf(fx)] });
     const pad = Math.max(2, res.debug.strokeWidth);
+    // folga horizontal = a da ancora (verdade da fixture: tinta + max(2, u))
+    const padX = Math.max(2, fx.u);
     const notes = fx.syllables.slice(1).flatMap((s) => fx.neumes[s.index]);
     let checked = 0;
     for (const k of res.candidates!) {
       const c = px(fx, k.box);
       // so caixas de uma nota (glifo = a nota): as de letras do texto ficam de fora desta conta
-      const n = notes.find((b) => b.x >= c.x && b.x + b.w <= c.x + c.w && Math.abs(c.w - (b.w + 2 * pad)) <= 1);
+      const n = notes.find((b) => b.x >= c.x && b.x + b.w <= c.x + c.w && Math.abs(c.w - (b.w + 2 * padX)) <= 1);
       if (!n) continue;
       const top = Math.min(lineC(fx, 0, c.x), lineC(fx, 0, c.x + c.w)) + 1 * S;
       const bottom = Math.max(lineC(fx, 3, c.x), lineC(fx, 3, c.x + c.w)) + 2 * S;
@@ -904,7 +906,8 @@ describe('altura das caixas segue as caixas da própria página (modo D)', () =>
       let checked = 0;
       for (const k of res.candidates!) {
         const c = fracToPx(k.box, W, H);
-        if (!notes.some((n) => n.x >= c.x && n.x + n.w <= c.x + c.w && Math.abs(c.w - n.w - 2 * Math.max(2, res.debug.strokeWidth)) <= 1)) continue;
+        // folga horizontal = a da ancora (verdade da fixture: tinta + max(2, u))
+        if (!notes.some((n) => n.x >= c.x && n.x + n.w <= c.x + c.w && Math.abs(c.w - n.w - 2 * Math.max(2, fx.u)) <= 1)) continue;
         expect(c.y + c.h).toBeLessThanOrEqual(108.5 + 5 * 16 + 2);
         checked++;
       }
@@ -1010,3 +1013,30 @@ describe('M2 — sequencial por área', () => {
   });
 });
 
+describe('folga das caixas segue as caixas da própria página', () => {
+  it('âncora desenhada com folga larga: as sugestões da área ganham a mesma folga', () => {
+    const fx = buildAdiastematicLine({ seed: 74, words: [['Pu', 'er'], ['na', 'tus'], ['est']] });
+    const { width: W, height: H } = fx.raster;
+    const ink0 = fx.ink[0];
+    // 12 px de cada lado e 30 px abaixo (cobre parte do texto), 8 px acima
+    const anchor = { index: 0, box: pxToFrac({ x: ink0.x - 12, y: ink0.y - 8, w: ink0.w + 24, h: ink0.h + 38 }, W, H) };
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, anchors: [anchor], bands: [{ x: 0, y: 0, w: 1, h: 1 }] });
+    const got = boxesPx(res, W, H);
+    expect(Object.keys(got).map(Number)).toEqual([1, 2, 3, 4]);
+    for (const i of [1, 2, 3, 4]) {
+      const ink = fx.ink[i];
+      expect(Math.abs(ink.x - got[i].x - 12)).toBeLessThanOrEqual(2);
+      expect(Math.abs(got[i].x + got[i].w - (ink.x + ink.w) - 12)).toBeLessThanOrEqual(2);
+      expect(Math.abs(ink.y - got[i].y - 8)).toBeLessThanOrEqual(2);
+      expect(Math.abs(got[i].y + got[i].h - (ink.y + ink.h) - 30)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('sem âncoras: folga de max(2, u), como antes', () => {
+    const fx = buildAdiastematicLine({ seed: 74, words: [['Pu', 'er'], ['na', 'tus'], ['est']] });
+    const { width: W, height: H } = fx.raster;
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: fx.syllables, bands: [{ x: 0, y: 0, w: 1, h: 1 }] });
+    const got = boxesPx(res, W, H);
+    for (const s of fx.syllables) expect(iou(got[s.index], fx.truth[s.index])).toBeGreaterThanOrEqual(0.8);
+  });
+});
