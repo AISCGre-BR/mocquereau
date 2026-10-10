@@ -8,6 +8,10 @@ export const LAMBDA = 0.5;
 export const EMPTY_COST = 3;
 export const BAR_BONUS = 2;
 export const WORD_BONUS = 1;
+/** Vao (em multiplos do vao mediano) que separa agrupamentos de glifos quando nao ha texto. */
+export const CLUSTER_CUT = 2;
+/** Minimo de componentes de texto para medir a area em letras. */
+export const MIN_TEXT_COMPONENTS = 3;
 
 export interface Segment {
   /** Limites x [L, R] em px de trabalho. */
@@ -65,7 +69,9 @@ export function segmentByAnchors(
 }
 
 /** Comprimento em letras (minimo 1). */
-const letters = (s: SuggestSyllable) => Math.max(1, s.text.replace(/[^\p{L}]/gu, '').length);
+export function letters(s: SuggestSyllable): number {
+  return Math.max(1, s.text.replace(/[^\p{L}]/gu, '').length);
+}
 
 /**
  * Centro esperado de cada silaba. Com faixas de palavra (mesmo numero de palavras do segmento):
@@ -203,4 +209,38 @@ export function groupConfidence(p: Partition, cuts: Float64Array, M: number): nu
     const right = b === M ? 1 : cuts[b - 1] / (1 + cuts[b - 1]);
     return Math.max(0, Math.min(1, (left + right) / 2 - p.positionCost[j]));
   });
+}
+
+/**
+ * Quantas silabas da fila cabem na area. Com texto (>= MIN_TEXT_COMPONENTS componentes): a
+ * quantidade cujo total de letras mais se aproxima da largura do texto medida em letras (soma das
+ * larguras / largura mediana; independe dos vaos, que esticam com os melismas). Sem texto: um por
+ * agrupamento de glifos (vao >= CLUSTER_CUT x o mediano). Nunca mais que os glifos nem que a fila.
+ */
+export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]): number {
+  const maxN = Math.min(queue.length, glyphs.length);
+  if (maxN === 0) return 0;
+  if (text.length >= MIN_TEXT_COMPONENTS) {
+    const ws = text.map((c) => c.w).sort((a, b) => a - b);
+    const wMed = Math.max(1, ws[ws.length >> 1]);
+    const units = ws.reduce((s, w) => s + w, 0) / wMed;
+    let best = 1;
+    let bestD = Infinity;
+    let acc = 0;
+    for (let n = 1; n <= maxN; n++) {
+      acc += letters(queue[n - 1]);
+      const d = Math.abs(acc - units);
+      if (d < bestD) {
+        bestD = d;
+        best = n;
+      }
+      if (acc - units > bestD) break;
+    }
+    return best;
+  }
+  const sorted = [...glyphs].sort((a, b) => cx(a) - cx(b));
+  const cuts = cutScores(sorted, [], []);
+  let clusters = 1;
+  for (const c of cuts) if (c >= CLUSTER_CUT) clusters++;
+  return Math.min(maxN, clusters);
 }
