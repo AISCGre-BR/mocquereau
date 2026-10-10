@@ -125,6 +125,11 @@ describe('fitCount — robustez (melisma, palavras unidas, canto silábico, ruí
     const specks = Array.from({ length: 6 }, (_, i) => ({ x: 300 + i * 10, y: 90, w: 4, h: 4 }));
     expect(fitCount(q, glyphs(20, 40), [...letterBoxes(18), ...specks])).toBe(9);
   });
+  it('mão de letras largas (largura = altura-x): a unidade vem das letras soltas, não de 0,75xh', () => {
+    const q = Array.from({ length: 30 }, (_, i) => syl(i, 'ta'));
+    const wide = Array.from({ length: 18 }, (_, i) => ({ x: i * 20, y: 100, w: 16, h: 16 }));
+    expect(fitCount(q, glyphs(20, 40), wide, { xHeight: 16 })).toBe(9);
+  });
   // Limitação conhecida: abreviaturas escrevem menos letras que a silabação ("dñs" por Do-mi-nus).
   it.todo('abreviaturas ("dñs" = Do-mi-nus) contam as sílabas da forma por extenso');
 });

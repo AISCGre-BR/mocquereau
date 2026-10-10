@@ -19,6 +19,11 @@ export const MIN_TEXT_COMPONENTS = 3;
  * 1,25 letra); 0,8 de menos em maos estreitas.
  */
 export const LETTER_PER_XH = 0.75;
+/**
+ * Componente de texto ate esta largura (em altura-x) e uma letra solta (m e w chegam a ~1,1xh); mais
+ * largo e palavra ou letras unidas, que nao medem a letra.
+ */
+export const SINGLE_LETTER_XH = 1.3;
 /** Componentes de texto mais baixos que esta fracao da altura mediana sao ruido. */
 export const TEXT_NOISE_H = 0.5;
 /** Sem texto: vao absoluto (em u) que separa silabas; acima dos vaos internos de um neuma (<= 10u). */
@@ -248,9 +253,10 @@ export interface FitOptions {
  * Com texto (>= 1 componente, depois de descartar ruido com altura < TEXT_NOISE_H x a mediana:
  * pingos de i, tracos de abreviacao, pontuacao): a quantidade cujo total de letras mais se aproxima
  * da largura do texto medida em letras (soma das larguras / unidade de letra; independe dos vaos,
- * que esticam com os melismas). Unidade = LETTER_PER_XH x altura-x, limitada pela largura mediana
- * quando ha >= MIN_TEXT_COMPONENTS componentes (letras soltas medem a letra melhor que a altura;
- * palavras unidas num componente so fazem a mediana crescer, e a altura a segura).
+ * que esticam com os melismas). Unidade = largura mediana das letras soltas (componentes ate
+ * SINGLE_LETTER_XH x altura-x) quando ha >= MIN_TEXT_COMPONENTS delas: a largura da letra varia
+ * entre maos (0,75 a 1xh medidos), e as letras soltas a medem; palavras unidas num componente ficam
+ * fora. Com menos, LETTER_PER_XH x altura-x.
  *
  * Sem texto: um por agrupamento de glifos; corte quando o vao >= CLUSTER_CUT x o vao mediano ou,
  * com u, quando o vao >= ABS_GAP_U·u (canto silabico com vaos iguais nao tem vao "destacado").
@@ -267,9 +273,9 @@ export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[
   const clean = text.filter((c) => c.h >= TEXT_NOISE_H * hMed && c.w > 0);
   if (clean.length > 0) {
     const xh = opts.xHeight && opts.xHeight > 0 ? opts.xHeight : median(clean.map((c) => c.h));
-    let unit = LETTER_PER_XH * xh;
-    if (clean.length >= MIN_TEXT_COMPONENTS) unit = Math.min(unit, median(clean.map((c) => c.w)));
-    unit = Math.max(1, unit);
+    // letras soltas medem a letra; palavras unidas (mais largas que SINGLE_LETTER_XH·xh) nao entram
+    const singles = clean.filter((c) => c.w <= SINGLE_LETTER_XH * xh).map((c) => c.w);
+    const unit = Math.max(1, singles.length >= MIN_TEXT_COMPONENTS ? median(singles) : LETTER_PER_XH * xh);
     const units = clean.reduce((s, c) => s + c.w, 0) / unit;
     let best = 1;
     let bestD = Infinity;
