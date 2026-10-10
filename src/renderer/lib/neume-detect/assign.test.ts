@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cutScores, expectedCenters, fitCount, groupConfidence, overlapFraction, partitionDP, segmentByAnchors, type Glyph } from './assign';
+import { cutScores, expectedCenters, fitCount, groupConfidence, overlapFraction, partitionDP, type Glyph } from './assign';
 import type { SuggestSyllable } from './types';
 
 const g = (x: number, w = 10): Glyph => ({ x, y: 10, w, h: 10, area: w * 10 });
@@ -36,15 +36,9 @@ describe('assign', () => {
     expect(Array.from(c)).toEqual([1, 1 + 1, 5 + 2]);
   });
 
-  it('ancoras dividem segmentos; glifo dentro da ancora e descartado', () => {
-    const sy = [syl(0), syl(1), syl(2), syl(3)];
-    const glyphs = [g(10), g(105), g(200), g(300)];
-    const segs = segmentByAnchors(sy, [{ index: 1, box: { x: 100, y: 0, w: 30, h: 40 } }], glyphs, 0, 400);
-    expect(segs.map((s) => [s.L, s.R, s.syllables.map((x) => x.index), s.glyphs.map((x) => x.x)])).toEqual([
-      [0, 100, [0], [10]],
-      [130, 400, [2, 3], [200, 300]],
-    ]);
+  it('overlapFraction: fracao de b dentro de a', () => {
     expect(overlapFraction(g(105), { x: 100, y: 0, w: 30, h: 40 })).toBe(1);
+    expect(overlapFraction(g(125), { x: 100, y: 0, w: 30, h: 40 })).toBe(0.5);
   });
 
   it('centro esperado proporcional as letras, +1 por fronteira de palavra; ou pela faixa da palavra', () => {
@@ -132,4 +126,62 @@ describe('fitCount — robustez (melisma, palavras unidas, canto silábico, ruí
   });
   // Limitação conhecida: abreviaturas escrevem menos letras que a silabação ("dñs" por Do-mi-nus).
   it.todo('abreviaturas ("dñs" = Do-mi-nus) contam as sílabas da forma por extenso');
+});
+
+describe('partitionDP aberto (contagem incerta)', () => {
+  // colunas de 2 glifos (vao interno 5), colunas separadas por 70: cortes fortes entre colunas
+  const columns = (n: number) => Array.from({ length: 2 * n }, (_, i) => g(Math.floor(i / 2) * 100 + (i % 2) * 15));
+  const run = (cols: number, K: number) => {
+    const glyphs = columns(cols);
+    const L = glyphs[0].x;
+    const R = glyphs[glyphs.length - 1].x + 10;
+    const sy = Array.from({ length: K }, (_, i) => syl(i, 'ta'));
+    const expected = expectedCenters({ L, R, syllables: sy, glyphs }, null);
+    const cuts = cutScores(glyphs, [], []);
+    return { glyphs, open: partitionDP(glyphs, expected, L, R, cuts, { open: true }), closed: partitionDP(glyphs, expected, L, R, cuts) };
+  };
+  const colOf = (gr: [number, number]) => [Math.floor(gr[0] / 2), Math.floor((gr[1] - 1) / 2)];
+
+  it('contagem de menos (6 sílabas, 7 colunas): as 6 primeiras colunas, sem deslocar; a cauda fica', () => {
+    const { open, closed } = run(7, 6);
+    expect(open.used).toBe(6);
+    expect(open.glyphsUsed).toBe(12);
+    expect(open.groups.map((gr) => colOf(gr!))).toEqual([0, 1, 2, 3, 4, 5].map((c) => [c, c]));
+    // o modo fechado junta duas colunas em algum grupo
+    expect(closed.groups.some((gr) => gr && colOf(gr)[0] !== colOf(gr)[1])).toBe(true);
+  });
+  it('contagem de mais (6 sílabas, 5 colunas): nenhuma coluna partida; a sobra fica sem grupo', () => {
+    const { open } = run(5, 6);
+    for (const gr of open.groups) if (gr) expect(gr[1] - gr[0]).toBe(2);
+    expect(open.used).toBe(5);
+    expect(open.glyphsUsed).toBe(10);
+  });
+  it('agrupamentos fundidos (7 colunas, as 2 primeiras quase encostadas): a sílaba a mais parte o vão fraco', () => {
+    // colunas de 2 glifos a cada 90 px (vão interno 5); as colunas 0 e 1 são largas e ficam a 7 px
+    // uma da outra (corte 1,4 < CLUSTER_CUT): um só agrupamento, como Do-mi no SG339
+    const glyphs = [g(0, 40), g(45, 40), g(92, 40), g(137, 40)];
+    for (let k = 2; k < 7; k++) glyphs.push(g(90 * k + 20, 20), g(90 * k + 45, 20));
+    const cuts = cutScores(glyphs, [], []);
+    let clusters = 1;
+    for (const c of cuts) if (c >= 2) clusters++;
+    expect(clusters).toBe(6);
+    const sy = Array.from({ length: 7 }, (_, i) => syl(i, 'ta'));
+    const expected = expectedCenters({ L: 0, R: 605, syllables: sy, glyphs }, null);
+    const p = partitionDP(glyphs, expected, 0, 605, cuts, { open: true, lastExtra: true });
+    expect(p.used).toBe(7);
+    expect(p.groups).toEqual([0, 1, 2, 3, 4, 5, 6].map((c) => [2 * c, 2 * c + 2]));
+  });
+  it('sílaba a mais sem vão fraco que valha: fica sem grupo, nenhuma coluna partida', () => {
+    const { glyphs } = run(5, 5);
+    const sy = Array.from({ length: 6 }, (_, i) => syl(i, 'ta'));
+    const expected = expectedCenters({ L: 0, R: 410, syllables: sy, glyphs }, null);
+    const p = partitionDP(glyphs, expected, 0, 410, cutScores(glyphs, [], []), { open: true, lastExtra: true });
+    expect(p.used).toBe(5);
+    for (const gr of p.groups) if (gr) expect(gr[1] - gr[0]).toBe(2);
+  });
+  it('contagem certa: igual ao modo fechado', () => {
+    const { open, closed } = run(6, 6);
+    expect(open.groups).toEqual(closed.groups);
+    expect(open.used).toBe(6);
+  });
 });

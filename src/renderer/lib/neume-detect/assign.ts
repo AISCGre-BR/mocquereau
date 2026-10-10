@@ -47,43 +47,6 @@ export function overlapFraction(b: PxBox, a: PxBox): number {
   return b.w * b.h > 0 ? (ix * iy) / (b.w * b.h) : 0;
 }
 
-/**
- * Divide a linha em segmentos independentes pelas ancoras (silabas com caixa). Silabas entre duas
- * ancoras consecutivas (na ordem de `syllables`) formam um segmento com L = borda direita da ancora
- * anterior (ou x0) e R = borda esquerda da seguinte (ou x1). Glifos >= 50% dentro de uma ancora sao
- * descartados; os demais vao para o segmento que contem o centro x.
- * Segmentos sem silabas sao omitidos.
- */
-export function segmentByAnchors(
-  syllables: SuggestSyllable[],
-  anchors: { index: number; box: PxBox }[],
-  glyphs: Glyph[],
-  x0: number,
-  x1: number,
-): Segment[] {
-  const anchorBy = new Map(anchors.map((a) => [a.index, a.box]));
-  const free = glyphs.filter((g) => !anchors.some((a) => overlapFraction(g, a.box) >= 0.5));
-  const segments: Segment[] = [];
-  let L = x0;
-  let cur: SuggestSyllable[] = [];
-  const close = (R: number) => {
-    if (cur.length) {
-      const glyphsIn = free.filter((g) => cx(g) >= L && cx(g) <= R).sort((a, b) => cx(a) - cx(b) || a.y - b.y);
-      segments.push({ L, R, syllables: cur, glyphs: glyphsIn });
-    }
-    cur = [];
-  };
-  for (const s of syllables) {
-    const box = anchorBy.get(s.index);
-    if (box) {
-      close(box.x);
-      L = box.x + box.w;
-    } else cur.push(s);
-  }
-  close(x1);
-  return segments;
-}
-
 /** Comprimento em letras (minimo 1). */
 export function letters(s: SuggestSyllable): number {
   return Math.max(1, s.text.replace(/[^\p{L}]/gu, '').length);
@@ -159,13 +122,39 @@ export interface Partition {
   /** Custo de posicao de cada grupo (0 para vazios). */
   positionCost: number[];
   score: number;
+  /** Silabas usadas (as primeiras `used`); as seguintes ficam sem grupo. K no modo fechado. */
+  used: number;
+  /** Glifos usados (os primeiros `glyphsUsed`); a cauda fica sem silaba. M no modo fechado. */
+  glyphsUsed: number;
 }
+
+/**
+ * Modo aberto da particao (contagem incerta): cada fronteira usada custa BOUNDARY_COST = CLUSTER_CUT
+ * (um vao menor que o de um agrupamento so separa silabas se o prior de posicao pagar) e deixar uma cauda de glifos sem silaba custa TAIL_COST.
+ * As ultimas silabas podem ficar sem grupo (seguem para a area seguinte).
+ */
+export const BOUNDARY_COST = CLUSTER_CUT;
+export const TAIL_COST = 1;
+/** Modo aberto com `lastExtra`: a ultima silaba e uma a mais que a contagem; usa-la custa isto. */
+export const EXTRA_COST = 0.5;
 
 /**
  * Particao dos M glifos (ordem x) em K grupos contiguos, possivelmente vazios, maximizando
  * soma(cortes usados) - soma(lambda * |centro_j - e_j| / ((R - L) / K)) - 3 x vazios. O(K * M^2).
+ * `open`: a contagem K e uma estimativa (fitCount); ver BOUNDARY_COST e TAIL_COST. Uma contagem de
+ * menos deixa a cauda a direita sem silaba em vez de juntar colunas (e empurrar as seguintes); uma
+ * de mais deixa as ultimas silabas sem grupo em vez de partir uma coluna.
  */
-export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: number, cuts: Float64Array): Partition {
+export function partitionDP(
+  glyphs: Glyph[],
+  expected: number[],
+  L: number,
+  R: number,
+  cuts: Float64Array,
+  opts: { open?: boolean; lastExtra?: boolean } = {},
+): Partition {
+  const open = !!opts.open;
+  const bcost = open ? BOUNDARY_COST : 0;
   const K = expected.length;
   const M = glyphs.length;
   const unit = Math.max(1, (R - L) / Math.max(1, K));
@@ -190,7 +179,7 @@ export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: n
         const prev = f[j - 1][a];
         if (prev === NEG) continue;
         const cost = (LAMBDA * Math.abs((minX + maxX) / 2 - e)) / unit;
-        const v = prev + (a > 0 ? cuts[a - 1] : 0) - cost;
+        const v = prev + (a > 0 ? cuts[a - 1] - bcost : 0) - cost;
         if (v > best) {
           best = v;
           arg = a;
@@ -200,10 +189,26 @@ export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: n
       choice[j][m] = arg;
     }
   }
+  // fim: fechado = K silabas e M glifos; aberto = melhor (j, m), cauda m..M sem silaba
+  let endJ = K;
+  let endM = M;
+  if (open) {
+    let best = -Infinity;
+    for (let j = 1; j <= K; j++)
+      for (let m = 1; m <= M; m++) {
+        if (f[j][m] === NEG) continue;
+        const v = f[j][m] + (m < M ? cuts[m - 1] - bcost - TAIL_COST : 0) - (opts.lastExtra && j === K ? EXTRA_COST : 0);
+        if (v >= best - 1e-9) {
+          best = v;
+          endJ = j;
+          endM = m;
+        }
+      }
+  }
   const groups: ([number, number] | null)[] = new Array(K).fill(null);
   const positionCost: number[] = new Array(K).fill(0);
-  let m = M;
-  for (let j = K; j >= 1; j--) {
+  let m = endM;
+  for (let j = endJ; j >= 1; j--) {
     const a = choice[j][m];
     if (a === -1 || a === -2) continue;
     groups[j - 1] = [a, m];
@@ -216,7 +221,7 @@ export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: n
     positionCost[j - 1] = (LAMBDA * Math.abs((minX + maxX) / 2 - expected[j - 1])) / unit;
     m = a;
   }
-  return { groups, positionCost, score: f[K][M] };
+  return { groups, positionCost, score: f[endJ][endM], used: endJ, glyphsUsed: endM };
 }
 
 /**
@@ -267,8 +272,18 @@ export interface FitOptions {
  * a area parece menor e recebe silabas de menos.
  */
 export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[], opts: FitOptions = {}): number {
+  return fitDetail(queue, glyphs, text, opts).n;
+}
+
+/** fitCount com a origem da contagem: `byText` = medida pelo texto (senao, agrupamentos de glifos). */
+export function fitDetail(
+  queue: SuggestSyllable[],
+  glyphs: Glyph[],
+  text: PxBox[],
+  opts: FitOptions = {},
+): { n: number; byText: boolean } {
   const maxN = Math.min(queue.length, glyphs.length);
-  if (maxN === 0) return 0;
+  if (maxN === 0) return { n: 0, byText: false };
   const hMed = median(text.map((c) => c.h));
   const clean = text.filter((c) => c.h >= TEXT_NOISE_H * hMed && c.w > 0);
   if (clean.length > 0) {
@@ -289,7 +304,7 @@ export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[
       }
       if (acc - units > bestD) break;
     }
-    return best;
+    return { n: best, byText: true };
   }
   const sorted = [...glyphs].sort((a, b) => cx(a) - cx(b));
   const cuts = cutScores(sorted, [], []);
@@ -297,5 +312,5 @@ export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[
   const absCut = opts.u && opts.u > 0 ? ABS_GAP_U * opts.u : Infinity;
   let clusters = 1;
   for (let i = 0; i < cuts.length; i++) if (cuts[i] >= CLUSTER_CUT || gaps[i] >= absCut) clusters++;
-  return Math.min(maxN, clusters);
+  return { n: Math.min(maxN, clusters), byText: false };
 }

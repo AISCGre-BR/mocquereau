@@ -4,7 +4,7 @@
 // Ver NOTICE.
 // suggestBoxes: pipeline puro, sincrono e deterministico (spec, etapas 0 a 6).
 // Fluxo base: find_candidates() de othmar/candidates.py.
-import { groupConfidence, cutScores, expectedCenters, fitCount, overlapFraction, partitionDP, type Glyph } from './assign';
+import { groupConfidence, cutScores, expectedCenters, fitDetail, overlapFraction, partitionDP, type Glyph } from './assign';
 import { ceilPx, floorPx, fracToPxRect, lineOrNone, selectBand } from './band';
 import { dropIsolatedSpecks, filterComponents, labelComponents, labelsTouching, type Component } from './components';
 import {
@@ -622,18 +622,22 @@ interface BandLine {
 
 const cxOf = (b: PxBox): number => b.x + b.w / 2;
 
-/** Glifos e texto da porcao [L, R] de uma faixa (centro x dentro; glifos sob ancoras fora). */
+/** Glifos e texto da porcao [L, R] de uma faixa (centro x dentro; os sob ancoras fora). */
 function portionOf(l: BandLine, L: number, R: number): { glyphs: Glyph[]; text: PxBox[] } {
   const inside = (b: PxBox) => cxOf(b) >= L && cxOf(b) <= R;
-  const glyphs = l.a.glyphs
-    .filter((g) => inside(g) && !l.allLocal.some((an) => overlapFraction(g, an.box) >= 0.5))
-    .sort((p, q) => cxOf(p) - cxOf(q) || p.y - q.y);
-  return { glyphs, text: l.a.text.filter(inside) };
+  // glifos e texto >= 50% dentro de uma ancora pertencem a ela (as caixas do usuario cobrem o texto)
+  const free = (b: PxBox) => inside(b) && !l.allLocal.some((an) => overlapFraction(b, an.box) >= 0.5);
+  const glyphs = l.a.glyphs.filter(free).sort((p, q) => cxOf(p) - cxOf(q) || p.y - q.y);
+  return { glyphs, text: l.a.text.filter(free) };
 }
 
 /**
  * Etapa 6 numa porcao [L, R] de uma faixa: prior desta porcao (palavras do texto dela), particao e
- * caixa por grupo. Devolve a borda direita do ultimo grupo usado (L se nenhum).
+ * caixa por grupo. `open`: a contagem veio dos agrupamentos de glifos (fitCount sem texto), que se
+ * fundem ou partem; a particao pode deixar a cauda de glifos e as ultimas silabas sem par. Com a
+ * contagem medida pelo texto, ou na pauta (vaos entre notas de um neuma quadrado, normalizados pela
+ * mediana ~0, viram cortes enormes e nao medem silabas), a particao usa todos os glifos. Devolve a borda direita do ultimo grupo usado (L se
+ * nenhum) e quantas silabas foram usadas.
  */
 function assignPortion(
   l: BandLine,
@@ -645,8 +649,10 @@ function assignPortion(
   out: Suggestion[],
   W: number,
   H: number,
-): number {
-  if (!syllables.length || !glyphs.length) return L;
+  open: boolean,
+  lastExtra = false,
+): { end: number; used: number } {
+  if (!syllables.length || !glyphs.length) return { end: L, used: 0 };
   const words = new Set(syllables.map((s) => s.wordIndex)).size;
   const spans = wordSpans(text, words);
   const wordGapXs = spans ? spans.slice(1).map((sp, i) => (spans[i].x1 + sp.x0) / 2) : [];
@@ -657,7 +663,7 @@ function assignPortion(
   const seg = { L: L1, R: R1, syllables, glyphs };
   const expected = expectedCenters(seg, spans);
   const cuts = cutScores(glyphs, l.a.bars.map(cxOf), wordGapXs);
-  const part = partitionDP(glyphs, expected, L1, R1, cuts);
+  const part = partitionDP(glyphs, expected, L1, R1, cuts, { open, lastExtra });
   const conf = groupConfidence(part, cuts, glyphs.length);
   let end = L;
   part.groups.forEach((g, j) => {
@@ -669,7 +675,7 @@ function assignPortion(
     const box = placeBox(members, l.a, l.anchorsLocal, W, H);
     if (box) out.push({ index: syl.index, box, confidence: conf[j] });
   });
-  return end;
+  return { end, used: part.used };
 }
 
 /**
@@ -684,8 +690,15 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
   const anchorAt = new Map<number, { line: number; box: PxBox }>();
   lines.forEach((l, k) => l.anchorsLocal.forEach((an) => anchorAt.set(an.index, { line: k, box: an.box })));
   const out: Suggestion[] = [];
-  const fit = (l: BandLine, rest: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]) =>
-    fitCount(rest, glyphs, text, { u: l.a.u, xHeight: l.a.tl?.xHeight });
+  // Contagem por agrupamentos sem pauta: agrupamentos se fundem (neumas de silabas vizinhas quase
+  // encostados), entao a particao aberta recebe uma silaba a mais (EXTRA_COST) e decide se parte um
+  // vao fraco ou deixa a ultima sem grupo (BOUNDARY_COST, TAIL_COST).
+  const fit = (l: BandLine, rest: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]) => {
+    const d = fitDetail(rest, glyphs, text, { u: l.a.u, xHeight: l.a.tl?.xHeight });
+    const open = d.n > 0 && !d.byText && !l.a.staff;
+    const n = open ? Math.min(rest.length, d.n + 1) : d.n;
+    return { n, open, extra: open && n > d.n };
+  };
   let li = 0;
   let x = 0;
   let p = 0;
@@ -708,14 +721,13 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
       for (; li < bound.line && rest.length; li++, x = 0) {
         const l = lines[li];
         const { glyphs, text } = portionOf(l, x, l.a.work.r.width);
-        const n = fit(l, rest, glyphs, text);
-        if (n > 0) assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H);
-        rest = rest.slice(n);
+        const { n, open, extra } = fit(l, rest, glyphs, text);
+        if (n > 0) rest = rest.slice(assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H, open, extra).used);
       }
       if (rest.length) {
         const l = lines[bound.line];
         const { glyphs, text } = portionOf(l, x, bound.box.x);
-        assignPortion(l, x, bound.box.x, rest, glyphs, text, out, W, H);
+        assignPortion(l, x, bound.box.x, rest, glyphs, text, out, W, H, false);
       }
       // o cursor vai para a ancora, que e consumida na proxima volta
     } else {
@@ -723,10 +735,11 @@ function assignSequential(lines: BandLine[], queue: SuggestSyllable[], W: number
         const l = lines[li];
         const R = l.a.work.r.width;
         const { glyphs, text } = portionOf(l, x, R);
-        const n = fit(l, rest, glyphs, text);
+        const { n, open, extra } = fit(l, rest, glyphs, text);
         if (n > 0) {
-          x = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H);
-          rest = rest.slice(n);
+          const r = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H, open, extra);
+          x = r.end;
+          rest = rest.slice(r.used);
         }
         if (rest.length) {
           li++;

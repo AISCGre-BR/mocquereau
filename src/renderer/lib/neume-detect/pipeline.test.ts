@@ -184,6 +184,10 @@ describe('suggestBoxes — escala e transparencia', () => {
     for (const s of fx.syllables) expect(iou(got[s.index], fx.truth[s.index])).toBeGreaterThanOrEqual(0.8);
   });
 
+  // Limitacao conhecida (M2): com caneta de 1 px as hastes passam de maxSide = 30u e somem do texto;
+  // a contagem por texto perde a silaba (o teste acima usa palavras sem haste para medir a ampliacao).
+  it.todo('caneta de 1 px com letras de haste (Pu-er na-tus est): as 5 silabas recebem sugestao');
+
   it('pixels transparentes (triangulos do AABB rotacionado) nunca viram tinta', () => {
     const fx = buildAdiastematicLine({ seed: 15 });
     const { width: W, height: H } = fx.raster;
@@ -1005,3 +1009,4 @@ describe('M2 — sequencial por área', () => {
     expect(ids(res)).toEqual([0, 1, 2, 3, 4]);
   });
 });
+
