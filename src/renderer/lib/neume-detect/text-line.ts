@@ -25,7 +25,7 @@ export type TextPreference = { kind: 'lowest' } | { kind: 'below'; y: number };
  * Histograma das bases (y + h) ponderado por area, suavizado (janela 0,5 x altura mediana). Cada pico
  * qualifica se tem >= 3 componentes de altura semelhante (+-40% da mediana do pico) cobrindo >= 30%
  * da largura, altura-x >= minXHeight (descarta tocos e ruido) e espacamento de letra (>= 40% dos
- * vaos entre vizinhos <= 0,6xh; neumas alinhados por acaso sao esparsos). Preferencia: o pico mais baixo (modo A) ou o primeiro abaixo de y (modo D).
+ * vaos entre vizinhos <= 0,6xh, com as letras de haste; neumas alinhados por acaso sao esparsos). Preferencia: o pico mais baixo (modo A) ou o primeiro abaixo de y (modo D).
  */
 export function findTextLine(comps: Comp[], bandWidth: number, pref: TextPreference, minXHeight = 0): TextLine | null {
   if (comps.length < 3) return null;
@@ -66,7 +66,9 @@ export function findTextLine(comps: Comp[], bandWidth: number, pref: TextPrefere
     const xh = median(similar.map((c) => c.h));
     if (xh < minXHeight) continue;
     // espacamento de letra: >= 40% dos vaos entre vizinhos semelhantes sao <= 0,6xh (neumas sao esparsos)
-    const byX = [...similar].sort((a, b) => a.x - b.x);
+    // vizinhos entre as letras plausiveis (0,6 a 2,2 xh): as de haste (b d l t, maiusculas) contam como
+    // vizinhas; so as semelhantes deixariam um buraco em cada haste e palavras curtas nao passariam
+    const byX = members.filter((c) => c.h >= 0.6 * xh && c.h <= 2.2 * xh).sort((a, b) => a.x - b.x);
     let tight = 0;
     for (let k = 0; k + 1 < byX.length; k++) if (byX[k + 1].x - (byX[k].x + byX[k].w) <= 0.6 * xh) tight++;
     if (tight < 0.4 * (byX.length - 1)) continue;
