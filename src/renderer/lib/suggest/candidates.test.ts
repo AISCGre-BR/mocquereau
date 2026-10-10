@@ -22,6 +22,13 @@ describe("nextCandidate", () => {
   it("fim da área: o primeiro da área seguinte", () => expect(nextCandidate(cands, C(0.4).box, areas)).toBe(2));
   it("fim de tudo: null", () => expect(nextCandidate(cands, { x: 0.3, y: 0.6, w: 0.08, h: 0.2 }, areas)).toBeNull());
   it("sem áreas salvas: tudo é a área 0", () => expect(nextCandidate([C(0.1), C(0.4)], C(0.1).box, [])).toBe(1));
+  it("anterior fora de todas as áreas: o primeiro, em ordem de leitura, depois do x da anterior", () => {
+    const spaced = [{ x: 0, y: 0, w: 1, h: 0.45 }, { x: 0, y: 0.55, w: 1, h: 0.45 }];
+    // centro (0.24, 0.49): entre as duas áreas
+    expect(nextCandidate(cands, { x: 0.2, y: 0.48, w: 0.08, h: 0.02 }, spaced)).toBe(1);
+    // nenhum depois do x da anterior: o primeiro
+    expect(nextCandidate(cands, { x: 0.5, y: 0.48, w: 0.08, h: 0.02 }, spaced)).toBe(0);
+  });
 });
 
 describe("unionBoxes", () => {

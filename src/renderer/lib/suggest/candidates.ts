@@ -46,15 +46,19 @@ export function areaOf(box: SyllableBox, areas: SyllableBox[]): number {
 
 /**
  * Enter: the first candidate of `prev`'s area whose center x is after `prev`'s center; else the
- * first of a following area; without `prev` (or with one outside every area), the first. null if
+ * first of a following area; without `prev`, the first. With `prev` outside every area, the first
+ * candidate (reading order, any area) whose center x is after `prev`'s, else the first. null if
  * none. `prev`'s area = index in `areas` of the rectangle holding its center; without areas, 0.
  */
 export function nextCandidate(cands: LiveCandidate[], prev: SyllableBox | null, areas: SyllableBox[]): number | null {
   if (cands.length === 0) return null;
   if (!prev) return 0;
   const area = areaOf(prev, areas);
-  if (area < 0) return 0;
   const px = cx(prev);
+  if (area < 0) {
+    const after = cands.findIndex((c) => cx(c.box) > px);
+    return after >= 0 ? after : 0;
+  }
   const same = cands.findIndex((c) => c.band === area && cx(c.box) > px);
   if (same >= 0) return same;
   const later = cands.findIndex((c) => c.band > area);
