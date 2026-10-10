@@ -283,7 +283,7 @@
   "recortes.menu.acceptAll": "すべての提案を承認",
   "recortes.menu.discard": "提案を破棄",
   "recortes.menu.suggestionsMode": "提案",
-  "recortes.menu.suggestions.sequential": "順番に",
+  "recortes.menu.suggestions.sequential": "順次",
   "recortes.menu.suggestions.candidates": "候補",
   "recortes.menu.suggestions.off": "オフ",
   "recortes.notice.needsBand": "ネウマの行の上をドラッグしてください",
