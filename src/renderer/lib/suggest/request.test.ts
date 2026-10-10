@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ManuscriptLine, ManuscriptSource, StoredImage, SyllabifiedWord } from "../models";
-import { collectTargets, planSuggestion, regionToView, resolveNotation, viewToRegion } from "./request";
+import { collectTargets, planSuggestion, regionToView, resolveNotation, sequentialStart, viewToRegion } from "./request";
 import { IMAGE_ADJUSTMENTS_DEFAULT } from "../image-adjustments";
 
 const IMG: StoredImage = { dataUrl: "data:,", width: 100, height: 200, mimeType: "image/png" };
@@ -78,7 +78,7 @@ describe("collectTargets", () => {
 describe("planSuggestion", () => {
   it("sem areas: regiao e a pagina toda, sem bands, ancoras como estao", () => {
     const l = line({ syllableRange: { start: 0, end: 2 }, syllableBoxes: { 0: BOX } });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     expect(plan.lineId).toBe("L");
     expect(plan.region).toEqual({ x: 0, y: 0, w: 1, h: 1 });
     expect(plan.input.bands).toBeUndefined();
@@ -94,7 +94,7 @@ describe("planSuggestion", () => {
       neumeBands: [{ x: 0.1, y: 0.2, w: 0.5, h: 0.1 }, { x: 0.2, y: 0.5, w: 0.5, h: 0.1 }],
       syllableBoxes: { 0: { x: 0.3, y: 0.25, w: 0.1, h: 0.1 }, 1: { x: 0.8, y: 0.9, w: 0.1, h: 0.05 } },
     });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     // uniao (0.1,0.2)-(0.7,0.6); com margem (0.08,0.18)-(0.72,0.62)
     expect(plan.region.x).toBeCloseTo(0.08, 9);
     expect(plan.region.y).toBeCloseTo(0.18, 9);
@@ -116,7 +116,7 @@ describe("planSuggestion", () => {
 
   it("a regiao e recortada a [0,1]", () => {
     const l = line({ syllableRange: { start: 0, end: 2 }, neumeBands: [{ x: 0.01, y: 0.3, w: 0.98, h: 0.2 }] });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     expect(plan.region.x).toBe(0);
     expect(plan.region.w).toBeCloseTo(1, 9);
   });
@@ -128,13 +128,13 @@ describe("planSuggestion", () => {
       boxFrame: { rotation: 0, flipH: false, flipV: false },
       syllableBoxes: { 0: { x: 0, y: 0, w: 0.5, h: 0.25 } },
     });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     expect(plan.input.anchors).toEqual([{ index: 0, box: { x: 0.75, y: 0, w: 0.25, h: 0.5 } }]);
   });
 
   it("sem alvo sugerivel devolve null", () => {
     const l = line({ syllableRange: { start: 0, end: 1 }, gaps: [0] });
-    expect(planSuggestion(source([l]), l, words, none, new Set([1]))).toBeNull();
+    expect(planSuggestion(source([l]), l, words, none, new Set([1]), null)).toBeNull();
   });
 });
 
@@ -154,5 +154,51 @@ describe("regionToView / viewToRegion", () => {
     expect(back.y).toBeCloseTo(box.y, 9);
     expect(back.w).toBeCloseTo(box.w, 9);
     expect(back.h).toBeCloseTo(box.h, 9);
+  });
+});
+
+describe("planSuggestion — fila a partir da ativa (M2)", () => {
+  const B2 = { x: 0.2, y: 0.1, w: 0.1, h: 0.1 };
+  const B5 = { x: 0.5, y: 0.1, w: 0.1, h: 0.1 };
+  const rows = (p: ReturnType<typeof planSuggestion>) => p!.input.syllables.map((s) => [s.index, s.suggest !== false]);
+
+  it("ativa com caixa: começa na próxima pendente; a caixa da ativa abre a fila", () => {
+    const l = line({ syllableBoxes: { 2: B2, 5: B5 } });
+    const p = planSuggestion(source([l]), l, words, none, noRej, 2);
+    expect(rows(p)).toEqual([[2, false], [3, true], [4, true], [5, false], [6, true], [7, true]]);
+    expect(p!.input.anchors!.map((a) => a.index)).toEqual([2, 5]);
+  });
+
+  it("pendentes antes da ativa ficam fora", () => {
+    const l = line();
+    expect(rows(planSuggestion(source([l]), l, words, none, noRej, 4))).toEqual([[4, true], [5, true], [6, true], [7, true]]);
+  });
+
+  it("só a âncora mais próxima antes do início entra", () => {
+    const l = line({ syllableBoxes: { 0: BOX, 2: B2 } });
+    const p = planSuggestion(source([l]), l, words, none, noRej, 3);
+    expect(p!.input.syllables[0].index).toBe(2);
+    expect(p!.input.anchors!.map((a) => a.index)).toEqual([2]);
+  });
+
+  it("sem ativa começa no início do intervalo; nenhuma pendente a partir da ativa: null", () => {
+    const l = line({ syllableBoxes: { 6: B5, 7: B2 } });
+    expect(rows(planSuggestion(source([l]), l, words, none, noRej, null))![0]).toEqual([0, true]);
+    expect(planSuggestion(source([l]), l, words, none, noRej, 6)).toBeNull();
+  });
+
+  it("sequentialStart: primeira pendente sugerível a partir da ativa (rejeitadas e recortes legados não abrem)", () => {
+    const l = line({ syllableBoxes: { 3: BOX } });
+    expect(sequentialStart(source([l]), l, words, none, new Set([4]), 3)).toBe(5);
+    expect(sequentialStart(source([l]), l, words, none, noRej, null)).toBe(0);
+    expect(sequentialStart(source([l]), l, words, none, noRej, 40)).toBe(0); // ativa de outra página
+  });
+
+  it("áreas fora de ordem no arquivo: bands vão ao detector em ordem de leitura", () => {
+    const top = { x: 0.1, y: 0.1, w: 0.8, h: 0.1 };
+    const bottom = { x: 0.1, y: 0.5, w: 0.8, h: 0.1 };
+    const l = line({ neumeBands: [bottom, top] });
+    const p = planSuggestion(source([l]), l, words, none, noRej, null)!;
+    expect(p.input.bands!.map((b) => b.y)).toEqual([...p.input.bands!.map((b) => b.y)].sort((a, b) => a - b));
   });
 });

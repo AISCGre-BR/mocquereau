@@ -144,6 +144,13 @@ async function settle(fn: () => void) {
 }
 
 describe("SuggestionsProvider", () => {
+  it("Sugerir começa na sílaba ativa", async () => {
+    const h = await setup();
+    act(() => h.hook.result.current.r.setActiveSyllable(3));
+    const call = await startSuggest(h);
+    expect(call.input.syllables[0].index).toBe(3);
+  });
+
   it("sugerir -> caixas ativas -> aceitar todas = um UPDATE_LINE_BOXES e um passo de desfazer", async () => {
     const h = await setup();
     expect(h.hook.result.current.r.activeLineId).toBe("a1");

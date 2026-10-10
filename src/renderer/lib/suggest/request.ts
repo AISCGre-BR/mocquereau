@@ -5,6 +5,7 @@
 // page to rasterize, and the maps between region fractions and view fractions.
 
 import { boxesInView } from "@shared/box-frame";
+import { orderNeumeBands } from "@shared/band-order";
 import { notationOf } from "@shared/classification";
 import { isLineGap } from "../syllable-gap";
 import { flattenSyllables } from "../sliceUtils";
@@ -79,22 +80,57 @@ export function viewToRegion(box: FracRect, region: FracRect): FracRect {
   return { x: (box.x - region.x) / region.w, y: (box.y - region.y) / region.h, w: box.w / region.w, h: box.h / region.h };
 }
 
+/**
+ * M2: first syllable of the sequential queue: the first suggestible target (collectTargets, range
+ * order) at or after the active syllable, or after the range start without one (or with one outside
+ * the range). null = nothing to
+ * suggest from there.
+ */
+export function sequentialStart(
+  source: ManuscriptSource,
+  line: ManuscriptLine,
+  words: SyllabifiedWord[],
+  covered: ReadonlyMap<number, string>,
+  rejected: ReadonlySet<number>,
+  active: number | null,
+): number | null {
+  // an active syllable outside this page's range (another page) does not move the start
+  const inRange = active !== null && active >= line.syllableRange.start && active <= line.syllableRange.end;
+  const from = inRange ? active : line.syllableRange.start;
+  const first = collectTargets(source, line, words, covered, rejected).find((s) => s.suggest !== false && s.index >= from);
+  return first ? first.index : null;
+}
+
+/**
+ * The detector request for a page. The sequential queue starts at `sequentialStart` (M2): targets
+ * from there on (suggest:false ones keep their place), boxes from there on, and the nearest box
+ * before the start, which opens the queue. Pending syllables before the start stay out. Areas go
+ * to the detector in reading order (rows top to bottom, left to right).
+ */
 export function planSuggestion(
   source: ManuscriptSource,
   line: ManuscriptLine,
   words: SyllabifiedWord[],
   covered: ReadonlyMap<number, string>,
   rejected: ReadonlySet<number>,
+  active: number | null,
 ): SuggestPlan | null {
-  const syllables = collectTargets(source, line, words, covered, rejected);
-  if (!syllables.some((s) => s.suggest !== false)) return null;
+  const start = sequentialStart(source, line, words, covered, rejected, active);
+  if (start === null) return null;
+  const syllables = collectTargets(source, line, words, covered, rejected).filter((s) => s.index >= start);
 
   const view = boxesInView(line);
-  const anchors: SuggestAnchor[] = [];
+  const all: SuggestAnchor[] = [];
   for (let idx = line.syllableRange.start; idx <= line.syllableRange.end; idx++) {
     const box = view[idx];
-    if (box) anchors.push({ index: idx, box });
+    if (box) all.push({ index: idx, box });
   }
+  /** Boxes from the start on, plus the nearest one before it (it opens the queue). */
+  const fromStart = (list: SuggestAnchor[]): SuggestAnchor[] => {
+    const before = list.filter((a) => a.index < start);
+    return [...(before.length ? [before[before.length - 1]] : []), ...list.filter((a) => a.index >= start)];
+  };
+  const anchors = fromStart(all);
 
   // The detector only honours anchors whose syllable is in `syllables` (reading order).
   const info = syllableInfo(words);
@@ -108,7 +144,7 @@ export function planSuggestion(
     ].sort((a, b) => a.index - b.index);
 
   const notation = resolveNotation(source, line);
-  const areas = line.neumeBands ?? [];
+  const areas = orderNeumeBands(line.neumeBands ?? []);
   if (areas.length === 0) {
     return {
       lineId: line.id,
@@ -123,12 +159,12 @@ export function planSuggestion(
   const y1 = clamp01(Math.max(...areas.map((a) => a.y + a.h)) + BAND_MARGIN);
   const region: FracRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 
-  const inside = anchors
+  const inside = fromStart(all
     .filter((a) => {
       const cx = a.box.x + a.box.w / 2;
       const cy = a.box.y + a.box.h / 2;
       return cx >= region.x && cx <= region.x + region.w && cy >= region.y && cy <= region.y + region.h;
-    })
+    }))
     .map((a) => ({ index: a.index, box: viewToRegion(a.box, region) }));
 
   return {

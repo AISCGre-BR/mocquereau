@@ -260,7 +260,7 @@ export function SuggestionsProvider({
 
   /** One request on one page; resolves when the page's suggestions (or notice) are stored. */
   const run = useCallback(
-    async (lineId: string): Promise<RunOutcome> => {
+    async (lineId: string, start: number | null): Promise<RunOutcome> => {
       if (!enabledRef.current || runningRef.current) return { kind: "skipped" };
       const { source, line } = findLineById(projectRef.current, lineId);
       const words = projectRef.current?.text.words;
@@ -269,7 +269,7 @@ export function SuggestionsProvider({
       let plan: ReturnType<typeof planSuggestion>;
       try {
         const covered = coveredByOtherPages(source, line.id, "");
-        plan = planSuggestion(source, line, words, covered, rejectedRef.current.get(line.id) ?? new Set());
+        plan = planSuggestion(source, line, words, covered, rejectedRef.current.get(line.id) ?? new Set(), start);
       } catch {
         setNotice(line.id, "error");
         return { kind: "error" };
@@ -409,7 +409,8 @@ export function SuggestionsProvider({
         rejectedRef.current = next;
         setRejected(next);
       }
-      void run(lineId);
+      // M2: the queue starts at the active syllable (or the next pending one after it)
+      void run(lineId, recortes.activeSyllable);
     },
     cancel: cancelRunning,
     accept(idx) {
@@ -444,7 +445,7 @@ export function SuggestionsProvider({
       try {
         for (const { id } of source.lines) {
           if (loop.cancelled || !enabledRef.current) break;
-          const outcome = await run(id);
+          const outcome = await run(id, null);
           if (loop.cancelled || outcome.kind === "cancelled") break;
           if (outcome.kind === "done" && outcome.result.debug.needsBand) skipped.push(id);
         }

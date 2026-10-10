@@ -33,7 +33,8 @@ export function planCase(c: EvalCase, anchors: { index: number }[] = []): Sugges
     line = { ...c.line, syllableBoxes: boxes };
     sourceModel = { ...c.sourceModel, lines: c.sourceModel.lines.map((l) => (l.id === line.id ? line : l)) };
   }
-  return planSuggestion(sourceModel, line, c.words, coveredByOtherPages(sourceModel, line.id, ""), new Set());
+  // M2: the queue starts at the case's first ground-truth syllable, as if it were the active one
+  return planSuggestion(sourceModel, line, c.words, coveredByOtherPages(sourceModel, line.id, ""), new Set(), c.firstGt);
 }
 
 /** Region to rasterize for the case (the whole view when there is no plan). */
