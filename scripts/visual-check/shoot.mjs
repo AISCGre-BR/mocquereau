@@ -86,7 +86,9 @@ const stub = ({ theme, data, emptyRecent }) => {
       return [
         { path: "/fixture/Puer natus est.mocquereau", meta: meta("Puer natus est", "2026-04-27T12:00:00.000Z", true) },
         { path: "/fixture/Dominus dixit ad me.mocquereau", meta: meta("Dominus dixit ad me", "2026-04-15T12:00:00.000Z", true) },
-        { path: "/fixture/Sanctus VIII.mocquereau", meta: meta("Sanctus VIII", "2026-04-20T12:00:00.000Z", false) },
+        // Miniatura que não carrega: o cartão mostra o marcador, não a imagem quebrada.
+        { path: "/fixture/Sanctus VIII.mocquereau", meta: { ...meta("Sanctus VIII", "2026-04-20T12:00:00.000Z", false), thumb: "data:image/png;base64,AAAA" } },
+        // Sem metadados (ex.: legado aberto antes da correção): marcador também.
         { path: "/fixture/Resurrexi.mocquereau" },
         ...["Gloria VIII", "Kyrie XI", "Credo III", "Agnus Dei", "Alleluia"].map((n, i) => ({
           path: `/fixture/${n}.mocquereau`,

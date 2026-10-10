@@ -225,6 +225,15 @@ export interface GuerangerExport {
 export type ThemePreference = "system" | "light" | "dark";
 
 /** API exposta como window.mocquereau pelo preload bridge */
+/** Result of project:open / project:open-by-path. */
+export interface OpenedProject {
+  project: MocquereauProject;
+  /** null for a legacy .mocquereau.json: no writable path (Save becomes Save As). */
+  filePath: string | null;
+  /** Recent-list entry main added for this open; the target for recent meta. */
+  recentPath?: string;
+}
+
 export interface MocquereauAPI {
   // Projeto
   saveProject: (project: MocquereauProject, existingPath?: string) => Promise<{ filePath: string } | null>;
@@ -238,8 +247,11 @@ export interface MocquereauAPI {
   onSaveRequested: (callback: () => void) => () => void;
   /** Bundled example project: opened without a path (first save becomes Save As). */
   openExample: () => Promise<{ project: MocquereauProject; filePath: null } | null>;
-  /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
-  openProjectByPath: (filePath: string) => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
+  /**
+   * filePath is null when the file was a legacy .mocquereau.json (no writable path).
+   * recentPath is the recent-list entry main added for this open (also for legacy files).
+   */
+  openProjectByPath: (filePath: string) => Promise<OpenedProject | null>;
   // App state
   getRecent: () => Promise<RecentEntry[]>;
   updateRecentMeta: (filePath: string, meta: RecentMeta) => Promise<void>;
@@ -249,7 +261,7 @@ export interface MocquereauAPI {
   setTutorialSeen: (seen: boolean) => Promise<void>;
   getAppVersion: () => Promise<string>;
   /** filePath is null when the file was a legacy .mocquereau.json (no writable path). */
-  openProject: () => Promise<{ project: MocquereauProject; filePath: string | null } | null>;
+  openProject: () => Promise<OpenedProject | null>;
   importGueranger: () => Promise<GuerangerExport | null>;
 
   // Exportação
