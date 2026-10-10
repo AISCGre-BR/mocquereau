@@ -149,4 +149,27 @@ describe("Welcome", () => {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(picker);
   });
+
+  it("shows a placeholder in hero and card when a recent has no thumbnail", async () => {
+    mockApi({ getRecent: vi.fn().mockResolvedValue([ENTRY("/a.mocquereau.json"), ENTRY("/b.mocquereau.json")]) });
+    const { container } = renderWelcome();
+    await screen.findByText("a");
+    expect(screen.getAllByTestId("recent-thumb-placeholder")).toHaveLength(2);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("swaps a thumbnail that fails to load for the placeholder", async () => {
+    mockApi({
+      getRecent: vi.fn().mockResolvedValue([ENTRY("/g.mocquereau", META), ENTRY("/d.mocquereau", META)]),
+    });
+    const { container } = renderWelcome();
+    await screen.findAllByText("Gloria VIII");
+    const imgs = container.querySelectorAll("img");
+    expect(imgs).toHaveLength(2);
+    expect(screen.queryByTestId("recent-thumb-placeholder")).toBeNull();
+    fireEvent.error(imgs[0]);
+    fireEvent.error(imgs[1]);
+    expect(screen.getAllByTestId("recent-thumb-placeholder")).toHaveLength(2);
+    expect(container.querySelector("img")).toBeNull();
+  });
 });

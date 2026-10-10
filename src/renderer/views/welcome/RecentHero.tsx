@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { RecentEntry } from "../../../shared/recent";
 import { Button } from "../../ui/Button";
 import { displayName, formatRecentDate } from "./format";
+import { RecentThumb } from "./RecentThumb";
 
 const MAX_SOURCES = 6;
 
@@ -19,11 +20,7 @@ export function RecentHero({ entry, onContinue }: { entry: RecentEntry; onContin
       aria-label={title}
       className="grid max-h-[380px] min-h-[240px] flex-1 grid-cols-[minmax(0,1fr)_360px] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-lg bg-surface shadow-[var(--elev-2),var(--highlight)]"
     >
-      {meta?.thumb ? (
-        <img src={meta.thumb} alt="" className="block h-full w-full object-cover" />
-      ) : (
-        <div className="h-full bg-parchment-deep shadow-inset" />
-      )}
+      <RecentThumb src={meta?.thumb} className="h-full w-full" iconClassName="size-10" />
       <div className="flex min-w-0 flex-col gap-1.5 px-7 pt-7 pb-6">
         <h2 className="m-0 font-serif text-doc-title font-semibold">{title}</h2>
         {caption && <p className="m-0 text-caption text-ink-muted">{caption}</p>}
