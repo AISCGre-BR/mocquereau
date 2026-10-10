@@ -9,6 +9,7 @@ import { syllabifyText } from "../lib/syllabify";
 import { NeumeDetectCancelledError } from "../lib/neume-detect";
 import type { NeumeDetectClient, SuggestInput, SuggestResult } from "../lib/neume-detect";
 import type { ManuscriptLine, ManuscriptSource, MocquereauAPI, MocquereauProject, SyllableBox } from "../lib/models";
+import type { SuggestionsMode } from "@shared/suggestions-mode";
 
 const planControl = vi.hoisted(() => ({ throws: false }));
 vi.mock("../lib/suggest/request", async (importOriginal) => {
@@ -71,6 +72,10 @@ function result(boxes: Record<number, SyllableBox>, needsBand = false): SuggestR
   };
 }
 
+function cands(boxes: SyllableBox[]): SuggestResult {
+  return { suggestions: [], candidates: boxes.map((box) => ({ box, band: 0 })), debug: { needsBand: false } as SuggestResult["debug"] };
+}
+
 // ── Harness: real document reducer (history, dirty), real Recortes provider ──
 
 function page(id: string, extra: Partial<ManuscriptLine> = {}): ManuscriptLine {
@@ -89,12 +94,12 @@ function makeProject(lines: ManuscriptLine[] = [page("a1"), page("a2")]): Mocque
   return { ...createNewProject("T", ""), text: { raw, words: syllabifyText(raw, "sung"), hyphenationMode: "sung" }, sources: [src] };
 }
 
-let bridge: { getSuggestionsEnabled: ReturnType<typeof vi.fn>; setSuggestionsEnabled: ReturnType<typeof vi.fn> };
+let bridge: { getSuggestionsMode: ReturnType<typeof vi.fn>; setSuggestionsMode: ReturnType<typeof vi.fn> };
 
 beforeEach(() => {
   bridge = {
-    getSuggestionsEnabled: vi.fn().mockResolvedValue(true),
-    setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+    getSuggestionsMode: vi.fn().mockResolvedValue("sequential"),
+    setSuggestionsMode: vi.fn(async (m: string) => m),
   };
   window.mocquereau = bridge as unknown as MocquereauAPI;
 });
@@ -105,8 +110,8 @@ afterEach(() => {
   planControl.throws = false;
 });
 
-async function setup(opts: { enabled?: boolean; project?: MocquereauProject } = {}) {
-  bridge.getSuggestionsEnabled.mockResolvedValue(opts.enabled ?? true);
+async function setup(opts: { mode?: SuggestionsMode; project?: MocquereauProject } = {}) {
+  bridge.getSuggestionsMode.mockResolvedValue(opts.mode ?? "sequential");
   const client = fakeClient();
   const createClient = vi.fn(() => client);
   function Wrapper({ children }: { children: ReactNode }) {
@@ -144,6 +149,15 @@ async function settle(fn: () => void) {
 }
 
 describe("SuggestionsProvider", () => {
+  it("Sugerir começa na sílaba ativa", async () => {
+    const h = await setup();
+    act(() => h.hook.result.current.r.setActiveSyllable(3));
+    const call = await startSuggest(h);
+    // the queue opens at the range start: 0-2 consume their neumes without a suggestion
+    expect(call.input.syllables.find((s) => s.suggest !== false)?.index).toBe(3);
+    expect(call.input.syllables.filter((s) => s.index < 3).every((s) => s.suggest === false)).toBe(true);
+  });
+
   it("sugerir -> caixas ativas -> aceitar todas = um UPDATE_LINE_BOXES e um passo de desfazer", async () => {
     const h = await setup();
     expect(h.hook.result.current.r.activeLineId).toBe("a1");
@@ -270,7 +284,7 @@ describe("SuggestionsProvider", () => {
   });
 
   it("preferência desligada: suggest não cria cliente", async () => {
-    const h = await setup({ enabled: false });
+    const h = await setup({ mode: "off" });
     expect(h.value().enabled).toBe(false);
     act(() => h.value().suggest());
     await act(async () => {});
@@ -279,8 +293,8 @@ describe("SuggestionsProvider", () => {
   });
 
   it("preferência ainda não carregada: desligada, suggest não cria cliente", async () => {
-    let answer!: (on: boolean) => void;
-    bridge.getSuggestionsEnabled.mockImplementation(() => new Promise<boolean>((res) => (answer = res)));
+    let answer!: (mode: SuggestionsMode) => void;
+    bridge.getSuggestionsMode.mockImplementation(() => new Promise<SuggestionsMode>((res) => (answer = res)));
     const client = fakeClient();
     const createClient = vi.fn(() => client);
     function Wrapper({ children }: { children: ReactNode }) {
@@ -300,7 +314,7 @@ describe("SuggestionsProvider", () => {
     await act(async () => {});
     expect(createClient).not.toHaveBeenCalled();
     // Once the main says on, suggest works.
-    await act(async () => answer(true));
+    await act(async () => answer("sequential"));
     expect(hook.result.current.s.enabled).toBe(true);
     act(() => hook.result.current.s.suggest());
     await waitFor(() => expect(client.calls.length).toBe(1));
@@ -310,8 +324,8 @@ describe("SuggestionsProvider", () => {
     const h = await setup();
     const call = await startSuggest(h);
     await settle(() => call.resolve(result({ 0: B0 })));
-    act(() => h.value().setEnabled(false));
-    expect(bridge.setSuggestionsEnabled).toHaveBeenCalledWith(false);
+    act(() => h.value().setMode("off"));
+    expect(bridge.setSuggestionsMode).toHaveBeenCalledWith("off");
     expect(h.value().enabled).toBe(false);
     expect(h.value().active).toEqual({});
     expect(h.client.dispose).toHaveBeenCalledTimes(1);
@@ -466,7 +480,7 @@ describe("SuggestionsProvider", () => {
       void h.value().suggestSource().then((r) => (done = r));
     });
     await waitFor(() => expect(h.client.calls.length).toBe(1));
-    act(() => h.value().setEnabled(false));
+    act(() => h.value().setMode("off"));
     expect(h.value().status).toBe("idle");
     await settle(() => h.client.calls[0].resolve(result({ 0: B0 })));
     await waitFor(() => expect(done).not.toBeNull());
@@ -486,5 +500,100 @@ describe("SuggestionsProvider", () => {
     await settle(() => h.client.calls[0].resolve(result({ 0: B0 })));
     await waitFor(() => expect(done).not.toBeNull());
     expect(h.client.calls).toHaveLength(1);
+  });
+  it("modo candidatos: pedido sem sílabas; candidatos na página; nunca no projeto nem no histórico", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    const call = await startSuggest(h);
+    expect(call.input.mode).toBe("candidates");
+    expect(call.input.syllables).toEqual([]);
+    await settle(() => call.resolve(cands([B0, B1])));
+    expect(h.value().candidates.map((c) => c.box)).toEqual([B0, B1]);
+    expect(h.value().active).toEqual({});
+    expect(h.hook.result.current.p.state.isDirty).toBe(false);
+    expect(h.hook.result.current.p.history!.canUndo).toBe(false);
+  });
+
+  it("caixa sobre um candidato o esconde; desfazer o traz de volta", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    const call = await startSuggest(h);
+    await settle(() => call.resolve(cands([B0, B1])));
+    act(() => h.dispatch({ type: "UPDATE_LINE_BOXES", payload: { sourceId: "A", lineId: "a1", syllableBoxes: { 0: B0 } } }));
+    expect(h.value().candidates.map((c) => c.box)).toEqual([B1]);
+    act(() => h.hook.result.current.p.history!.undo());
+    expect(h.value().candidates.map((c) => c.box)).toEqual([B0, B1]);
+  });
+
+  it("girar descarta os candidatos; resultado de A chega em A com B ativa; trocar de modo descarta", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    let call = await startSuggest(h);
+    h.select("a2");
+    await settle(() => call.resolve(cands([B0])));
+    expect(h.value().candidates).toEqual([]);
+    h.select("a1");
+    expect(h.value().candidates).toHaveLength(1);
+    act(() => h.dispatch({ type: "UPDATE_LINE_ADJUSTMENTS", payload: { sourceId: "A", lineId: "a1", adjustments: { rotation: 90 } } }));
+    expect(h.value().candidates).toEqual([]);
+    act(() => h.dispatch({ type: "UPDATE_LINE_ADJUSTMENTS", payload: { sourceId: "A", lineId: "a1", adjustments: { rotation: 0 } } }));
+    call = await startSuggest(h, 2);
+    await settle(() => call.resolve(cands([B0])));
+    act(() => h.value().setMode("sequential"));
+    expect(h.value().candidates).toEqual([]);
+  });
+
+  it("Esc (discardPage) apaga os candidatos da página; 'off' encerra o cliente", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    const call = await startSuggest(h);
+    await settle(() => call.resolve(cands([B0])));
+    act(() => h.value().discardPage());
+    expect(h.value().candidates).toEqual([]);
+    act(() => h.value().setMode("off"));
+    expect(h.client.dispose).toHaveBeenCalled();
+  });
+
+  it("modo candidatos sem nenhum candidato: aviso none", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    expect(h.value().mode).toBe("candidates");
+    expect(h.value().enabled).toBe(true);
+    const call = await startSuggest(h);
+    await settle(() => call.resolve(cands([])));
+    expect(h.value().notice).toBe("none");
+  });
+  it("mudar as áreas da página descarta os candidatos (os índices de área deixam de valer)", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    const call = await startSuggest(h);
+    await settle(() => call.resolve(cands([B0, B1])));
+    expect(h.value().candidates).toHaveLength(2);
+    act(() => h.dispatch({ type: "SET_LINE_NEUME_BANDS", payload: { sourceId: "A", lineId: "a1", bands: [{ x: 0, y: 0, w: 1, h: 0.5 }] } }));
+    expect(h.value().candidates).toEqual([]);
+  });
+
+  it("modo off vindo da main: Sugerir não cria cliente", async () => {
+    const h = await setup({ mode: "off" });
+    act(() => h.value().suggest());
+    expect(h.createClient).not.toHaveBeenCalled();
+  });
+
+  it("setMode grava na main", async () => {
+    const h = await setup();
+    act(() => h.value().setMode("candidates"));
+    expect(bridge.setSuggestionsMode).toHaveBeenCalledWith("candidates");
+  });
+
+  it("modo candidatos vindo da main", async () => {
+    const h = await setup({ mode: "candidates" });
+    expect(h.value().mode).toBe("candidates");
+    const call = await startSuggest(h);
+    expect(call.input.mode).toBe("candidates");
+  });
+
+  it("valor inválido vindo da main: desligado", async () => {
+    const h = await setup({ mode: "auto" as SuggestionsMode });
+    expect(h.value().mode).toBe("off");
   });
 });

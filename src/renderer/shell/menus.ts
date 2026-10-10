@@ -2,7 +2,8 @@
 // do registro de comandos do subprojeto 2.
 import { createElement } from "react";
 import { Globe } from "lucide-react";
-import type { MenuCommand, MenuDefinition, MenuEntry } from "./menuTypes";
+import type { MenuCommand, MenuDefinition, MenuEntry, MenuSubmenu } from "./menuTypes";
+import { SUGGESTIONS_MODES, type SuggestionsMode } from "@shared/suggestions-mode";
 import { VIEW_ORDER, type ViewId } from "./Toolbar";
 import type { ThemePreference } from "../lib/models";
 import { LANG_META, SUPPORTED_LANGS, languageMenuLabel, type SupportedLang } from "../i18n";
@@ -24,12 +25,12 @@ export interface RecortesMenuState {
   canClearPage: boolean;
   canRealign: boolean;
   hasNextSource: boolean;
-  /** S8: preference; off hides every suggestion item but the toggle. */
-  suggestionsEnabled: boolean;
+  /** M1: preference; "off" hides every suggestion item but the submenu. */
+  suggestionsMode: SuggestionsMode;
   /** Active page has a usable image and nothing is running. */
   canSuggest: boolean;
   canSuggestSource: boolean;
-  /** The active page shows suggestions. */
+  /** The active page shows suggestions (or candidates). */
   hasSuggestions: boolean;
 }
 
@@ -42,7 +43,7 @@ export interface RecortesMenuActions {
   suggestSource: () => void;
   acceptAllSuggestions: () => void;
   discardSuggestions: () => void;
-  toggleSuggestions: () => void;
+  setSuggestionsMode: (mode: SuggestionsMode) => void;
 }
 
 export interface MenuActions extends RecortesMenuActions {
@@ -72,7 +73,7 @@ const NO_RECORTES: RecortesMenuState = {
   canClearPage: false,
   canRealign: false,
   hasNextSource: false,
-  suggestionsEnabled: false,
+  suggestionsMode: "off",
   canSuggest: false,
   canSuggestSource: false,
   hasSuggestions: false,
@@ -83,8 +84,19 @@ export function recortesMenuItems(
   state: RecortesMenuState | undefined,
   actions: RecortesMenuActions,
   t: (key: string) => string,
-): Array<MenuCommand | "separator"> {
+): Array<MenuCommand | MenuSubmenu | "separator"> {
   const s = state ?? NO_RECORTES;
+  const modes: MenuSubmenu = {
+    id: "recortes.suggestionsMode",
+    label: t("recortes.menu.suggestionsMode"),
+    items: SUGGESTIONS_MODES.map((m) => ({
+      id: `recortes.suggestionsMode.${m}`,
+      label: t(`recortes.menu.suggestions.${m}`),
+      checked: state !== undefined && s.suggestionsMode === m,
+      disabled: state === undefined,
+      onSelect: () => actions.setSuggestionsMode(m),
+    })),
+  };
   return [
     { id: "recortes.removeBox", label: t("recortes.menu.removeBox"), accelerator: "Delete", disabled: !s.canRemoveBox, onSelect: actions.removeBox },
     { id: "recortes.clearPage", label: t("recortes.menu.clearPage"), disabled: !s.canClearPage, onSelect: actions.clearPage },
@@ -92,15 +104,15 @@ export function recortesMenuItems(
     { id: "recortes.realign", label: t("recortes.menu.realign"), disabled: !s.canRealign, onSelect: actions.realignBoxes },
     "separator",
     // Esc (Descartar) is handled by the view's keyboard: menu accelerators need Ctrl.
-    ...(s.suggestionsEnabled
+    ...(s.suggestionsMode !== "off"
       ? ([
           { id: "recortes.suggest", label: t("recortes.menu.suggest"), accelerator: "Ctrl+Shift+G", disabled: !s.canSuggest, onSelect: actions.suggest },
           { id: "recortes.suggestSource", label: t("recortes.menu.suggestSource"), disabled: !s.canSuggestSource, onSelect: actions.suggestSource },
-          { id: "recortes.acceptAll", label: t("recortes.menu.acceptAll"), accelerator: "Ctrl+Shift+Enter", disabled: !s.hasSuggestions, onSelect: actions.acceptAllSuggestions },
+          { id: "recortes.acceptAll", label: t("recortes.menu.acceptAll"), accelerator: "Ctrl+Shift+Enter", disabled: !s.hasSuggestions || s.suggestionsMode === "candidates", onSelect: actions.acceptAllSuggestions },
           { id: "recortes.discard", label: t("recortes.menu.discard"), disabled: !s.hasSuggestions, onSelect: actions.discardSuggestions },
         ] satisfies MenuCommand[])
       : []),
-    { id: "recortes.suggestionsEnabled", label: t("recortes.menu.suggestionsEnabled"), checked: s.suggestionsEnabled, disabled: state === undefined, onSelect: actions.toggleSuggestions },
+    modes,
     "separator",
     { id: "recortes.nextSource", label: t("recortes.menu.nextSource"), accelerator: "Ctrl+Enter", nativeInTextInput: true, disabled: !s.hasNextSource, onSelect: actions.nextSource },
   ];

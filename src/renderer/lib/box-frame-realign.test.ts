@@ -3,7 +3,7 @@ import { SUGGESTED_CLASSIFICATION } from "@shared/classification";
 import type { BoxFrame } from "@shared/project-schema";
 import type { ImageAdjustments, ManuscriptLine, MocquereauProject } from "./models";
 import { blobs, boxesIn, page } from "./box-frame-detect.fixtures";
-import { detectRealignments, linesToCheck, storedBoxFrame } from "./box-frame-realign";
+import { detectRealignments, linesToCheck, realignLegacyProject, storedBoxFrame } from "./box-frame-realign";
 
 const R = (rotation: number, flipH = false, flipV = false): BoxFrame => ({ rotation, flipH, flipV });
 const W = 600;
@@ -85,5 +85,29 @@ describe("box-frame-realign", () => {
   it("returns nothing when cancelled", async () => {
     const found = await detectRealignments(project([drawnAt0]), load, { yieldFn: immediate, isCancelled: () => true });
     expect(found).toEqual([]);
+  });
+
+  it("realignLegacyProject stores the ink's frame on the lines that need it", async () => {
+    const p = project([drawnAt0, drawnAt5, plain]);
+    const out = await realignLegacyProject(p, load, { yieldFn: immediate });
+    const [a, b, c] = out.sources[0].lines;
+    expect(a.boxFrame).toEqual(R(0));
+    expect(a.syllableBoxes).toBe(drawnAt0.syllableBoxes);
+    expect(b).toBe(drawnAt5);
+    expect(c).toBe(plain);
+  });
+
+  it("realignLegacyProject keeps the project as read when nothing changes or the loader throws", async () => {
+    const p = project([drawnAt0]);
+    const boom = async () => {
+      throw new Error("decode failed");
+    };
+    expect(await realignLegacyProject(p, boom, { yieldFn: immediate })).toBe(p);
+    const failingYield = async () => {
+      throw new Error("yield failed");
+    };
+    expect(await realignLegacyProject(p, load, { yieldFn: failingYield })).toBe(p);
+    const settled = project([drawnAt5]);
+    expect(await realignLegacyProject(settled, load, { yieldFn: immediate })).toBe(settled);
   });
 });

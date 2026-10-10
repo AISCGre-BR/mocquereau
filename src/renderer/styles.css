@@ -16,3 +16,18 @@
   display: flex;
   flex-direction: column;
 }
+
+/* Menus: a label never wraps; the plate sizes to its longest label, up to the
+   window width (MenuSurface pulls a plate that would pass the right edge back in). */
+@layer components {
+  .sc-menu {
+    width: max-content;
+    max-width: calc(100vw - 16px);
+  }
+  .sc-menu__label {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

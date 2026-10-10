@@ -15,7 +15,7 @@ import {
 } from "../hooks/useProject";
 import { syllabifyText } from "../lib/syllabify";
 import { RecortesProvider, useRecortesCommands, useRecortesContext, type RecortesContextValue } from "../hooks/RecortesContext";
-import { SuggestionsProvider } from "../hooks/SuggestionsContext";
+import { SuggestionsProvider, useOptionalSuggestions, type SuggestionsValue } from "../hooks/SuggestionsContext";
 import { SuggestActions } from "../components/recortes/SuggestActions";
 import { recortesMenuItems } from "../shell/menus";
 import { useMenuShortcuts } from "../shell/useMenuShortcuts";
@@ -93,11 +93,13 @@ function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClien
     dispatch?: React.Dispatch<DocumentAction>;
     history?: HistoryApi;
     recortes?: RecortesContextValue;
+    suggestions?: SuggestionsValue | null;
     /** Unmounts/remounts the view (a view switch), keeping the providers. */
     setViewShown?: (shown: boolean) => void;
   } = {};
   function Grab() {
     ref.recortes = useRecortesContext();
+    ref.suggestions = useOptionalSuggestions();
     return null;
   }
   function Harness() {
@@ -132,9 +134,9 @@ function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClien
   return { ...utils, ref, line, wrapper, key, startHandle, endHandle, shownRange };
 }
 
-function pointer(el: Element, type: string, clientX: number, clientY: number, button = 0) {
+function pointer(el: Element, type: string, clientX: number, clientY: number, button = 0, init: MouseEventInit = {}) {
   act(() => {
-    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY, button }));
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY, button, ...init }));
   });
 }
 
@@ -635,11 +637,22 @@ describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
       "Remover caixaDelete",
       "Limpar página…",
       "Realinhar caixas…",
+      "Sugestões",
       "Próxima fonteCtrl+Enter",
     ]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Remover caixa/ }));
     expect(v.line().syllableBoxes![0]).toBeUndefined();
     expect(v.queryByRole("menu")).toBeNull();
+  });
+
+  it("submenu Sugestões na folha: escolher Candidatos troca o modo", async () => {
+    const v = mount(projectWith());
+    window.mocquereau = { ...window.mocquereau, setSuggestionsMode: vi.fn(async (m: string) => m) } as never;
+    const menu = openSheetMenu(v);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Sugestões" }));
+    fireEvent.click(within(v.getByRole("menu", { name: "Sugestões" })).getByRole("menuitemcheckbox", { name: "Candidatos" }));
+    expect(window.mocquereau.setSuggestionsMode).toHaveBeenCalledWith("candidates");
+    expect(v.ref.suggestions!.mode).toBe("candidates");
   });
 
   it("tecla Menu ou Shift+F10 abrem o menu da folha no centro da caixa ativa", () => {
@@ -696,9 +709,9 @@ describe("RecortesView: menu Recortes na folha (menu de contexto)", () => {
     fireEvent.click(within(v.getByRole("dialog")).getByRole("button", { name: "Cancelar" }));
     fireEvent.click(within(openSheetMenu(v)).getByRole("menuitem", { name: /Próxima fonte/ }));
     expect(v.shownRange()).toEqual(["1", "2"]);
-    // Na última fonte, sem caixas: Remover, Limpar, Realinhar e Próxima ficam desabilitados.
+    // Na última fonte, sem caixas: Remover, Limpar, Realinhar e Próxima ficam desabilitados (o submenu Sugestões não).
     const items = within(openSheetMenu(v)).getAllByRole("menuitem") as HTMLButtonElement[];
-    expect(items.map((i) => i.disabled)).toEqual([true, true, true, true]);
+    expect(items.map((i) => i.disabled)).toEqual([true, true, true, false, true]);
   });
 
   it("a barra antiga (sigla, Ajustes, Limpar tudo) saiu da vista", () => {
@@ -726,8 +739,8 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const v = mount(projectWith([mkSource("A", lines)]), client);
@@ -967,8 +980,8 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const blank = (id: string) => mkLine(id, { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
@@ -996,8 +1009,8 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const blank = mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });
@@ -1034,6 +1047,171 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     v.key({ key: "Delete" });
     expect(v.line().neumeBands).toEqual([TOP, LOW]);
   });
+
+  describe("RecortesView: modo candidatos (M3)", () => {
+    const C0: SyllableBox = { x: 0.05, y: 0.2, w: 0.1, h: 0.2 };
+    const C1: SyllableBox = { x: 0.25, y: 0.2, w: 0.1, h: 0.2 };
+    const C2: SyllableBox = { x: 0.45, y: 0.2, w: 0.1, h: 0.2 };
+    const cands = (boxes: SyllableBox[], bands = boxes.map(() => 0)): SuggestResult =>
+      ({ suggestions: [], candidates: boxes.map((box, i) => ({ box, band: bands[i] })), debug: { needsBand: false } as SuggestResult["debug"] });
+    const shown = (v: Awaited<ReturnType<typeof mountOn>>) => v.container.querySelectorAll("[data-candidate]").length;
+
+    async function candidatesOn(lines?: ManuscriptLine[]) {
+      const v = await mountOn(lines);
+      act(() => v.ref.suggestions!.setMode("candidates"));
+      const n = v.client.calls.length;
+      v.key({ key: "G", ctrlKey: true, shiftKey: true });
+      await v.resolve(n, cands([C0, C1, C2]));
+      return v;
+    }
+
+    it("Sugerir mostra os candidatos neutros, sem sugestões nem Aceitar N", async () => {
+      const v = await candidatesOn();
+      expect(shown(v)).toBe(3);
+      expect(v.suggested()).toHaveLength(0);
+      expect(v.queryByRole("button", { name: /Aceitar/ })).toBeNull();
+      const el = v.container.querySelector<HTMLElement>("[data-candidate]")!;
+      expect(el.className).toContain("border-rule-strong");
+      expect(el.textContent).toBe("");
+    });
+
+    it("clique: vira a caixa da ativa, a ativa avança, o candidato some; Ctrl+Z desfaz num passo", async () => {
+      const v = await candidatesOn();
+      pointer(v.wrapper(), "pointerdown", 60, 30); // dentro de C1 (x 50-70)
+      pointer(v.wrapper(), "pointerup", 60, 30);
+      expect(v.line().syllableBoxes).toEqual({ 0: C1 });
+      expect(v.ref.recortes!.activeSyllable).toBe(1);
+      expect(shown(v)).toBe(2);
+      act(() => v.ref.history!.undo());
+      expect(v.line().syllableBoxes).toEqual({});
+      expect(shown(v)).toBe(3);
+    });
+
+    it("Shift+clique une à caixa da ativa sem avançar", async () => {
+      const v = await candidatesOn();
+      pointer(v.wrapper(), "pointerdown", 20, 30, 0, { shiftKey: true }); // C0
+      pointer(v.wrapper(), "pointerup", 20, 30, 0, { shiftKey: true });
+      pointer(v.wrapper(), "pointerdown", 60, 30, 0, { shiftKey: true }); // C1
+      pointer(v.wrapper(), "pointerup", 60, 30, 0, { shiftKey: true });
+      const b = v.line().syllableBoxes![0]!;
+      expect([b.x, b.y, b.w, b.h].map((n) => +n.toFixed(9))).toEqual([0.05, 0.2, 0.3, 0.2]);
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+      expect(shown(v)).toBe(1);
+    });
+
+    it("Enter: primeiro candidato, depois o seguinte à caixa anterior; avança a cada vez", async () => {
+      const v = await candidatesOn();
+      v.key({ key: "Enter" });
+      expect(v.line().syllableBoxes).toEqual({ 0: C0 });
+      v.key({ key: "Enter" });
+      expect(v.line().syllableBoxes).toEqual({ 0: C0, 1: C1 });
+      expect(v.ref.recortes!.activeSyllable).toBe(2);
+    });
+
+    it("Enter no fim da área passa ao primeiro candidato da área seguinte", async () => {
+      const bands = [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }];
+      const v = await mountOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false, neumeBands: bands })]);
+      act(() => v.ref.suggestions!.setMode("candidates"));
+      v.key({ key: "G", ctrlKey: true, shiftKey: true });
+      const D0 = { x: 0.05, y: 0.6, w: 0.1, h: 0.2 };
+      await v.resolve(0, cands([C0, D0], [0, 1]));
+      v.key({ key: "Enter" });
+      v.key({ key: "Enter" });
+      expect(v.line().syllableBoxes).toEqual({ 0: C0, 1: D0 });
+    });
+
+    it("Enter depois de uma sílaba sem neuma usa a última caixa real antes dela", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: C1, 1: null }, confirmed: true })]);
+      act(() => v.ref.recortes!.setActiveSyllable(2));
+      v.key({ key: "Enter" });
+      expect(v.line().syllableBoxes).toEqual({ 0: C1, 1: null, 2: C2 });
+    });
+
+    it("Shift+clique num candidato de outra área não une", async () => {
+      const bands = [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }];
+      const v = await mountOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: C0 }, confirmed: true, neumeBands: bands })]);
+      act(() => v.ref.suggestions!.setMode("candidates"));
+      v.key({ key: "G", ctrlKey: true, shiftKey: true });
+      const D0 = { x: 0.25, y: 0.6, w: 0.1, h: 0.2 };
+      await v.resolve(0, cands([C1, D0], [0, 1]));
+      pointer(v.wrapper(), "pointerdown", 60, 70, 0, { shiftKey: true }); // D0, área 1
+      pointer(v.wrapper(), "pointerup", 60, 70, 0, { shiftKey: true });
+      expect(v.line().syllableBoxes).toEqual({ 0: C0 });
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+      pointer(v.wrapper(), "pointerdown", 60, 30, 0, { shiftKey: true }); // C1, mesma área
+      pointer(v.wrapper(), "pointerup", 60, 30, 0, { shiftKey: true });
+      const b = v.line().syllableBoxes![0]!;
+      expect([b.x, b.w].map((n) => +n.toFixed(9))).toEqual([0.05, 0.3]);
+    });
+
+    it("Esc descarta os candidatos da página", async () => {
+      const v = await candidatesOn();
+      v.key({ key: "Escape" });
+      expect(shown(v)).toBe(0);
+    });
+
+    const FAR: SyllableBox = { x: 0.8, y: 0.7, w: 0.1, h: 0.1 };
+    const click = (v: Awaited<ReturnType<typeof mountOn>>, x: number, y = 30, shiftKey = false) => {
+      pointer(v.wrapper(), "pointerdown", x, y, 0, { shiftKey });
+      pointer(v.wrapper(), "pointerup", x, y, 0, { shiftKey });
+    };
+
+    it("clique com a ativa já com caixa: não substitui; vai para a próxima pendente, que fica ativa, e avança", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: FAR }, confirmed: true })]);
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+      click(v, 60); // C1
+      expect(v.line().syllableBoxes).toEqual({ 0: FAR, 1: C1 });
+      expect(v.ref.recortes!.activeSyllable).toBe(2);
+      act(() => v.ref.history!.undo());
+      expect(v.line().syllableBoxes).toEqual({ 0: FAR });
+    });
+
+    it("clique com a ativa sem neuma (null): pula caixas e gaps até a próxima pendente", async () => {
+      const v = await candidatesOn([
+        mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: null, 1: FAR }, gaps: [2], confirmed: true }),
+      ]);
+      click(v, 60); // C1
+      expect(v.line().syllableBoxes).toEqual({ 0: null, 1: FAR, 3: C1 });
+      expect(v.ref.recortes!.activeSyllable).toBe(4);
+    });
+
+    it("clique com a ativa num gap: o gap não recebe caixa; a próxima pendente recebe", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false, gaps: [0] })]);
+      click(v, 60); // C1
+      expect(v.line().syllableBoxes).toEqual({ 1: C1 });
+      expect(v.line().gaps).toEqual([0]);
+      expect(v.ref.recortes!.activeSyllable).toBe(2);
+    });
+
+    it("Shift+clique com a ativa num gap não grava caixa", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false, gaps: [0] })]);
+      click(v, 60, 30, true);
+      expect(v.line().syllableBoxes).toEqual({});
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+    });
+
+    it("clique sem pendente depois da ativa: nada muda", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 1 }, syllableBoxes: { 0: FAR, 1: null }, confirmed: true })]);
+      click(v, 60);
+      expect(v.line().syllableBoxes).toEqual({ 0: FAR, 1: null });
+      expect(v.ref.recortes!.activeSyllable).toBe(0);
+      expect(shown(v)).toBe(3);
+    });
+
+    it("clique no último do intervalo fica; Enter com caixa só avança", async () => {
+      const v = await candidatesOn([mkLine("line-1", { syllableRange: { start: 0, end: 1 }, syllableBoxes: { 0: BOX }, confirmed: true })]);
+      v.key({ key: "Enter" }); // ativa 0 já tem caixa: só avança
+      expect(v.line().syllableBoxes).toEqual({ 0: BOX });
+      expect(v.ref.recortes!.activeSyllable).toBe(1);
+      pointer(v.wrapper(), "pointerdown", 100, 30); // C2
+      pointer(v.wrapper(), "pointerup", 100, 30);
+      expect(v.line().syllableBoxes).toEqual({ 0: BOX, 1: C2 });
+      expect(v.ref.recortes!.activeSyllable).toBe(1);
+      expect(v.line().syllableRange).toEqual({ start: 0, end: 1 });
+      expect(v.ref.state!.isDirty).toBe(true); // the box is a real edit; the candidates are not
+    });
+  });
+
 });
 
 describe("RecortesView: áreas da linha de neumas (S7)", () => {
@@ -1088,8 +1266,8 @@ describe("RecortesView: áreas da linha de neumas (S7)", () => {
     window.mocquereau = {
       readClipboardImage: vi.fn(),
       openImageFile: vi.fn(),
-      getSuggestionsEnabled: vi.fn(async () => true),
-      setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+      getSuggestionsMode: vi.fn(async () => "sequential"),
+      setSuggestionsMode: vi.fn(async (m: string) => m),
     } as never;
     const client = fakeClient();
     const blank = mkLine("line-1", { syllableRange: { start: 0, end: 4 }, syllableBoxes: {}, confirmed: false });

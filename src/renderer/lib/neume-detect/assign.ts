@@ -8,6 +8,26 @@ export const LAMBDA = 0.5;
 export const EMPTY_COST = 3;
 export const BAR_BONUS = 2;
 export const WORD_BONUS = 1;
+/** Vao (em multiplos do vao mediano) que separa agrupamentos de glifos quando nao ha texto. */
+export const CLUSTER_CUT = 2;
+/** Minimo de componentes de texto para medir a area em letras. */
+export const MIN_TEXT_COMPONENTS = 3;
+/**
+ * Largura de uma letra em altura-x. Minusculas sem haste ocupam aproximadamente um quadrado de
+ * altura-x incluindo o espaco de uma letra a seguinte; a largura de tinta fica em ~0,75 (a fonte
+ * sintetica usa exatamente 0,75·xh). 0,6 contaria letras de mais (componentes de uma letra viram
+ * 1,25 letra); 0,8 de menos em maos estreitas.
+ */
+export const LETTER_PER_XH = 0.75;
+/**
+ * Componente de texto ate esta largura (em altura-x) e uma letra solta (m e w chegam a ~1,1xh); mais
+ * largo e palavra ou letras unidas, que nao medem a letra.
+ */
+export const SINGLE_LETTER_XH = 1.3;
+/** Componentes de texto mais baixos que esta fracao da altura mediana sao ruido. */
+export const TEXT_NOISE_H = 0.5;
+/** Sem texto: vao absoluto (em u) que separa silabas; acima dos vaos internos de um neuma (<= 10u). */
+export const ABS_GAP_U = 12;
 
 export interface Segment {
   /** Limites x [L, R] em px de trabalho. */
@@ -27,45 +47,10 @@ export function overlapFraction(b: PxBox, a: PxBox): number {
   return b.w * b.h > 0 ? (ix * iy) / (b.w * b.h) : 0;
 }
 
-/**
- * Divide a linha em segmentos independentes pelas ancoras (silabas com caixa). Silabas entre duas
- * ancoras consecutivas (na ordem de `syllables`) formam um segmento com L = borda direita da ancora
- * anterior (ou x0) e R = borda esquerda da seguinte (ou x1). Glifos >= 50% dentro de uma ancora sao
- * descartados; os demais vao para o segmento que contem o centro x.
- * Segmentos sem silabas sao omitidos.
- */
-export function segmentByAnchors(
-  syllables: SuggestSyllable[],
-  anchors: { index: number; box: PxBox }[],
-  glyphs: Glyph[],
-  x0: number,
-  x1: number,
-): Segment[] {
-  const anchorBy = new Map(anchors.map((a) => [a.index, a.box]));
-  const free = glyphs.filter((g) => !anchors.some((a) => overlapFraction(g, a.box) >= 0.5));
-  const segments: Segment[] = [];
-  let L = x0;
-  let cur: SuggestSyllable[] = [];
-  const close = (R: number) => {
-    if (cur.length) {
-      const glyphsIn = free.filter((g) => cx(g) >= L && cx(g) <= R).sort((a, b) => cx(a) - cx(b) || a.y - b.y);
-      segments.push({ L, R, syllables: cur, glyphs: glyphsIn });
-    }
-    cur = [];
-  };
-  for (const s of syllables) {
-    const box = anchorBy.get(s.index);
-    if (box) {
-      close(box.x);
-      L = box.x + box.w;
-    } else cur.push(s);
-  }
-  close(x1);
-  return segments;
-}
-
 /** Comprimento em letras (minimo 1). */
-const letters = (s: SuggestSyllable) => Math.max(1, s.text.replace(/[^\p{L}]/gu, '').length);
+export function letters(s: SuggestSyllable): number {
+  return Math.max(1, s.text.replace(/[^\p{L}]/gu, '').length);
+}
 
 /**
  * Centro esperado de cada silaba. Com faixas de palavra (mesmo numero de palavras do segmento):
@@ -100,11 +85,8 @@ export function expectedCenters(seg: Segment, spans: { x0: number; x1: number }[
   return pos.map((p) => seg.L + (p / acc) * (seg.R - seg.L));
 }
 
-/**
- * Pontuacao de corte entre glifos i e i+1: vao / mediana dos vaos (minimo 1 px), +2 se ha barra de
- * divisao no vao, +1 se ha espaco entre palavras no vao. "No vao" = x em (cx_i, cx_{i+1}].
- */
-export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[]): Float64Array {
+/** Vao em px entre o glifo i+1 e o alcance a direita dos glifos 0..i (ordenados por centro). */
+function rawGaps(glyphs: Glyph[]): Float64Array {
   const m = glyphs.length;
   const gaps = new Float64Array(Math.max(0, m - 1));
   let reach = -Infinity;
@@ -112,6 +94,15 @@ export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[])
     reach = Math.max(reach, glyphs[i].x + glyphs[i].w);
     gaps[i] = Math.max(0, glyphs[i + 1].x - reach);
   }
+  return gaps;
+}
+
+/**
+ * Pontuacao de corte entre glifos i e i+1: vao / mediana dos vaos (minimo 1 px), +2 se ha barra de
+ * divisao no vao, +1 se ha espaco entre palavras no vao. "No vao" = x em (cx_i, cx_{i+1}].
+ */
+export function cutScores(glyphs: Glyph[], barXs: number[], wordGapXs: number[]): Float64Array {
+  const gaps = rawGaps(glyphs);
   const sorted = Array.from(gaps).sort((a, b) => a - b);
   const med = Math.max(1, sorted.length ? sorted[sorted.length >> 1] : 1);
   const out = new Float64Array(gaps.length);
@@ -131,13 +122,41 @@ export interface Partition {
   /** Custo de posicao de cada grupo (0 para vazios). */
   positionCost: number[];
   score: number;
+  /** Silabas usadas (as primeiras `used`); as seguintes ficam sem grupo. K no modo fechado. */
+  used: number;
+  /** Glifos usados (os primeiros `glyphsUsed`); a cauda fica sem silaba. M no modo fechado. */
+  glyphsUsed: number;
 }
+
+/**
+ * Modo aberto da particao (contagem incerta): cada fronteira usada custa BOUNDARY_COST = CLUSTER_CUT
+ * (um vao menor que o de um agrupamento so separa silabas se o prior de posicao pagar) e deixar uma cauda de glifos sem silaba custa TAIL_COST.
+ * As ultimas silabas podem ficar sem grupo (seguem para a area seguinte).
+ */
+export const BOUNDARY_COST = CLUSTER_CUT;
+export const TAIL_COST = 1;
+/** Modo aberto com `lastExtra`: a ultima silaba e uma a mais que a contagem; usa-la custa isto. */
+export const EXTRA_COST = 0.5;
 
 /**
  * Particao dos M glifos (ordem x) em K grupos contiguos, possivelmente vazios, maximizando
  * soma(cortes usados) - soma(lambda * |centro_j - e_j| / ((R - L) / K)) - 3 x vazios. O(K * M^2).
+ * `open`: a contagem K e uma estimativa (fitCount); ver BOUNDARY_COST e TAIL_COST. Uma contagem de
+ * menos deixa a cauda a direita sem silaba em vez de juntar colunas (e empurrar as seguintes); uma
+ * de mais deixa as ultimas silabas sem grupo em vez de partir uma coluna. `boundaryCost` (padrao
+ * BOUNDARY_COST) substitui o custo da fronteira (menor quando a contagem veio do texto: no canto
+ * silabico os vaos sao todos parecidos, cortes ~1, e o custo cheio faria a particao desistir).
  */
-export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: number, cuts: Float64Array): Partition {
+export function partitionDP(
+  glyphs: Glyph[],
+  expected: number[],
+  L: number,
+  R: number,
+  cuts: Float64Array,
+  opts: { open?: boolean; lastExtra?: boolean; boundaryCost?: number } = {},
+): Partition {
+  const open = !!opts.open;
+  const bcost = open ? (opts.boundaryCost ?? BOUNDARY_COST) : 0;
   const K = expected.length;
   const M = glyphs.length;
   const unit = Math.max(1, (R - L) / Math.max(1, K));
@@ -162,7 +181,7 @@ export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: n
         const prev = f[j - 1][a];
         if (prev === NEG) continue;
         const cost = (LAMBDA * Math.abs((minX + maxX) / 2 - e)) / unit;
-        const v = prev + (a > 0 ? cuts[a - 1] : 0) - cost;
+        const v = prev + (a > 0 ? cuts[a - 1] - bcost : 0) - cost;
         if (v > best) {
           best = v;
           arg = a;
@@ -172,10 +191,26 @@ export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: n
       choice[j][m] = arg;
     }
   }
+  // fim: fechado = K silabas e M glifos; aberto = melhor (j, m), cauda m..M sem silaba
+  let endJ = K;
+  let endM = M;
+  if (open) {
+    let best = -Infinity;
+    for (let j = 1; j <= K; j++)
+      for (let m = 1; m <= M; m++) {
+        if (f[j][m] === NEG) continue;
+        const v = f[j][m] + (m < M ? cuts[m - 1] - bcost - TAIL_COST : 0) - (opts.lastExtra && j === K ? EXTRA_COST : 0);
+        if (v >= best - 1e-9) {
+          best = v;
+          endJ = j;
+          endM = m;
+        }
+      }
+  }
   const groups: ([number, number] | null)[] = new Array(K).fill(null);
   const positionCost: number[] = new Array(K).fill(0);
-  let m = M;
-  for (let j = K; j >= 1; j--) {
+  let m = endM;
+  for (let j = endJ; j >= 1; j--) {
     const a = choice[j][m];
     if (a === -1 || a === -2) continue;
     groups[j - 1] = [a, m];
@@ -188,7 +223,7 @@ export function partitionDP(glyphs: Glyph[], expected: number[], L: number, R: n
     positionCost[j - 1] = (LAMBDA * Math.abs((minX + maxX) / 2 - expected[j - 1])) / unit;
     m = a;
   }
-  return { groups, positionCost, score: f[K][M] };
+  return { groups, positionCost, score: f[endJ][endM], used: endJ, glyphsUsed: endM };
 }
 
 /**
@@ -203,4 +238,81 @@ export function groupConfidence(p: Partition, cuts: Float64Array, M: number): nu
     const right = b === M ? 1 : cuts[b - 1] / (1 + cuts[b - 1]);
     return Math.max(0, Math.min(1, (left + right) / 2 - p.positionCost[j]));
   });
+}
+
+function median(v: number[]): number {
+  if (v.length === 0) return 0;
+  const s = [...v].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+export interface FitOptions {
+  /** Espessura do traco (px). Habilita o corte absoluto ABS_GAP_U·u no caminho sem texto. */
+  u?: number;
+  /** Altura-x da linha de texto (px), quando conhecida. Senao, a altura mediana do texto. */
+  xHeight?: number;
+}
+
+/**
+ * Quantas silabas da fila cabem na area.
+ *
+ * Com texto (>= 1 componente, depois de descartar ruido com altura < TEXT_NOISE_H x a mediana:
+ * pingos de i, tracos de abreviacao, pontuacao): a quantidade cujo total de letras mais se aproxima
+ * da largura do texto medida em letras (soma das larguras / unidade de letra; independe dos vaos,
+ * que esticam com os melismas). Unidade = largura mediana das letras soltas (componentes ate
+ * SINGLE_LETTER_XH x altura-x) quando ha >= MIN_TEXT_COMPONENTS delas: a largura da letra varia
+ * entre maos (0,75 a 1xh medidos), e as letras soltas a medem; palavras unidas num componente ficam
+ * fora. Com menos, LETTER_PER_XH x altura-x.
+ *
+ * Sem texto: um por agrupamento de glifos; corte quando o vao >= CLUSTER_CUT x o vao mediano ou,
+ * com u, quando o vao >= ABS_GAP_U·u (canto silabico com vaos iguais nao tem vao "destacado").
+ *
+ * Nunca mais que os glifos nem que a fila; sem glifos, 0.
+ *
+ * Limitacao conhecida: abreviaturas ("dñs" por "Dominus") escrevem menos letras que a silabacao;
+ * a area parece menor e recebe silabas de menos.
+ */
+export function fitCount(queue: SuggestSyllable[], glyphs: Glyph[], text: PxBox[], opts: FitOptions = {}): number {
+  return fitDetail(queue, glyphs, text, opts).n;
+}
+
+/** fitCount com a origem da contagem: `byText` = medida pelo texto (senao, agrupamentos de glifos). */
+export function fitDetail(
+  queue: SuggestSyllable[],
+  glyphs: Glyph[],
+  text: PxBox[],
+  opts: FitOptions = {},
+): { n: number; byText: boolean } {
+  const maxN = Math.min(queue.length, glyphs.length);
+  if (maxN === 0) return { n: 0, byText: false };
+  const hMed = median(text.map((c) => c.h));
+  const clean = text.filter((c) => c.h >= TEXT_NOISE_H * hMed && c.w > 0);
+  if (clean.length > 0) {
+    const xh = opts.xHeight && opts.xHeight > 0 ? opts.xHeight : median(clean.map((c) => c.h));
+    // letras soltas medem a letra; palavras unidas (mais largas que SINGLE_LETTER_XH·xh) nao entram
+    const singles = clean.filter((c) => c.w <= SINGLE_LETTER_XH * xh).map((c) => c.w);
+    const unit = Math.max(1, singles.length >= MIN_TEXT_COMPONENTS ? median(singles) : LETTER_PER_XH * xh);
+    const units = clean.reduce((s, c) => s + c.w, 0) / unit;
+    let best = 1;
+    let bestD = Infinity;
+    let acc = 0;
+    for (let n = 1; n <= maxN; n++) {
+      acc += letters(queue[n - 1]);
+      const d = Math.abs(acc - units);
+      if (d < bestD) {
+        bestD = d;
+        best = n;
+      }
+      if (acc - units > bestD) break;
+    }
+    return { n: best, byText: true };
+  }
+  const sorted = [...glyphs].sort((a, b) => cx(a) - cx(b));
+  const cuts = cutScores(sorted, [], []);
+  const gaps = rawGaps(sorted);
+  const absCut = opts.u && opts.u > 0 ? ABS_GAP_U * opts.u : Infinity;
+  let clusters = 1;
+  for (let i = 0; i < cuts.length; i++) if (cuts[i] >= CLUSTER_CUT || gaps[i] >= absCut) clusters++;
+  return { n: Math.min(maxN, clusters), byText: false };
 }

@@ -39,6 +39,7 @@ export interface FracRect {
 }
 
 export type Notation = 'adiastematic' | 'diastematic';
+export type SuggestMode = 'sequential' | 'candidates';
 export type ChannelName = 'r' | 'g' | 'b' | 'gray';
 
 export interface SuggestSyllable {
@@ -74,6 +75,10 @@ export interface SuggestInput {
    * linha virtual: as silabas se distribuem por elas em ordem e nenhuma caixa atravessa faixas.
    */
   bands?: FracRect[];
+  /** 'candidates': todos os grupos de neumas das áreas, sem sílaba; `syllables` é ignorado. Padrão 'sequential'. */
+  mode?: SuggestMode;
+  /** Confiança mínima de uma sugestão (modo sequencial). Padrão MIN_CONFIDENCE; a avaliação varre o valor. */
+  minConfidence?: number;
 }
 
 export type BandSource = 'user' | 'anchors' | 'staff' | 'image' | 'none';
@@ -83,6 +88,13 @@ export interface Suggestion {
   box: FracRect;
   /** 0..1, interna (avaliacao e ordenacao da revisao). */
   confidence: number;
+}
+
+export interface Candidate {
+  /** Caixa do grupo (mesmo pós-processamento de uma sugestão: pad, pauta, corte no texto), em frações do raster. */
+  box: FracRect;
+  /** Índice da área em `bands` (0 sem `bands`). */
+  band: number;
 }
 
 export interface StaffDebug {
@@ -129,5 +141,7 @@ export interface SuggestDebug {
 export interface SuggestResult {
   /** Uma entrada por silaba que recebeu sugestao, ordenada por index. */
   suggestions: Suggestion[];
+  /** Só no modo 'candidates': em ordem de leitura (área, depois centro x). */
+  candidates?: Candidate[];
   debug: SuggestDebug;
 }

@@ -4,24 +4,29 @@
 // Ver NOTICE.
 // suggestBoxes: pipeline puro, sincrono e deterministico (spec, etapas 0 a 6).
 // Fluxo base: find_candidates() de othmar/candidates.py.
-import { groupConfidence, cutScores, expectedCenters, partitionDP, segmentByAnchors, type Glyph } from './assign';
+import { groupConfidence, cutScores, expectedCenters, fitDetail, overlapFraction, partitionDP, type Glyph } from './assign';
 import { ceilPx, floorPx, fracToPxRect, lineOrNone, selectBand } from './band';
-import { filterComponents, labelComponents, labelsTouching, type Component } from './components';
+import { dropIsolatedSpecks, filterComponents, labelComponents, labelsTouching, type Component } from './components';
 import {
   cropGray,
   cropMask,
-  contrastScore,
+  bestContrastChannel,
+  inkContrasts,
+  pickInkChannel,
   prepareWork,
+  rednessInk,
   upscale2xGray,
   upscale2xMask,
 } from './image';
 import { darkBlobs } from './mask';
 import { mergeBoxesIndexed } from './merge';
-import { deriveParams, estimateStrokeWidth, staffMetrics, type Params, type StaffMetrics } from './scale';
+import { deriveParams, estimateStrokeWidth, staffMetrics, strokeWidthOutside, type Params, type StaffMetrics } from './scale';
 import {
   classifySpecialGlyphs,
   cropStaff,
-  findStaves,
+  findStavesRobust,
+  isFallbackStaff,
+  isStaffResidue,
   isBarLine,
   removeStaffLines,
   staffBottom,
@@ -35,6 +40,7 @@ import { findTextLine, isTextComponent, isTextDebris, wordSpans, type TextLine }
 import type {
   BandDebug,
   BandSource,
+  Candidate,
   ChannelName,
   FracRect,
   GrayImage,
@@ -50,13 +56,22 @@ import type {
 } from './types';
 
 export const MAX_LONG_SIDE = 2400;
-export const MIN_CONFIDENCE = 0.2;
+export const MIN_CONFIDENCE = 0.3;
+/**
+ * Fracao minima das linhas da pauta que a tinta binarizada do canal cobre para a pauta ser removida;
+ * abaixo, a pauta sumiu no canal (pauta vermelha no R) e a remocao e pulada (`red`). Herdado da onda
+ * A3 (#7), nunca ajustado pelo eval. Medido (2026-10-10): fixtures sinteticas, pauta preta 1,00 e
+ * vermelha 0,02 a 0,06; eval dos 3 projetos do usuario (24 medidas distintas, todas no R): 3 a 1,00
+ * e 21 entre 0,08 e 0,39, seis delas perto do limite (0,24 a 0,39; 0,32 e 0,39 tem a remocao feita).
+ */
 const RED_COVERAGE = 0.3;
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 interface Work {
   r: GrayImage;
+  g: GrayImage;
+  b: GrayImage;
   gray: GrayImage;
   valid: Mask;
   /** px do raster = ox + x / sx, oy + y / sy (sx e sy diferem levemente por arredondamento) */
@@ -69,6 +84,8 @@ interface Work {
 function cropWork(w: Work, box: PxBox): Work {
   return {
     r: cropGray(w.r, box),
+    g: cropGray(w.g, box),
+    b: cropGray(w.b, box),
     gray: cropGray(w.gray, box),
     valid: cropMask(w.valid, box),
     ox: w.ox + box.x / w.sx,
@@ -109,22 +126,23 @@ interface InkStage {
   red: boolean;
 }
 
-/** Etapas 1 e 3: binarizacao, manchas, remocao da pauta, rotulagem, barras, filtros. */
+/**
+ * Alcance (em u) que salva um ponto de ate u^2 de ser descartado como mancha do pergaminho: ha um
+ * componente maior a ate 6u (vaos internos de um grupo de neumas). Escolhido pelo eval (2u a 6u).
+ */
+const SPECK_REACH = 6;
+
+/** Etapas 1 e 3: binarizacao, manchas, remocao da pauta, rotulagem, barras, filtros, pontos isolados. */
 function inkStage(
   work: Work,
   p: Params,
   staff: Staff | null,
-  channel: 'r' | 'auto',
+  channel: ChannelName,
   k: number,
   blobs: Mask = darkBlobs(work.gray, work.valid, p),
 ): InkStage {
-  let img = work.r;
-  let name: ChannelName = 'r';
-  if (channel === 'auto' && contrastScore(work.gray, work.valid) > contrastScore(work.r, work.valid)) {
-    img = work.gray;
-    name = 'gray';
-  }
-  let ink = sauvola(img, p.window, k, 128, work.valid);
+  const name = channel;
+  let ink = sauvola(work[channel], p.window, k, 128, work.valid);
   let red = false;
   if (staff) {
     if (staffCoverage(ink, staff) < RED_COVERAGE) red = true;
@@ -138,7 +156,8 @@ function inkStage(
       bars.push(c);
       reject.add(c.label);
     }
-  return { comps: filterComponents(lab, p, reject), bars, channel: name, k, red };
+  const comps = dropIsolatedSpecks(filterComponents(lab, p, reject), p.u, SPECK_REACH * p.u);
+  return { comps, bars, channel: name, k, red };
 }
 
 /** Pauta cuja extensao vertical contem (ou, senao, esta mais perto de) a mediana dos centros das ancoras. */
@@ -165,6 +184,8 @@ type Lap = (name: string) => void;
 interface SelectedBand {
   source: BandSource;
   rect: PxBox;
+  /** Area desenhada sem a margem de contexto, em px do raster. */
+  inner?: PxBox;
 }
 
 /** Resultado das etapas 0 a 5 numa faixa: tudo em px do raster de trabalho dessa faixa. */
@@ -172,6 +193,8 @@ interface BandAnalysis {
   band: SelectedBand;
   work: Work;
   staff: Staff | null;
+  /** Outras pautas achadas no mesmo raster de trabalho (limitam a altura das caixas). */
+  otherStaves: Staff[];
   metrics: StaffMetrics | null;
   tl: TextLine | null;
   u: number;
@@ -179,6 +202,11 @@ interface BandAnalysis {
   text: Component[];
   bars: Component[];
   red: boolean;
+}
+
+/** px do raster -> px do raster de trabalho. */
+function rasterToWork(b: PxBox, work: Work): PxBox {
+  return { x: (b.x - work.ox) * work.sx, y: (b.y - work.oy) * work.sy, w: b.w * work.sx, h: b.h * work.sy };
 }
 
 /** Fracao do raster -> px do raster de trabalho. */
@@ -202,20 +230,98 @@ function workFrac(work: Work, W: number, H: number): FracRect {
   };
 }
 
+/** Fracao minima de preenchimento da caixa para uma nota quadrada cheia. */
+const SOLID_FILL = 0.85;
+/** Sem as notas cheias, sobra ao menos esta fracao da tinta para a medida valer. */
+const SOLID_MIN_RESIDUAL = 0.1;
+// SOLID_FILL, SOLID_MIN_RESIDUAL e o fator 2x de withoutSolidNotes foram escolhidos nas fixtures
+// sinteticas da Task 5 (notas 12x12 sem pauta, pontos soltos, resto sem medida, pauta com pontos
+// grossos); no eval dos 3 projetos do usuario nao mudaram nenhum numero.
+
+/**
+ * Notacao quadrada: notas cheias (quase quadradas, preenchidas, lado >= 4 px) nao sao traco; cada
+ * pixel conta com o lado da nota e, sem pauta nem texto suficientes, a moda vira o tamanho da nota.
+ * Devolve a mascara sem elas, ou a propria mascara se nao houver nenhuma, se sobrar menos de
+ * SOLID_MIN_RESIDUAL da tinta (um resto minusculo, como pontos soltos, nao mede o traco nem deve
+ * levar a ampliacao 2x), se o resto nao tiver medida, ou se a medida da mascara inteira nao for ao
+ * menos 2x a do resto (so corrige quando as notas cheias claramente dominam a moda).
+ */
+function withoutSolidNotes(ink: Mask): Mask {
+  const lab = labelComponents(ink);
+  const solid = new Set<number>();
+  let solidArea = 0;
+  let total = 0;
+  for (const c of lab.components) {
+    total += c.area;
+    const lo = Math.min(c.w, c.h);
+    const hi = Math.max(c.w, c.h);
+    if (lo >= 4 && hi <= 2 * lo && c.area >= SOLID_FILL * c.w * c.h) {
+      solid.add(c.label);
+      solidArea += c.area;
+    }
+  }
+  if (!solid.size || total - solidArea < SOLID_MIN_RESIDUAL * total) return ink;
+  const data = ink.data.slice();
+  for (let i = 0; i < data.length; i++) if (data[i] && solid.has(lab.labels[i])) data[i] = 0;
+  const rest = { data, width: ink.width, height: ink.height };
+  const uRest = estimateStrokeWidth(rest);
+  const uAll = estimateStrokeWidth(ink);
+  if (uRest === 0 || uAll < 2 * uRest) return ink;
+  return rest;
+}
+
+/**
+ * Espessura do traco medida fora da linha de texto: a caneta do texto costuma ser mais grossa que a
+ * dos neumas e, com mais pixels, domina a moda (M4a). Sem linha de texto, ou se nada sobra fora dela,
+ * fica a medida da faixa inteira; a medida de fora so e aceita se for menor. Na notacao quadrada
+ * as notas cheias ficam fora da medida (`withoutSolidNotes`). `inner` (px de trabalho) = area
+ * desenhada: as faixas da margem acima e abaixo tambem ficam fora (M4d).
+ */
+export function measureU(grayInk: Mask, notation: SuggestInput['notation'], inner?: PxBox): number {
+  const ink = notation === 'diastematic' ? withoutSolidNotes(grayInk) : grayInk;
+  const u0 = estimateStrokeWidth(ink);
+  if (u0 === 0) return 0;
+  // margem de contexto acima e abaixo da area desenhada (meias-letras, caneta do texto): fora da medida
+  const margins = inner
+    ? [
+        { y0: 0, y1: inner.y },
+        { y0: inner.y + inner.h, y1: ink.height },
+      ]
+    : [];
+  const comps = labelComponents(ink).components.filter((c) => c.area >= 4);
+  const tl = findTextLine(comps, ink.width, { kind: 'lowest' });
+  if (!tl) {
+    const um = margins.length ? strokeWidthOutside(ink, margins) : 0;
+    return um > 0 ? Math.min(um, u0) : u0;
+  }
+  const u1 = strokeWidthOutside(ink, [{ y0: tl.top, y1: tl.bottom }, ...margins]);
+  // So para baixo: fora do texto pode sobrar uma mancha cheia (run ~ seu tamanho) que domina a moda.
+  return u1 > 0 ? Math.min(u1, u0) : u0;
+}
+
 /**
  * Etapa 0: raster de trabalho (recorte, reducao a MAX_LONG_SIDE, ampliacao 2x se u < 2) e espessura
  * de traco. Unico ponto de preparacao do raster de trabalho de uma faixa.
  */
-function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; grayInk: Mask; u: number } {
+function buildWork(
+  image: SuggestInput['image'],
+  rect: PxBox,
+  notation: SuggestInput['notation'],
+  inner?: PxBox,
+): { work: Work; grayInk: Mask; u: number; up: number } {
   const scale = Math.min(1, MAX_LONG_SIDE / Math.max(rect.w, rect.h));
   let work: Work = { ...prepareWork(image, rect, scale), ox: rect.x, oy: rect.y, sx: 1, sy: 1 };
   work.sx = work.r.width / rect.w;
   work.sy = work.r.height / rect.h;
   let grayInk = binarizeOtsu(work.gray, work.valid);
-  let u = estimateStrokeWidth(grayInk);
+  let u = measureU(grayInk, notation, inner && rasterToWork(inner, work));
+  let up = 1;
   if (u > 0 && u < 2) {
+    up = 2;
     work = {
       r: upscale2xGray(work.r),
+      g: upscale2xGray(work.g),
+      b: upscale2xGray(work.b),
       gray: upscale2xGray(work.gray),
       valid: upscale2xMask(work.valid),
       ox: work.ox,
@@ -224,9 +330,9 @@ function buildWork(image: SuggestInput['image'], rect: PxBox): { work: Work; gra
       sy: work.sy * 2,
     };
     grayInk = binarizeOtsu(work.gray, work.valid);
-    u = estimateStrokeWidth(grayInk);
+    u = measureU(grayInk, notation, inner && rasterToWork(inner, work));
   }
-  return { work, grayInk, u };
+  return { work, grayInk, u, up };
 }
 
 /**
@@ -244,9 +350,10 @@ function analyzeBand(
   const W = input.image.width;
   const H = input.image.height;
   let band = selected;
-  const prep = buildWork(input.image, band.rect);
+  const prep = buildWork(input.image, band.rect, input.notation, band.inner);
   let work = prep.work;
-  const { grayInk, u } = prep;
+  const { grayInk } = prep;
+  let u = prep.u;
   debug.scale = work.sx;
   lap('prepare');
   if (u === 0) {
@@ -257,10 +364,24 @@ function analyzeBand(
   // Etapa 3: pauta
   let staff: Staff | null = null;
   let metrics: StaffMetrics | null = null;
+  let fromRed = false;
+  let otherStaves: Staff[] = [];
   if (input.notation === 'diastematic') {
     const anchorBoxes = () => anchors.map((a) => fracToWork(a.box, work, W, H));
     metrics = staffMetrics(grayInk);
-    const staves = metrics ? findStaves(grayInk, metrics) : [];
+    let staves = metrics ? findStavesRobust(grayInk, metrics) : [];
+    if (!staves.length) {
+      // pauta vermelha clara que some no cinza binarizado: terceira tentativa no mapa r - g
+      const redInk = binarizeOtsu(rednessInk(work.r, work.g), work.valid);
+      const m2 = staffMetrics(redInk);
+      // so linhas longas: rubricas (letras vermelhas grandes) tambem tem tracos horizontais alinhados
+      const s2 = (m2 ? findStavesRobust(redInk, m2) : []).filter((st) => isFallbackStaff(redInk, st));
+      if (s2.length) {
+        metrics = m2;
+        staves = s2;
+        fromRed = true;
+      }
+    }
     if (staves.length > 1 && band.source === 'staff') {
       // varias pautas e nada indica qual: pedir a faixa em vez de chutar a primeira
       const picked = anchors.length ? pickStaffByAnchors(staves, anchorBoxes()) : null;
@@ -273,6 +394,7 @@ function analyzeBand(
     } else if (staves.length > 1 && anchors.length) {
       staff = pickStaffByAnchors(staves, anchorBoxes()) ?? staves[0];
     } else staff = staves[0] ?? null;
+    otherStaves = staff ? staves.filter((o) => o !== staff) : [];
     if (staff && metrics && band.source === 'staff') {
       const s = metrics.s;
       const y0 = Math.max(0, Math.floor(staffTop(staff) - 2.5 * s));
@@ -280,6 +402,7 @@ function analyzeBand(
       const box = { x: 0, y: y0, w: work.r.width, h: y1 - y0 };
       work = cropWork(work, box);
       staff = cropStaff(staff, 0, y0, work.r.width);
+      otherStaves = otherStaves.map((o) => cropStaff(o, 0, y0, work.r.width));
     }
     if (!staff && band.source === 'staff') {
       band = lineOrNone(W, H);
@@ -292,14 +415,30 @@ function analyzeBand(
   lap('staff');
   debug.mode = staff ? 'D' : 'A';
   debug.bandSource = band.source;
+  // Pauta so no mapa r - g: as linhas nao estao no cinza e measureU apaga o texto, entao a moda da
+  // espessura vira o lado das notas quadradas cheias (~d). So nesse caso u e limitado.
+  if (staff && metrics && fromRed) u = Math.min(u, Math.max(metrics.t, metrics.s / 4));
   debug.strokeWidth = u;
-  const p = deriveParams(u, staff ? metrics : null);
+  const p = deriveParams(u, staff ? metrics : null, prep.up);
+  // componentes esperados nesta faixa: os alvos, limitados ao que cabe na largura (um grupo a cada 10u)
+  needed = Math.min(needed, Math.ceil(work.r.width / (10 * u)));
 
   // Etapa 1: binarizacao comum (com repeticao k = 0,1 e canal auto se faltarem componentes)
-  const blobs = darkBlobs(work.gray, work.valid, p); // independe de canal e de k: calculado uma vez
-  let st = inkStage(work, p, staff, 'r', p.k, blobs);
+  // independe de canal e de k: calculado uma vez. Notacao D sem pauta: os parametros caem para os do
+  // modo A (darkOpen ~ 2,3u) e os puncta quadrados cheios sobreviveriam a abertura como "manchas" (M4c).
+  const blobs: Mask =
+    input.notation === 'diastematic' && !staff
+      ? { data: new Uint8Array(work.gray.data.length), width: work.gray.width, height: work.gray.height }
+      : darkBlobs(work.gray, work.valid, p);
+  // M4f: R por padrao; outro canal so com contraste claramente maior (pickInkChannel). Pauta vermelha
+  // (some no R) fica no R: as linhas somam "tinta" no cinza e puxariam a troca, mas o R ja as apaga.
+  const contrasts = inkContrasts(work); // uma vez por faixa: primeira passada e repeticao
+  let channel = pickInkChannel(work, contrasts).name;
+  if (staff && channel !== 'r' && staffCoverage(sauvola(work.r, p.window, p.k, 128, work.valid), staff) < RED_COVERAGE)
+    channel = 'r';
+  let st = inkStage(work, p, staff, channel, p.k, blobs);
   if (st.comps.length < needed) {
-    const retry = inkStage(work, p, staff, 'auto', 0.1, blobs);
+    const retry = inkStage(work, p, staff, bestContrastChannel(work, contrasts), 0.1, blobs);
     if (retry.comps.length > st.comps.length) st = retry;
   }
   debug.channel = st.channel;
@@ -330,18 +469,46 @@ function analyzeBand(
       });
     debug.textLine = { baseline: work.oy + tl.baseline / work.sy, xHeight: tl.xHeight / work.sy };
   }
+  // M4d: com area desenhada, componentes cortados pela borda inferior do raster de trabalho, na metade
+  // de baixo da area, sao texto. (O centro na area e cobrado dos glifos, depois da fusao.)
+  const workH = work.r.height;
+  const innerW = band.inner ? rasterToWork(band.inner, work) : null;
+  if (innerW) neumes = neumes.filter((c) => !(c.y + c.h >= workH - 1 && c.y > innerW.y + 0.5 * innerW.h));
   if (staff) {
     // fragmentos de texto cortados pela borda inferior da faixa da pauta
     const bottom = staffBottom(staff);
-    const h = work.r.height;
-    neumes = neumes.filter((c) => !(c.y > bottom && c.y + c.h >= h - 1));
+    neumes = neumes.filter((c) => !(c.y > bottom && c.y + c.h >= workH - 1));
   }
   debug.counts.text = text.length;
   lap('text');
 
   // Etapa 5: glifos
   const merged = mergeBoxesIndexed(neumes, p.mergeGapX, p.mergeGapY, p.mergeMaxW, p.mergeMaxH);
-  let glyphs: Glyph[] = merged.map((m) => ({ x: m.x, y: m.y, w: m.w, h: m.h, area: m.members.reduce((s, i) => s + neumes[i].area, 0) }));
+  const toGlyph = (members: number[]): Glyph => {
+    const cs = members.map((i) => neumes[i]);
+    const x0 = Math.min(...cs.map((c) => c.x));
+    const y0 = Math.min(...cs.map((c) => c.y));
+    const x1 = Math.max(...cs.map((c) => c.x + c.w));
+    const y1 = Math.max(...cs.map((c) => c.y + c.h));
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, area: cs.reduce((sum, c) => sum + c.area, 0) };
+  };
+  let glyphs: Glyph[];
+  if (innerW) {
+    // M4d: a margem de 10% e contexto. A fusao usa todos os componentes, para que a ponta de uma virga
+    // ou a cauda de uma liquescente que cruza a borda fique no grupo; o grupo vale se algum membro tem
+    // centro na area desenhada, e a caixa sai so dos membros que tocam a area (tinta inteiramente na
+    // margem, como rubrica acima ou topo de letras abaixo, nunca alarga nem desloca o grupo).
+    const inside = (c: PxBox) => {
+      const cx = c.x + c.w / 2;
+      const cy = c.y + c.h / 2;
+      return cx >= innerW.x && cx <= innerW.x + innerW.w && cy >= innerW.y && cy <= innerW.y + innerW.h;
+    };
+    const touches = (c: PxBox) =>
+      c.x <= innerW.x + innerW.w && c.x + c.w >= innerW.x && c.y <= innerW.y + innerW.h && c.y + c.h >= innerW.y;
+    glyphs = merged
+      .filter((m) => m.members.some((i) => inside(neumes[i])))
+      .map((m) => toGlyph(m.members.filter((i) => touches(neumes[i]))));
+  } else glyphs = merged.map((m) => toGlyph(m.members));
   if (staff) {
     const tx = text.length
       ? { firstX: Math.min(...text.map((c) => c.x)), lastX: Math.max(...text.map((c) => c.x + c.w)) }
@@ -349,17 +516,92 @@ function analyzeBand(
     const special = classifySpecialGlyphs(glyphs, staff, tx);
     const drop = new Set([...special.clef, ...special.custos]);
     debug.counts.ignored = drop.size;
-    glyphs = glyphs.filter((_, i) => !drop.has(i));
+    glyphs = glyphs.filter((g, i) => !drop.has(i) && !isStaffResidue(g, staff));
   }
   debug.counts.glyphs = glyphs.length;
   lap('glyphs');
 
-  return { band, work, staff, metrics, tl, u, glyphs, text, bars: st.bars, red: st.red };
+  return { band, work, staff, otherStaves, metrics, tl, u, glyphs, text, bars: st.bars, red: st.red };
+}
+
+function median(v: number[]): number {
+  const s = [...v].sort((p, q) => p - q);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
 /**
- * Caixa de um grupo de glifos (px de trabalho da faixa `a`): pad, extensao da pauta, corte na linha
- * de texto, recuo diante das ancoras; trabalho -> raster (arredondando para fora) -> fracoes.
+ * Deslocamento maximo (em s) que as caixas da pagina podem impor: topo |off| <= 3s; base em
+ * [-3s, 5s] (as caixas do usuario incluem o texto abaixo da pauta; a pauta vizinha e o fundo da
+ * faixa ainda limitam).
+ */
+const ANCHOR_TOP_MAX = 3;
+const ANCHOR_BOTTOM_MAX = 5;
+
+/**
+ * Deslocamentos (em s) do topo e da base das caixas da pagina em relacao a pauta, no x de cada uma:
+ * (y - topo da pauta) / s e (y + h - base da pauta) / s; mediana sobre as ancoras desta pauta (as que
+ * cruzam [topo - 2s, base + 3s]: num folio sem faixas chegam ancoras de outras pautas), limitada a
+ * ANCHOR_TOP_MAX / ANCHOR_BOTTOM_MAX. null sem ancoras desta pauta.
+ */
+export function anchorStaffOffsets(staff: Staff, s: number, anchors: { box: PxBox }[]): { top: number; bottom: number } | null {
+  if (s <= 0) return null;
+  const tops: number[] = [];
+  const bottoms: number[] = [];
+  for (const { box } of anchors) {
+    const span = staffSpanAt(staff, box.x, box.x + box.w);
+    if (box.y >= span.bottom + 3 * s || box.y + box.h <= span.top - 2 * s) continue;
+    tops.push((box.y - span.top) / s);
+    bottoms.push((box.y + box.h - span.bottom) / s);
+  }
+  if (!tops.length) return null;
+  return {
+    top: Math.max(-ANCHOR_TOP_MAX, Math.min(ANCHOR_TOP_MAX, median(tops))),
+    bottom: Math.max(-ANCHOR_TOP_MAX, Math.min(ANCHOR_BOTTOM_MAX, median(bottoms))),
+  };
+}
+
+/** Limites (em u) da folga vinda das caixas da pagina: horizontal e vertical (modo A). */
+const ANCHOR_PAD_X_MAX = 6;
+const ANCHOR_PAD_Y_MAX = 15;
+
+/**
+ * Folga de cada lado das caixas da pagina nesta faixa: caixa menos a extensao dos glifos com centro
+ * dentro dela; mediana sobre as ancoras com glifos, limitada a [0, ANCHOR_PAD_*_MAX·u]. null sem
+ * nenhuma. As caixas do usuario costumam ter ~2x a tinta; a sugestao segue o mesmo desenho.
+ */
+export function anchorPads(
+  glyphs: PxBox[],
+  anchors: { box: PxBox }[],
+  u: number,
+): { left: number; right: number; top: number; bottom: number } | null {
+  const sides: number[][] = [[], [], [], []];
+  for (const { box } of anchors) {
+    const ins = glyphs.filter((g) => {
+      const cx = g.x + g.w / 2;
+      const cy = g.y + g.h / 2;
+      return cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h;
+    });
+    if (!ins.length) continue;
+    const x0 = Math.max(box.x, Math.min(...ins.map((g) => g.x)));
+    const y0 = Math.max(box.y, Math.min(...ins.map((g) => g.y)));
+    const x1 = Math.min(box.x + box.w, Math.max(...ins.map((g) => g.x + g.w)));
+    const y1 = Math.min(box.y + box.h, Math.max(...ins.map((g) => g.y + g.h)));
+    sides[0].push(x0 - box.x);
+    sides[1].push(box.x + box.w - x1);
+    sides[2].push(y0 - box.y);
+    sides[3].push(box.y + box.h - y1);
+  }
+  if (!sides[0].length) return null;
+  const cx = (v: number) => Math.max(0, Math.min(ANCHOR_PAD_X_MAX * u, v));
+  const cy = (v: number) => Math.max(0, Math.min(ANCHOR_PAD_Y_MAX * u, v));
+  return { left: cx(median(sides[0])), right: cx(median(sides[1])), top: cy(median(sides[2])), bottom: cy(median(sides[3])) };
+}
+
+/**
+ * Caixa de um grupo de glifos (px de trabalho da faixa `a`): pad (o das caixas da pagina nesta
+ * faixa, ou max(2, u)), extensao da pauta, corte na linha de texto, recuo diante das ancoras;
+ * trabalho -> raster (arredondando para fora) -> fracoes.
  */
 function placeBox(
   members: PxBox[],
@@ -370,16 +612,36 @@ function placeBox(
 ): FracRect | null {
   const { work, staff, metrics, tl } = a;
   const pad = Math.max(2, a.u);
-  let x0 = Math.min(...members.map((m) => m.x)) - pad;
-  let x1 = Math.max(...members.map((m) => m.x + m.w)) + pad;
-  let y0 = Math.min(...members.map((m) => m.y)) - pad;
-  let y1 = Math.max(...members.map((m) => m.y + m.h)) + pad;
+  const ap = anchorPads(a.glyphs, anchorsWork, a.u);
+  // na pauta a altura vem dos deslocamentos das ancoras (abaixo); a folga delas so vale na horizontal
+  const vp = ap && !staff ? ap : null;
+  let x0 = Math.min(...members.map((m) => m.x)) - (ap ? ap.left : pad);
+  let x1 = Math.max(...members.map((m) => m.x + m.w)) + (ap ? ap.right : pad);
+  let y0 = Math.min(...members.map((m) => m.y)) - (vp ? vp.top : pad);
+  let y1 = Math.max(...members.map((m) => m.y + m.h)) + (vp ? vp.bottom : pad);
+  // Altura na pauta: deslocamentos do topo e da base em relacao a pauta, em s. Com caixas da propria
+  // pagina nesta faixa, os delas (mediana); senao +-0,5s. A tinta do glifo sempre cabe.
+  const offs = staff && metrics ? anchorStaffOffsets(staff, metrics.s, anchorsWork) : null;
   if (staff && metrics) {
+    const s = metrics.s;
     const span = staffSpanAt(staff, x0, x1);
-    y0 = Math.min(y0, span.top - 0.5 * metrics.s);
-    y1 = Math.max(y1, span.bottom + 0.5 * metrics.s);
+    let top = span.top + (offs ? offs.top : -0.5) * s;
+    let bottom = span.bottom + (offs ? offs.bottom : 0.5) * s;
+    if (offs) {
+      // sem o corte do texto, a altura vinda das ancoras para antes da pauta vizinha (acima e abaixo);
+      // o fundo do raster de trabalho (area + margem) limita o resto
+      for (const o of a.otherStaves) {
+        const os = staffSpanAt(o, x0, x1);
+        if (os.top > span.bottom) bottom = Math.min(bottom, os.top - 0.5 * s);
+        else if (os.bottom < span.top) top = Math.max(top, os.bottom + 0.5 * s);
+      }
+    }
+    y0 = Math.min(y0, top);
+    y1 = Math.max(y1, bottom);
   }
-  if (tl) y1 = Math.min(y1, Math.max(y0 + 1, tl.top + 0.2 * tl.xHeight));
+  // corte na linha de texto, salvo quando a altura ou a folga vem das caixas da pagina (que podem
+  // incluir o texto)
+  if (tl && !offs && !vp) y1 = Math.min(y1, Math.max(y0 + 1, tl.top + 0.2 * tl.xHeight));
   x0 = Math.max(0, x0);
   y0 = Math.max(0, y0);
   x1 = Math.min(work.r.width, x1);
@@ -398,61 +660,161 @@ function placeBox(
   return { x: X0 / W, y: Y0 / H, w: (X1 - X0) / W, h: (Y1 - Y0) / H };
 }
 
-/** Uma faixa analisada posta na linha virtual: x virtual = x de trabalho + offset. */
-interface VirtualLine {
+/**
+ * Particao aberta com a contagem medida pelo texto: custo de cada fronteira (1 = um vao igual a
+ * mediana nao conta). 0 deixava a particao trocar colunas por cauda; BOUNDARY_COST (2) fazia o
+ * canto silabico de vaos parecidos (L239) desistir das silabas.
+ */
+const TEXT_BOUNDARY_COST = 1;
+
+/** Uma faixa analisada, em ordem de leitura, com as ancoras em px de trabalho dela. */
+interface BandLine {
   a: BandAnalysis;
-  offset: number;
-  /** Ancoras desta faixa, em px de trabalho da faixa (sem deslocamento). */
+  /** Ancoras desta faixa: recuo e altura das caixas (placeBox) e posicao na fila. */
   anchorsLocal: { index: number; box: PxBox }[];
+  /** Todas as ancoras da pagina neste raster de trabalho: glifos >= 50% dentro de uma delas saem. */
+  allLocal: { index: number; box: PxBox }[];
 }
 
-type VGlyph = Glyph & { line: number };
+const cxOf = (b: PxBox): number => b.x + b.w / 2;
+
+/** Glifos e texto da porcao [L, R] de uma faixa (centro x dentro; os sob ancoras fora). */
+function portionOf(l: BandLine, L: number, R: number): { glyphs: Glyph[]; text: PxBox[] } {
+  const inside = (b: PxBox) => cxOf(b) >= L && cxOf(b) <= R;
+  // glifos e texto >= 50% dentro de uma ancora pertencem a ela (as caixas do usuario cobrem o texto)
+  const free = (b: PxBox) => inside(b) && !l.allLocal.some((an) => overlapFraction(b, an.box) >= 0.5);
+  const glyphs = l.a.glyphs.filter(free).sort((p, q) => cxOf(p) - cxOf(q) || p.y - q.y);
+  return { glyphs, text: l.a.text.filter(free) };
+}
 
 /**
- * Etapa 6 sobre a linha virtual [0, x1]: segmentos entre ancoras, particao e caixa por grupo.
- * `forcedXs` sao fronteiras entre faixas: entram como barra e como espaco entre palavras.
+ * Etapa 6 numa porcao [L, R] de uma faixa: prior desta porcao (palavras do texto dela), particao e
+ * caixa por grupo. `open` (sem pauta): a contagem e uma estimativa; a particao pode deixar a cauda
+ * de glifos e as ultimas silabas sem par. Na pauta (vaos entre notas de um neuma quadrado,
+ * normalizados pela mediana ~0, viram cortes enormes e nao medem silabas) usa todos os glifos. Devolve a borda direita do ultimo grupo usado (L se
+ * nenhum) e quantas silabas foram usadas.
  */
-function assignVirtual(
-  lines: VirtualLine[],
-  ordered: SuggestSyllable[],
-  anchorsVirtual: { index: number; box: PxBox }[],
-  x1: number,
-  forcedXs: number[],
+function assignPortion(
+  l: BandLine,
+  L: number,
+  R: number,
+  syllables: SuggestSyllable[],
+  glyphs: Glyph[],
+  text: PxBox[],
+  out: Suggestion[],
   W: number,
   H: number,
+  open: boolean,
+  lastExtra = false,
+  byText = false,
+  minConf = MIN_CONFIDENCE,
+): { end: number; used: number } {
+  if (!syllables.length || !glyphs.length) return { end: L, used: 0 };
+  const words = new Set(syllables.map((s) => s.wordIndex)).size;
+  const spans = wordSpans(text, words);
+  const wordGapXs = spans ? spans.slice(1).map((sp, i) => (spans[i].x1 + sp.x0) / 2) : [];
+  // prior sobre a extensao da tinta da porcao (glifos e texto), nao sobre as bordas da faixa
+  const ink = [...glyphs, ...text];
+  const L1 = Math.max(L, Math.min(...ink.map((b) => b.x)));
+  const R1 = Math.max(L1 + 1, Math.min(R, Math.max(...ink.map((b) => b.x + b.w))));
+  const seg = { L: L1, R: R1, syllables, glyphs };
+  const expected = expectedCenters(seg, spans);
+  const cuts = cutScores(glyphs, l.a.bars.map(cxOf), wordGapXs);
+  const part = partitionDP(glyphs, expected, L1, R1, cuts, { open, lastExtra, boundaryCost: byText ? TEXT_BOUNDARY_COST : undefined });
+  const conf = groupConfidence(part, cuts, glyphs.length);
+  let end = L;
+  part.groups.forEach((g, j) => {
+    if (!g) return;
+    const members = glyphs.slice(g[0], g[1]);
+    end = Math.max(end, ...members.map((m) => m.x + m.w));
+    const syl = syllables[j];
+    if (syl.suggest === false || conf[j] < minConf) return;
+    const box = placeBox(members, l.a, l.anchorsLocal, W, H);
+    if (box) out.push({ index: syl.index, box, confidence: conf[j] });
+  });
+  return { end, used: part.used };
+}
+
+/**
+ * M2: atribuicao sequencial por area. A fila (ordem de leitura) e percorrida em corridas de silabas
+ * livres entre ancoras, com um cursor (faixa, x) que nunca recua. Corrida presa (a ancora seguinte
+ * esta adiante do cursor): as faixas antes da da ancora recebem o que cabe (fitCount) na porcao
+ * [x, largura); a faixa da ancora, todo o resto em [x, borda esquerda da ancora]. Corrida solta: cada
+ * faixa a partir do cursor recebe o que cabe; o que sobra fica sem sugestao. `queue` so contem
+ * ancoradas que estao em `anchorsLocal` de alguma faixa.
+ */
+function assignSequential(
+  lines: BandLine[],
+  queue: SuggestSyllable[],
+  W: number,
+  H: number,
+  minConf = MIN_CONFIDENCE,
 ): Suggestion[] {
-  const glyphs: VGlyph[] = lines.flatMap((l, i) => l.a.glyphs.map((g) => ({ ...g, x: g.x + l.offset, line: i })));
-  const text: PxBox[] = lines.flatMap((l) => l.a.text.map((c) => ({ x: c.x + l.offset, y: c.y, w: c.w, h: c.h })));
-  const barXs = [...lines.flatMap((l) => l.a.bars.map((b) => b.x + l.offset + b.w / 2)), ...forcedXs];
-  const segments = segmentByAnchors(ordered, anchorsVirtual, glyphs, 0, x1);
-  const suggestions: Suggestion[] = [];
-  for (const seg of segments) {
-    if (seg.glyphs.length === 0) continue;
-    const words = new Set(seg.syllables.map((s) => s.wordIndex)).size;
-    const segText = text.filter((c) => c.x + c.w / 2 >= seg.L && c.x + c.w / 2 <= seg.R);
-    const spans = wordSpans(segText, words);
-    const wordGapXs = spans ? spans.slice(1).map((sp, i) => (spans[i].x1 + sp.x0) / 2) : [];
-    const expected = expectedCenters(seg, spans);
-    const cuts = cutScores(seg.glyphs, barXs, [...wordGapXs, ...forcedXs]);
-    const part = partitionDP(seg.glyphs, expected, seg.L, seg.R, cuts);
-    const conf = groupConfidence(part, cuts, seg.glyphs.length);
-    part.groups.forEach((g, j) => {
-      const syl = seg.syllables[j];
-      if (!g || syl.suggest === false || conf[j] < MIN_CONFIDENCE) return;
-      const all = seg.glyphs.slice(g[0], g[1]) as VGlyph[];
-      // grupo que atravessa faixas: fica so a faixa majoritaria (empate: a primeira)
-      const count = new Map<number, number>();
-      for (const m of all) count.set(m.line, (count.get(m.line) ?? 0) + 1);
-      let k = all[0].line;
-      for (const [line, c] of count) if (c > count.get(k)! || (c === count.get(k)! && line < k)) k = line;
-      const l = lines[k];
-      const members = all.filter((m) => m.line === k).map((m) => ({ x: m.x - l.offset, y: m.y, w: m.w, h: m.h }));
-      const box = placeBox(members, l.a, l.anchorsLocal, W, H);
-      if (box) suggestions.push({ index: syl.index, box, confidence: conf[j] });
-    });
+  const anchorAt = new Map<number, { line: number; box: PxBox }>();
+  lines.forEach((l, k) => l.anchorsLocal.forEach((an) => anchorAt.set(an.index, { line: k, box: an.box })));
+  const out: Suggestion[] = [];
+  // Sem pauta a particao e aberta: a contagem e uma estimativa e os glifos sao a evidencia (cauda sem
+  // silaba, ultimas silabas para a area seguinte). Contagem por agrupamentos: eles se fundem (neumas
+  // de silabas vizinhas quase encostados), entao recebe uma silaba a mais (EXTRA_COST) para partir um
+  // vao fraco se o prior pagar.
+  const fit = (l: BandLine, rest: SuggestSyllable[], glyphs: Glyph[], text: PxBox[]) => {
+    const d = fitDetail(rest, glyphs, text, { u: l.a.u, xHeight: l.a.tl?.xHeight });
+    const open = d.n > 0 && !l.a.staff;
+    const extra = open && !d.byText && d.n < rest.length;
+    return { n: extra ? d.n + 1 : d.n, open, extra, byText: d.byText };
+  };
+  let li = 0;
+  let x = 0;
+  let p = 0;
+  while (p < queue.length && li < lines.length) {
+    const here = anchorAt.get(queue[p].index);
+    if (here) {
+      if (here.line > li) {
+        li = here.line;
+        x = here.box.x + here.box.w;
+      } else if (here.line === li) x = Math.max(x, here.box.x + here.box.w);
+      p++;
+      continue;
+    }
+    let q = p;
+    while (q < queue.length && !anchorAt.has(queue[q].index)) q++;
+    let rest = queue.slice(p, q);
+    const A = q < queue.length ? anchorAt.get(queue[q].index)! : null;
+    const bound = A && (A.line > li || (A.line === li && A.box.x >= x)) ? A : null;
+    if (bound) {
+      for (; li < bound.line && rest.length; li++, x = 0) {
+        const l = lines[li];
+        const { glyphs, text } = portionOf(l, x, l.a.work.r.width);
+        const { n, open, extra, byText } = fit(l, rest, glyphs, text);
+        if (n > 0) rest = rest.slice(assignPortion(l, x, l.a.work.r.width, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText, minConf).used);
+      }
+      if (rest.length) {
+        const l = lines[bound.line];
+        const { glyphs, text } = portionOf(l, x, bound.box.x);
+        assignPortion(l, x, bound.box.x, rest, glyphs, text, out, W, H, false, false, false, minConf);
+      }
+      // o cursor vai para a ancora, que e consumida na proxima volta
+    } else {
+      while (rest.length && li < lines.length) {
+        const l = lines[li];
+        const R = l.a.work.r.width;
+        const { glyphs, text } = portionOf(l, x, R);
+        const { n, open, extra, byText } = fit(l, rest, glyphs, text);
+        if (n > 0) {
+          const r = assignPortion(l, x, R, rest.slice(0, n), glyphs, text, out, W, H, open, extra, byText, minConf);
+          x = r.end;
+          rest = rest.slice(r.used);
+        }
+        if (rest.length) {
+          li++;
+          x = 0;
+        }
+      }
+    }
+    p = q;
   }
-  suggestions.sort((p, q) => p.index - q.index);
-  return suggestions;
+  out.sort((a, b) => a.index - b.index);
+  return out;
 }
 
 function staffDebug(a: BandAnalysis, H: number): StaffDebug | undefined {
@@ -479,20 +841,9 @@ function unionFrac(rs: FracRect[]): FracRect | null {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-/** Varias faixas do usuario (ordem de leitura = ordem do array) como uma unica linha virtual. */
-function suggestOnBands(
-  input: SuggestInput,
-  bands: FracRect[],
-  anchors: SuggestAnchor[],
-  ordered: SuggestSyllable[],
-  needed: number,
-  debug: SuggestDebug,
-  lap: Lap,
-): Suggestion[] {
-  const W = input.image.width;
-  const H = input.image.height;
-  // ancora -> faixa de maior intersecao (-1 = fora de todas)
-  const anchorBand = anchors.map((a) => {
+/** Ancora -> faixa de maior intersecao (-1 = fora de todas). */
+function anchorBands(bands: FracRect[], anchors: SuggestAnchor[]): number[] {
+  return anchors.map((a) => {
     let best = -1;
     let bestA = 0;
     bands.forEach((b, k) => {
@@ -504,12 +855,100 @@ function suggestOnBands(
     });
     return best;
   });
-  const lines: VirtualLine[] = [];
-  const lineOf = new Map<number, number>();
+}
+
+/**
+ * Modo candidatos: todos os grupos de neumas das faixas (as do usuario ou a inferida), sem silaba.
+ * Glifos >= 50% dentro de uma ancora sao descartados; os demais viram uma caixa cada (placeBox).
+ * Ordem de leitura: faixa, depois centro x.
+ */
+function suggestCandidates(input: SuggestInput, debug: SuggestDebug, lap: Lap): Candidate[] {
+  const W = input.image.width;
+  const H = input.image.height;
+  const anchors = input.anchors ?? [];
+  let selected: { sel: SelectedBand; own: SuggestAnchor[]; frac: FracRect | null }[];
+  if (input.bands?.length) {
+    const anchorBand = anchorBands(input.bands, anchors);
+    selected = input.bands.map((b, k) => ({
+      sel: selectBand({ band: b, notation: input.notation }, W, H),
+      own: anchors.filter((_, i) => anchorBand[i] === k),
+      frac: b,
+    }));
+  } else {
+    const sel = selectBand({ ...input, anchors }, W, H);
+    if (sel.source === 'none') {
+      debug.needsBand = true;
+      return [];
+    }
+    selected = [{ sel, own: anchors, frac: null }];
+  }
+  const candidates: Candidate[] = [];
   const perBand: BandDebug[] = [];
   const debugs: SuggestDebug[] = [];
-  // Componentes esperados por faixa: a parte de `needed` proporcional a largura da faixa
-  // (a de pagina inteira faria toda faixa recair na binarizacao mais ruidosa).
+  selected.forEach(({ sel, own, frac }, k) => {
+    if (frac && sel.source !== 'user') {
+      perBand.push({ band: frac, mode: 'A', glyphs: 0 });
+      return;
+    }
+    const d = frac ? emptyDebug() : debug;
+    const a = analyzeBand(input, sel, own, 0, d, lap);
+    if (!a || 'needsBand' in a) {
+      if (a && 'needsBand' in a) debug.needsBand = true;
+      perBand.push({ band: { x: sel.rect.x / W, y: sel.rect.y / H, w: sel.rect.w / W, h: sel.rect.h / H }, mode: 'A', glyphs: 0 });
+      return;
+    }
+    debugs.push(d);
+    perBand.push({ band: workFrac(a.work, W, H), mode: a.staff ? 'D' : 'A', glyphs: a.glyphs.length, channel: d.channel, sauvolaK: d.sauvolaK });
+    if (!debug.staff) debug.staff = staffDebug(a, H);
+    const toWork = (list: SuggestAnchor[]) => list.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
+    const allLocal = toWork(anchors);
+    const ownLocal = toWork(own);
+    const boxes: FracRect[] = [];
+    for (const g of a.glyphs) {
+      if (allLocal.some((an) => overlapFraction(g, an.box) >= 0.5)) continue;
+      const box = placeBox([g], a, ownLocal, W, H);
+      if (box) boxes.push(box);
+    }
+    boxes.sort((p, q) => p.x + p.w / 2 - (q.x + q.w / 2));
+    for (const box of boxes) candidates.push({ box, band: k });
+    if (!frac) debug.band = workFrac(a.work, W, H);
+  });
+  if (input.bands?.length) {
+    debug.bandSource = 'user';
+    debug.bands = perBand;
+    debug.band = unionFrac(perBand.map((p) => p.band));
+    debug.mode = debugs.some((d) => d.mode === 'D') ? 'D' : 'A';
+    const first = debugs[0];
+    if (first) {
+      debug.scale = first.scale;
+      debug.strokeWidth = first.strokeWidth;
+      debug.channel = first.channel;
+      debug.sauvolaK = first.sauvolaK;
+    }
+    debug.textLine = debugs.find((d) => d.textLine)?.textLine;
+    for (const d of debugs)
+      for (const key of Object.keys(debug.counts) as (keyof SuggestDebug['counts'])[]) debug.counts[key] += d.counts[key];
+  }
+  return candidates;
+}
+
+/** Varias faixas do usuario (ordem de leitura = ordem do array): analise de cada uma e debug. */
+function analyzeBands(
+  input: SuggestInput,
+  bands: FracRect[],
+  anchors: SuggestAnchor[],
+  needed: number,
+  debug: SuggestDebug,
+  lap: Lap,
+): BandLine[] {
+  const W = input.image.width;
+  const H = input.image.height;
+  const anchorBand = anchorBands(bands, anchors);
+  const lines: BandLine[] = [];
+  const perBand: BandDebug[] = [];
+  const debugs: SuggestDebug[] = [];
+  // Alvos por faixa: a parte de `needed` proporcional a largura da faixa (a de pagina inteira faria
+  // toda faixa recair na binarizacao mais ruidosa); analyzeBand ainda limita por ceil(largura / 10u).
   const selected = bands.map((b) => selectBand({ band: b, notation: input.notation }, W, H));
   const totalW = selected.reduce((sum, s) => sum + (s.source === 'user' ? s.rect.w : 0), 0);
   bands.forEach((b, k) => {
@@ -534,10 +973,8 @@ function suggestOnBands(
       channel: d.channel,
       sauvolaK: d.sauvolaK,
     });
-    // faixa sem glifos nem ancoras nao ocupa espaco na linha virtual (nao rouba silabas)
-    if (!a.glyphs.length && !own.length) return;
-    lineOf.set(k, lines.length);
-    lines.push({ a, offset: 0, anchorsLocal: own.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) })) });
+    const toWork = (list: SuggestAnchor[]) => list.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
+    lines.push({ a, anchorsLocal: toWork(own), allLocal: toWork(anchors) });
   });
 
   debug.bandSource = 'user';
@@ -556,30 +993,7 @@ function suggestOnBands(
   if (withStaff) debug.staff = staffDebug(withStaff.a, H);
   for (const d of debugs)
     for (const key of Object.keys(debug.counts) as (keyof SuggestDebug['counts'])[]) debug.counts[key] += d.counts[key];
-  if (!lines.length) return [];
-
-  const gap = 4 * Math.max(...lines.map((l) => l.a.u));
-  let x = 0;
-  for (const l of lines) {
-    l.offset = x;
-    x += l.a.work.r.width + gap;
-  }
-  const x1 = x - gap;
-  const forcedXs = lines.slice(1).map((l) => l.offset - gap / 2);
-  const anchorsVirtual: { index: number; box: PxBox }[] = [];
-  const outside = new Set<number>();
-  anchors.forEach((an, i) => {
-    const li = anchorBand[i] >= 0 ? lineOf.get(anchorBand[i]) : undefined;
-    if (li === undefined) {
-      outside.add(an.index);
-      return;
-    }
-    const l = lines[li];
-    const box = l.anchorsLocal.find((o) => o.index === an.index)!.box;
-    anchorsVirtual.push({ index: an.index, box: { ...box, x: box.x + l.offset } });
-  });
-  const inLine = ordered.filter((s) => !outside.has(s.index));
-  return assignVirtual(lines, inLine, anchorsVirtual, x1, forcedXs, W, H);
+  return lines;
 }
 
 export function suggestBoxes(input: SuggestInput): SuggestResult {
@@ -597,6 +1011,12 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   const { image } = input;
   const W = image.width;
   const H = image.height;
+  if (input.mode === 'candidates') {
+    const candidates = suggestCandidates(input, debug, lap);
+    lap('assign');
+    ms.total = now() - t0;
+    return { suggestions: [], candidates, debug };
+  }
   const order = new Map(input.syllables.map((s, i) => [s.index, i]));
   const anchors = (input.anchors ?? []).filter((a) => order.has(a.index));
   const anchored = new Set(anchors.map((a) => a.index));
@@ -605,30 +1025,31 @@ export function suggestBoxes(input: SuggestInput): SuggestResult {
   const needed = free.filter((s) => s.suggest !== false).length;
   const ordered = [...input.syllables].sort((a, b) => order.get(a.index)! - order.get(b.index)!);
 
+  let lines: BandLine[];
   if (input.bands?.length) {
-    const suggestions = suggestOnBands(input, input.bands, anchors, ordered, needed, debug, lap);
-    lap('assign');
-    ms.total = now() - t0;
-    return { suggestions, debug };
+    lines = analyzeBands(input, input.bands, anchors, needed, debug, lap);
+  } else {
+    // Etapa 2 (faixa), etapas 0 a 5 (analise da faixa)
+    const band = selectBand({ ...input, anchors }, W, H);
+    if (band.source === 'none') {
+      debug.needsBand = true;
+      return { suggestions: [], debug };
+    }
+    const a = analyzeBand(input, band, anchors, needed, debug, lap);
+    if (!a || 'needsBand' in a) return { suggestions: [], debug };
+    // todas as ancoras ficam nesta faixa, mesmo fora dela
+    const anchorsWork = anchors.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
+    lines = [{ a, anchorsLocal: anchorsWork, allLocal: anchorsWork }];
+    debug.band = workFrac(a.work, W, H);
+    const sd = staffDebug(a, H);
+    if (sd) debug.staff = sd;
   }
 
-  // Etapa 2 (faixa), etapas 0 a 5 (analise da faixa)
-  const band = selectBand({ ...input, anchors }, W, H);
-  if (band.source === 'none') {
-    debug.needsBand = true;
-    return { suggestions: [], debug };
-  }
-  const a = analyzeBand(input, band, anchors, needed, debug, lap);
-  if (!a || 'needsBand' in a) return { suggestions: [], debug };
-
-  // Etapa 6: atribuicao (todas as ancoras ficam nesta faixa, mesmo fora dela)
-  const anchorsWork = anchors.map((an) => ({ index: an.index, box: fracToWork(an.box, a.work, W, H) }));
-  const line: VirtualLine = { a, offset: 0, anchorsLocal: anchorsWork };
-  const suggestions = assignVirtual([line], ordered, anchorsWork, a.work.r.width, [], W, H);
+  // Etapa 6: atribuicao sequencial; ancoras fora de todas as faixas saem da fila
+  const placed = new Set(lines.flatMap((l) => l.anchorsLocal.map((an) => an.index)));
+  const queue = ordered.filter((s) => !anchored.has(s.index) || placed.has(s.index));
+  const suggestions = assignSequential(lines, queue, W, H, input.minConfidence ?? MIN_CONFIDENCE);
   lap('assign');
-  debug.band = workFrac(a.work, W, H);
-  const sd = staffDebug(a, H);
-  if (sd) debug.staff = sd;
   ms.total = now() - t0;
   return { suggestions, debug };
 }

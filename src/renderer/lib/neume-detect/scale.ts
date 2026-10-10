@@ -72,6 +72,18 @@ export function estimateStrokeWidth(ink: Mask): number {
   return Math.min(U_MAX, Math.max(U_MIN, mode));
 }
 
+/** u com as linhas [y0, y1) apagadas (texto, margem de contexto); 0 se nada sobra. */
+export function strokeWidthOutside(ink: Mask, exclude: { y0: number; y1: number }[]): number {
+  const { width: w, height: h } = ink;
+  const data = ink.data.slice();
+  for (const e of exclude) {
+    const y0 = Math.max(0, Math.floor(e.y0));
+    const y1 = Math.min(h, Math.ceil(e.y1));
+    if (y1 > y0) data.fill(0, y0 * w, y1 * w);
+  }
+  return estimateStrokeWidth({ data, width: w, height: h });
+}
+
 export interface StaffMetrics {
   /** Espessura da linha de pauta: moda dos runs verticais de tinta. */
   t: number;
@@ -126,8 +138,12 @@ export function odd(v: number): number {
   return Math.max(3, Math.round(v) | 1);
 }
 
-/** Tabela "Etapa 0" da spec. Com staff (modo D) os limites passam a depender de s. */
-export function deriveParams(u: number, staff?: StaffMetrics | null): Params {
+/**
+ * Tabela "Etapa 0" da spec. Com staff (modo D) os limites passam a depender de s. `up` = fator da
+ * ampliacao do raster de trabalho (1 ou 2): os pisos de minSide (2 px) e minArea (2 px^2) valem em
+ * pixels da imagem, senao um ponto isolado do pergaminho ampliado 2x (2 x 2) passaria pelo filtro.
+ */
+export function deriveParams(u: number, staff?: StaffMetrics | null, up = 1): Params {
   const p: Params = {
     u,
     window: odd(10 * u),
@@ -135,9 +151,10 @@ export function deriveParams(u: number, staff?: StaffMetrics | null): Params {
     darkThr: 0.35,
     darkOpen: odd(2.3 * u),
     darkMargin: Math.ceil(u),
-    minArea: 1.3 * u * u,
+    // M4a: pontos e tracos finos (punctum ~ u x u) sobrevivem; o ruido pontual e menor que isso.
+    minArea: Math.max(0.35 * u * u, 2 * up * up),
     maxArea: 170 * u * u,
-    minSide: u,
+    minSide: Math.max(2 * up, 0.5 * u),
     maxSide: 30 * u,
     maxAspect: 8,
     mergeGapX: 1.3 * u,

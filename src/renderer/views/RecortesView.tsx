@@ -21,11 +21,14 @@ import { ImageCanvas } from "../components/slice-editor/ImageCanvas";
 import { RealignBoxesDialog } from "../components/slice-editor/RealignBoxesDialog";
 import { Dialog } from "../ui/Dialog";
 import { Button } from "../ui/Button";
-import { MenuItem, MenuSeparator, MenuSurface } from "../ui/Menu";
+import { MenuItem, MenuSeparator, MenuSubmenu, MenuSurface } from "../ui/Menu";
+import { isSubmenu } from "../shell/menuTypes";
 import { recortesMenuItems } from "../shell/menus";
 import { formatAccelerator } from "../shell/accelerator";
 import { flattenSyllables } from "../lib/sliceUtils";
-import { planGapToggle } from "../lib/syllable-gap";
+import { isLineGap, planGapToggle } from "../lib/syllable-gap";
+import { areaOf, nextCandidate, unionBoxes } from "../lib/suggest/candidates";
+import { orderNeumeBands } from "@shared/band-order";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
 import { coveredByOtherPages } from "../lib/sources";
@@ -132,6 +135,76 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
         ? { start: Math.min(range.start, idx), end: Math.max(range.end, idx) }
         : undefined;
     writeBoxes({ ...viewBoxes, [idx]: box }, meta, grown);
+  }
+
+  // ── Candidates (M3): every pick is one commitBox, one undo step ───────────
+
+  const candidateBoxes = useMemo(() => suggestions.candidates.map((c) => c.box), [suggestions.candidates]);
+
+  /** After a candidate becomes the active syllable's box: the next syllable; at the range end it stays. */
+  function advanceAfterPick(active: number) {
+    const next = active + 1;
+    if (!range || next >= total || next > range.end) return;
+    recortes.setActiveSyllable(next);
+  }
+
+  /** Pending = no box and no "no neume" (no key in the view), not a gap, not a legacy crop. */
+  function isPending(idx: number): boolean {
+    if (!activeLine || !activeSource) return false;
+    return !(idx in viewBoxes) && !isLineGap(activeLine, idx) && !(idx in activeSource.syllableCuts);
+  }
+
+  /** The syllable a plain click fills: the active one if pending, else the next pending one of the range; null = none. */
+  function clickTarget(active: number): number | null {
+    if (isPending(active)) return active;
+    if (!range) return null;
+    for (let k = Math.max(active + 1, range.start); k <= range.end && k < total; k++) if (isPending(k)) return k;
+    return null;
+  }
+
+  /**
+   * Click: the candidate becomes the box of the active syllable and the active moves on. An active
+   * syllable that already has a box (or "no neume", a gap, a legacy crop) is never overwritten: the
+   * candidate goes to the next pending syllable of the range, which becomes the active one (replacing
+   * a box takes Delete first). Shift: unite with the active syllable's box, stay.
+   */
+  function pickCandidate(index: number, union: boolean) {
+    const active = recortes.activeSyllable;
+    const cand = suggestions.candidates[index];
+    if (active === null || !cand) return;
+    if (union) {
+      if (activeLine && isLineGap(activeLine, active)) return; // a gap never takes a box
+      const current = viewBoxes[active];
+      if (!current) {
+        commitBox(active, cand.box);
+        return;
+      }
+      // A neume never spans two areas: a candidate of another area is not united.
+      const area = areaOf(current, orderNeumeBands(activeLine?.neumeBands ?? []));
+      if (area >= 0 && area !== cand.band) return;
+      commitBox(active, unionBoxes(current, cand.box));
+      return;
+    }
+    const target = clickTarget(active);
+    if (target === null) return;
+    if (target !== active) recortes.setActiveSyllable(target);
+    commitBox(target, cand.box);
+    advanceAfterPick(target);
+  }
+
+  /** Enter in the candidates mode on a pending syllable: the next candidate after the previous box. true = taken. */
+  function takeNextCandidate(active: number): boolean {
+    if (!activeLine || !activeSource) return false;
+    if (!isPending(active)) return false;
+    const areas = orderNeumeBands(activeLine.neumeBands ?? []);
+    // The nearest earlier syllable with a real box ("no neume", gaps and legacy crops have none).
+    let prev: SyllableBox | null = null;
+    for (let k = active - 1; k >= 0 && !prev; k--) prev = viewBoxes[k] ?? null;
+    const i = nextCandidate(suggestions.candidates, prev, areas);
+    if (i === null) return false;
+    commitBox(active, suggestions.candidates[i].box);
+    advanceAfterPick(active);
+    return true;
   }
 
   /** Neume bands of the active page (S7); an empty list removes them. */
@@ -271,6 +344,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return;
     if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
       e.preventDefault();
+      // M3: Enter atribui o próximo candidato à ativa pendente e avança; sem candidato, só avança.
+      if (e.key === "Enter" && suggestions.mode === "candidates" && active !== null && takeNextCandidate(active)) return;
       // Enter aceita a sugestão da sílaba ativa e avança; Tab só avança (S6).
       const accepted = e.key === "Enter" && active !== null && active in suggestions.active;
       if (accepted) suggestions.accept(active);
@@ -390,6 +465,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onActivateSyllable={recortes.setActiveSyllable}
                 onBoxCommit={(idx, box) => commitBox(idx, box)}
                 suggestedBoxes={suggestions.active}
+                candidates={candidateBoxes}
+                onPickCandidate={pickCandidate}
                 neumeBands={activeLine?.neumeBands}
                 bandTool={recortes.bandTool}
                 activeBand={recortes.activeBand}
@@ -427,6 +504,16 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
             {sheetMenuItems.map((item, i) =>
               item === "separator" ? (
                 <MenuSeparator key={`sep-${i}`} />
+              ) : isSubmenu(item) ? (
+                <MenuSubmenu key={item.id} label={item.label}>
+                  {item.items.map((sub, j) =>
+                    sub === "separator" ? (
+                      <MenuSeparator key={`sep-${i}-${j}`} />
+                    ) : (
+                      <MenuItem key={sub.id} label={sub.label} checked={sub.checked} disabled={sub.disabled} onSelect={sub.onSelect} />
+                    ),
+                  )}
+                </MenuSubmenu>
               ) : (
                 <MenuItem
                   key={item.id}

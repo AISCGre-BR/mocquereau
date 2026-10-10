@@ -46,6 +46,23 @@ describe('text-line', () => {
     expect(findTextLine(textRow([4, 3, 5]), 600, { kind: 'lowest' }, 20)).toBeNull();
   });
 
+  it('sílabas curtas com letras de haste: as hastes contam como vizinhas no espaçamento', () => {
+    // 'Do mi nus di xit ad me fi li': letras 12 x 16, hastes 12 x 32 (D d t f l), sílabas afastadas
+    const sy = ['Do', 'mi', 'nus', 'di', 'xit', 'ad', 'me', 'fi', 'li'];
+    const comps: ReturnType<typeof c>[] = [];
+    sy.forEach((t, j) => {
+      let x = 40 + j * 160;
+      for (const ch of t) {
+        const tall = /[Ddtfl]/.test(ch);
+        comps.push(c(x, tall ? 168 : 184, 12, tall ? 32 : 16));
+        x += 16;
+      }
+    });
+    const tl = findTextLine(comps, 1500, { kind: 'lowest' }, 6);
+    expect(tl?.baseline).toBe(200);
+    expect(tl?.xHeight).toBe(16);
+  });
+
   it('modo D: primeiro pico abaixo da pauta', () => {
     const upper = textRow([5, 5], 50, 30, 100);
     const lower = textRow([5, 5], 50, 30, 200);

@@ -10,6 +10,7 @@ import { useProject } from "./useProject";
 import { useRecortes, type RecortesState } from "./useRecortes";
 import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { RecortesMenuState } from "../shell/menus";
+import type { SuggestionsMode } from "@shared/suggestions-mode";
 import { useOptionalSuggestions } from "./SuggestionsContext";
 
 export type RecortesDialog = "clearPage" | "realign" | "suggestSkipped" | null;
@@ -57,7 +58,7 @@ export interface RecortesCommands {
   suggestSource(): void;
   acceptAllSuggestions(): void;
   discardSuggestions(): void;
-  toggleSuggestions(): void;
+  setSuggestionsMode(mode: SuggestionsMode): void;
   /** Removes the active syllable's box (menu, Delete). */
   removeBox(): void;
   /** Removes the box of syllable `idx` on the active page: the one path for every removal. */
@@ -83,11 +84,14 @@ export function useRecortesCommands(): RecortesCommands {
   const hasActiveBox = active !== null && viewBoxes[active] != null;
   const pageHasWork = !!line && (hasAnyBox(line.syllableBoxes) || line.gaps.length > 0 || line.confirmed);
   const suggestions = useOptionalSuggestions();
-  const suggestionsEnabled = suggestions?.enabled ?? false;
+  const suggestionsOn = suggestions?.enabled ?? false;
+  const suggestionsMode = suggestions?.mode ?? "off";
   const idle = suggestions?.status !== "running";
   const image = line?.image as ({ dataUrl?: string; missing?: boolean } | undefined);
-  const canSuggest = suggestionsEnabled && idle && !!image?.dataUrl && !image.missing;
-  const hasSuggestions = suggestionsEnabled && Object.keys(suggestions?.active ?? {}).length > 0;
+  const canSuggest = suggestionsOn && idle && !!image?.dataUrl && !image.missing;
+  // Discard (Esc) also clears candidates; Accept all is off in the candidates mode (menus.ts).
+  const hasSuggestions =
+    suggestionsOn && (Object.keys(suggestions?.active ?? {}).length > 0 || (suggestions?.candidates.length ?? 0) > 0);
 
   function removeBoxAt(idx: number) {
     if (!source || !line || viewBoxes[idx] == null) return;
@@ -126,16 +130,16 @@ export function useRecortesCommands(): RecortesCommands {
       canClearPage: pageHasWork,
       canRealign: !!line && hasAnyBox(line.syllableBoxes),
       hasNextSource: sourceIdx >= 0 && sourceIdx < sources.length - 1,
-      suggestionsEnabled,
+      suggestionsMode,
       canSuggest,
-      canSuggestSource: suggestionsEnabled && idle && !!source && source.lines.length > 0,
+      canSuggestSource: suggestionsOn && idle && !!source && source.lines.length > 0,
       hasSuggestions,
     },
     suggest: () => {
       if (canSuggest) suggestions?.suggest();
     },
     suggestSource: () => {
-      if (!suggestions || !suggestionsEnabled || !idle || !source) return;
+      if (!suggestions || !suggestionsOn || !idle || !source) return;
       const sourceId = source.id;
       const { viewMounted, setSkippedPages, setDialog } = recortes;
       suggestions
@@ -150,7 +154,7 @@ export function useRecortesCommands(): RecortesCommands {
     },
     acceptAllSuggestions: () => suggestions?.acceptAll(),
     discardSuggestions: () => suggestions?.discardPage(),
-    toggleSuggestions: () => suggestions?.setEnabled(!suggestionsEnabled),
+    setSuggestionsMode: (mode) => suggestions?.setMode(mode),
     removeBox: () => {
       if (active !== null) removeBoxAt(active);
     },

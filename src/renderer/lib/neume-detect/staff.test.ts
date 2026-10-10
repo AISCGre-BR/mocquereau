@@ -4,13 +4,15 @@ import { staffMetrics } from './scale';
 import {
   classifySpecialGlyphs,
   findStaves,
+  findStavesRobust,
   isBarLine,
+  isStaffResidue,
   removalLimit,
   removeStaffLines,
   staffCoverage,
   type Staff,
 } from './staff';
-import { createRaster, drawStaff, fillRect, RED_LINE, staffLineTop, type StaffSpec } from './synthetic';
+import { buildDiastematicLine, createRaster, drawStaff, fillRect, RED_LINE, staffLineTop, type StaffSpec } from './synthetic';
 import { binarizeOtsu } from './threshold';
 import type { Mask, RasterRGBA } from './types';
 
@@ -43,6 +45,59 @@ describe('staff', () => {
     expect(Math.abs(st.x0 - 30)).toBeLessThanOrEqual(2);
     expect(Math.abs(st.x1 - 1170)).toBeLessThanOrEqual(2);
     st.lines.forEach((l, i) => expect(Math.abs(l.mean - center(spec, i, 600))).toBeLessThanOrEqual(1));
+  });
+
+  it('isStaffResidue: traço plano sobre a linha sim; punctum sobre a linha e traço plano fora da linha não', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!)[0];
+    const yLine = st.lines[2].ys[300];
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - 2), w: 30, h: 5 }, st)).toBe(true);
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - 6), w: 12, h: 12 }, st)).toBe(false);
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine + 7), w: 30, h: 4 }, st)).toBe(false);
+  });
+
+  it('isStaffResidue: elemento plano com h = 2t + 3 sobre a linha não é resto (limite)', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!)[0];
+    const t = st.metrics.t;
+    const yLine = st.lines[2].ys[300];
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - (2 * t + 2) / 2), w: 30, h: 2 * t + 2 }, st)).toBe(true);
+    expect(isStaffResidue({ x: 300, y: Math.round(yLine - (2 * t + 3) / 2), w: 30, h: 2 * t + 3 }, st)).toBe(false);
+  });
+
+  it('isStaffResidue: glifo centrado fora de [x0, x1) da pauta nunca é resto', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!)[0];
+    const yR = st.lines[2].ys[st.lines[2].ys.length - 1];
+    const yL = st.lines[2].ys[0];
+    expect(isStaffResidue({ x: st.x1 + 5, y: Math.round(yR - 2), w: 30, h: 5 }, st)).toBe(false);
+    expect(isStaffResidue({ x: 0, y: Math.round(yL - 2), w: 30, h: 5 }, st)).toBe(false);
+    expect(isStaffResidue({ x: -100, y: Math.round(yL - 2), w: 30, h: 5 }, st)).toBe(false);
+  });
+
+  it('acha pauta inclinada 6° (runs curtas na segunda tentativa) e devolve o ângulo', () => {
+    const r = createRaster(700, 300);
+    drawStaff(r, { x0: 40, x1: 660, yTop: 40, lines: 4, d: 14, t: 2, tiltDeg: 6 });
+    const ink = binarizeOtsu(extractChannel(r, 'gray'), null);
+    const m = staffMetrics(ink)!;
+    expect(findStaves(ink, m)).toEqual([]); // runs >= 3d nao existem a 6 graus
+    const st = findStavesRobust(ink, m);
+    expect(st).toHaveLength(1);
+    expect(st[0].lines).toHaveLength(4);
+    expect(st[0].angleDeg).toBeCloseTo(6, 0);
+  });
+
+  it('pauta reta: mesmo resultado de antes (ângulo 0, mesmas linhas)', () => {
+    const fx = buildDiastematicLine({ noise: false });
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'), null);
+    const st = findStavesRobust(ink, staffMetrics(ink)!);
+    expect(st[0].angleDeg).toBe(0);
+    // medias do findStaves anterior a Task 4 (o rastreador centra a linha de 2 px em y inteiro)
+    expect(st[0].lines.map((l) => l.mean)).toEqual([60, 76, 92, 108]);
+    expect([st[0].x0, st[0].x1]).toEqual([40, 1360]);
   });
 
   it('rastreia inclinacao de 1 grau e curvatura leve (+-1 px)', () => {

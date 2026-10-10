@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Pauta (modo D): deteccao por projecao dos runs horizontais longos (com busca de inclinacao),
+// Pauta (modo D): deteccao por projecao dos runs horizontais longos (com busca de inclinacao ate 8 graus),
 // agrupamento em pautas de 2 a 6 linhas, rastreamento em faixas verticais, remocao preservando
 // a tinta que cruza a linha (LineTrack-Height), barras de divisao, clave e custos.
 import type { StaffMetrics } from './scale';
@@ -22,7 +22,8 @@ export interface Staff {
   angleDeg: number;
 }
 
-const ANGLE_MAX_DEG = 2;
+const ANGLE_MAX_DEG = 8;
+const ANGLE_COARSE_DEG = 0.5;
 const ANGLE_STEP_DEG = 0.1;
 const MIN_COVERAGE = 0.15;
 
@@ -67,32 +68,55 @@ function profileAt(pts: Pt, h: number, w: number, angleDeg: number, pad: number)
   return prof;
 }
 
+/** Margem da projecao que cabe qualquer angulo ate ANGLE_MAX_DEG. */
+function anglePad(w: number): number {
+  return Math.ceil(Math.tan((ANGLE_MAX_DEG * Math.PI) / 180) * (w / 2)) + 1;
+}
+
+/**
+ * Angulo (graus) que torna a projecao dos pontos mais concentrada (soma dos quadrados). Busca grossa
+ * em [-8, 8] passo 0,5 (ordem 0, +0,5, -0,5, ...), fina em +-0,5 do melhor passo 0,1; empate = menor |a|.
+ */
+export function bestAngle(pts: { xs: Int32Array; ys: Int32Array; n: number }, h: number, w: number): number {
+  const pad = anglePad(w);
+  const score = (a: number): number => {
+    const prof = profileAt(pts, h, w, a, pad);
+    let sc = 0;
+    for (let i = 0; i < prof.length; i++) sc += prof[i] * prof[i];
+    return sc;
+  };
+  const search = (center: number, step: number, n: number): number => {
+    let best = center;
+    let bestScore = -1;
+    for (let k = 0; k <= 2 * n; k++) {
+      // ordem c, c + step, c - step, ... : empate fica com o mais perto do centro
+      const a = Math.round((center + (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * step) * 10) / 10;
+      if (Math.abs(a) > ANGLE_MAX_DEG + 1e-9) continue;
+      const sc = score(a);
+      if (sc > bestScore || (sc === bestScore && Math.abs(a) < Math.abs(best))) {
+        bestScore = sc;
+        best = a;
+      }
+    }
+    return best;
+  };
+  const coarse = search(0, ANGLE_COARSE_DEG, Math.round(ANGLE_MAX_DEG / ANGLE_COARSE_DEG));
+  return search(coarse, ANGLE_STEP_DEG, Math.round(ANGLE_COARSE_DEG / ANGLE_STEP_DEG)) + 0;
+}
+
 /**
  * Pautas na mascara (binarizacao do cinza). Linhas candidatas = picos da projecao dos runs
- * horizontais >= 3d, no angulo (|a| <= 2 graus) que torna a projecao mais concentrada; picos >= 0,5 x
- * o maior e cobertura >= 15% da largura. Pautas = sequencias de 2 a 6 linhas com espacamento s +- 30%.
- * Ordenadas por numero de linhas (desc) e depois por y.
+ * horizontais >= minRun (padrao max(8, 3d)), no angulo (|a| <= 8 graus, `bestAngle`) que torna a
+ * projecao mais concentrada; picos >= 0,5 x o maior e cobertura >= 15% da largura. Pautas =
+ * sequencias de 2 a 6 linhas com espacamento s +- 30%. Ordenadas por numero de linhas (desc) e depois por y.
  */
-export function findStaves(ink: Mask, metrics: StaffMetrics): Staff[] {
+export function findStaves(ink: Mask, metrics: StaffMetrics, minRun = Math.max(8, 3 * metrics.d)): Staff[] {
   const { width: w, height: h } = ink;
-  const pts = longRunPoints(ink, Math.max(8, 3 * metrics.d));
+  const pts = longRunPoints(ink, minRun);
   if (pts.n === 0) return [];
-  const pad = Math.ceil(Math.tan((ANGLE_MAX_DEG * Math.PI) / 180) * (w / 2)) + 1;
-  let bestAngle = 0;
-  let bestScore = -1;
-  const steps = Math.round(ANGLE_MAX_DEG / ANGLE_STEP_DEG);
-  for (let k = 0; k <= 2 * steps; k++) {
-    // ordem 0, +0.1, -0.1, +0.2, ... : empate fica com o menor |angulo|
-    const a = (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * ANGLE_STEP_DEG;
-    const prof = profileAt(pts, h, w, a, pad);
-    let score = 0;
-    for (let i = 0; i < prof.length; i++) score += prof[i] * prof[i];
-    if (score > bestScore) {
-      bestScore = score;
-      bestAngle = a;
-    }
-  }
-  const prof = profileAt(pts, h, w, bestAngle, pad);
+  const pad = anglePad(w);
+  const angle = bestAngle(pts, h, w);
+  const prof = profileAt(pts, h, w, angle, pad);
   let max = 0;
   for (let i = 0; i < prof.length; i++) max = Math.max(max, prof[i]);
   if (max / w < MIN_COVERAGE) return [];
@@ -125,15 +149,62 @@ export function findStaves(ink: Mask, metrics: StaffMetrics): Staff[] {
     cur.push(c);
   }
   if (cur.length) groups.push(cur);
-  const tan = Math.tan((bestAngle * Math.PI) / 180);
+  const tan = Math.tan((angle * Math.PI) / 180);
   const staves: Staff[] = [];
   for (const g of groups) {
     if (g.length < 2 || g.length > 6) continue;
     const tracked = trackLines(ink, g, tan, metrics);
-    if (tracked) staves.push({ ...tracked, metrics, angleDeg: bestAngle });
+    if (tracked) staves.push({ ...tracked, metrics, angleDeg: angle });
   }
   staves.sort((a, b) => b.lines.length - a.lines.length || a.lines[0].mean - b.lines[0].mean);
   return staves;
+}
+
+/** Pautas das tentativas de recurso (runs curtas, mapa r - g) precisam cobrir esta fracao das colunas. */
+export const FALLBACK_MIN_COVERAGE = 0.5;
+
+/**
+ * Fracao das colunas da mascara em que ao menos metade das linhas da pauta tem tinta a +- ceil(t)
+ * de ys[x]. Ao contrario de x1 - x0, nao conta os vaos entre rubricas nas duas pontas.
+ */
+export function staffColumnCoverage(ink: Mask, staff: Staff): number {
+  const { width: w, height: h, data } = ink;
+  const r = Math.max(1, Math.ceil(staff.metrics.t));
+  const need = Math.ceil(staff.lines.length / 2);
+  let present = 0;
+  for (let x = staff.x0; x < staff.x1; x++) {
+    let n = 0;
+    for (const l of staff.lines) {
+      const yc = Math.round(l.ys[x]);
+      for (let y = Math.max(0, yc - r); y <= Math.min(h - 1, yc + r); y++)
+        if (data[y * w + x]) {
+          n++;
+          break;
+        }
+    }
+    if (n >= need) present++;
+  }
+  return w ? present / w : 0; // sobre a largura da mascara (da faixa), nao x1 - x0: de proposito
+}
+
+/** Linhas minimas de uma pauta das tentativas de recurso: o topo e a base de uma linha de letras sao 2. */
+export const FALLBACK_MIN_LINES = 3;
+
+/** Pauta aceitavel numa tentativa de recurso: >= FALLBACK_MIN_LINES linhas e cobertura das colunas. */
+export function isFallbackStaff(ink: Mask, st: Staff): boolean {
+  return st.lines.length >= FALLBACK_MIN_LINES && staffColumnCoverage(ink, st) >= FALLBACK_MIN_COVERAGE;
+}
+
+/**
+ * Primeiro com runs >= 3d; sem pauta, de novo com runs >= max(8, 2t + 4): numa pauta inclinada os
+ * runs horizontais de uma linha medem ~ t / tan(angulo), curtos demais para 3d a partir de ~3 graus.
+ * Runs curtas tambem casam com tracos horizontais alinhados de letras grandes (rubricas): na segunda
+ * tentativa so ficam pautas que cobrem FALLBACK_MIN_COVERAGE das colunas.
+ */
+export function findStavesRobust(ink: Mask, metrics: StaffMetrics): Staff[] {
+  const first = findStaves(ink, metrics);
+  if (first.length) return first;
+  return findStaves(ink, metrics, Math.max(8, 2 * metrics.t + 4)).filter((st) => isFallbackStaff(ink, st));
 }
 
 function median3(a: number, b: number, c: number): number {
@@ -303,6 +374,25 @@ export function staffCoverage(ink: Mask, staff: Staff): number {
         }
     }
   return total ? hit / total : 0;
+}
+
+/**
+ * Resto de linha: plano (h <= 2t + 2 e w >= 3h) com o centro a <= t + 1 de alguma linha da pauta
+ * naquele x, dentro de [x0, x1) da pauta. Regra estreita de proposito: um punctum sobre a linha (quase
+ * quadrado) nunca e resto.
+ */
+export function isStaffResidue(g: PxBox, staff: Staff): boolean {
+  const t = staff.metrics.t;
+  if (g.h > 2 * t + 2 || g.w < 3 * g.h) return false;
+  const cx = g.x + g.w / 2;
+  const cy = g.y + g.h / 2;
+  // fora da extensao da pauta ys e so extrapolado: nao ha linha ali
+  if (!(cx >= staff.x0 && cx < staff.x1)) return false;
+  for (const l of staff.lines) {
+    const xi = Math.min(l.ys.length - 1, Math.max(0, Math.round(cx)));
+    if (Math.abs(cy - l.ys[xi]) <= t + 1) return true;
+  }
+  return false;
 }
 
 export function staffTop(staff: Staff): number {

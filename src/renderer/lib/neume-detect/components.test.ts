@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterComponents, labelComponents, labelsTouching, passesFilters } from './components';
+import { dropIsolatedSpecks, filterComponents, labelComponents, labelsTouching, passesFilters } from './components';
 import { deriveParams } from './scale';
 import type { Mask } from './types';
 
@@ -47,5 +47,14 @@ describe('components', () => {
     expect(passesFilters(lab.components[1], { ...p, maxAspect: 5 })).toBe(false);
     expect(passesFilters(lab.components[0], { ...p, minArea: 5 })).toBe(false);
     expect(filterComponents(lab, p, new Set([1])).map((c) => c.label)).toEqual([2]);
+  });
+
+  it('dropIsolatedSpecks: ponto de até u² só fica perto de um componente maior', () => {
+    const c = (x: number, y: number, w: number, h: number, area = w * h) => ({ label: 0, x, y, w, h, area });
+    const neume = c(100, 100, 6, 18, 40);
+    const near = c(110, 100, 3, 3); // folga 4 <= 6u
+    const far = c(200, 100, 3, 3); // isolado
+    const punctum = c(300, 100, 4, 4); // 16 > u² = 9: nunca é ponto
+    expect(dropIsolatedSpecks([neume, near, far, punctum], 3, 18)).toEqual([neume, near, punctum]);
   });
 });
