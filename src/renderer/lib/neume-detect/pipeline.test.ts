@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractChannel } from './image';
-import { suggestBoxes } from './pipeline';
+import { measureU, suggestBoxes } from './pipeline';
 import { estimateStrokeWidth } from './scale';
 import { binarizeOtsu } from './threshold';
 import type { RasterRGBA } from './types';
@@ -614,6 +614,36 @@ describe('M4c — manchas escuras no modo D', () => {
   it('notação D: notas quadradas cheias ficam fora da medida de u', () => {
     const fx = buildDiastematicLine({ staff: false, seed: 66 }); // sem pauta: só notas 12x12, clave, barra e texto u = 3
     const res = suggestBoxes({ image: fx.raster, notation: 'diastematic', syllables: [], mode: 'candidates' });
-    expect(res.debug.strokeWidth).toBeLessThanOrEqual(4);
+    expect(res.debug.strokeWidth).toBe(3);
+  });
+
+  const solidsOnly = (extra: (r: RasterRGBA) => void) => {
+    const r = createRaster(1000, 240);
+    for (let i = 0; i < 30; i++) fillRect(r, 40 + i * 30, 60 + (i % 4) * 16, 12, 12, INK);
+    extra(r);
+    return r;
+  };
+
+  it('notação D: resto minúsculo sem as notas cheias (pontos soltos) não decide u nem amplia a faixa', () => {
+    const r = solidsOnly((rr) => {
+      for (let i = 0; i < 12; i++) fillRect(rr, 50 + i * 70, 160, 1, 1, INK); // < 10% da tinta
+    });
+    const res = suggestBoxes({ image: r, notation: 'diastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.scale).toBe(1);
+    expect(res.debug.strokeWidth).toBe(12); // medida da mascara inteira
+  });
+
+  it('notação D: resto sem medida (só runs > 40) não torna a faixa "sem tinta"', () => {
+    // retangulo 100 x 45 (aspecto > 2: nao e nota cheia), todo pixel com min(run) = 45 > 40: sem medida
+    const r = solidsOnly((rr) => fillRect(rr, 400, 150, 100, 45, INK));
+    const ink = binarizeOtsu(extractChannel(r, 'gray'));
+    expect(measureU(ink, 'diastematic')).toBe(12); // volta a mascara inteira (antes: 0)
+  });
+
+  it('notação D com pauta e notas/pontos cheios: u igual ao medido sem a exclusão', () => {
+    const fx = buildDiastematicLine({ seed: 69, noise: false });
+    for (let i = 0; i < 30; i++) fillRect(fx.raster, 60 + i * 44, 20, 8, 8, INK); // pontos grossos
+    const ink = binarizeOtsu(extractChannel(fx.raster, 'gray'));
+    expect(measureU(ink, 'diastematic')).toBe(measureU(ink, 'adiastematic'));
   });
 });

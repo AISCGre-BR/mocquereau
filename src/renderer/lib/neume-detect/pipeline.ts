@@ -216,27 +216,42 @@ function workFrac(work: Work, W: number, H: number): FracRect {
   };
 }
 
+/** Fracao minima de preenchimento da caixa para uma nota quadrada cheia. */
+const SOLID_FILL = 0.85;
+/** Sem as notas cheias, sobra ao menos esta fracao da tinta para a medida valer. */
+const SOLID_MIN_RESIDUAL = 0.1;
+
 /**
  * Notacao quadrada: notas cheias (quase quadradas, preenchidas, lado >= 4 px) nao sao traco; cada
  * pixel conta com o lado da nota e, sem pauta nem texto suficientes, a moda vira o tamanho da nota.
- * Devolve a mascara sem elas (a propria mascara se nao houver nenhuma ou se nada sobrar).
+ * Devolve a mascara sem elas, ou a propria mascara se nao houver nenhuma, se sobrar menos de
+ * SOLID_MIN_RESIDUAL da tinta (um resto minusculo, como pontos soltos, nao mede o traco nem deve
+ * levar a ampliacao 2x), se o resto nao tiver medida, ou se a medida da mascara inteira nao for ao
+ * menos 2x a do resto (so corrige quando as notas cheias claramente dominam a moda).
  */
 function withoutSolidNotes(ink: Mask): Mask {
   const lab = labelComponents(ink);
   const solid = new Set<number>();
+  let solidArea = 0;
+  let total = 0;
   for (const c of lab.components) {
+    total += c.area;
     const lo = Math.min(c.w, c.h);
     const hi = Math.max(c.w, c.h);
-    if (lo >= 4 && hi <= 2 * lo && c.area >= SOLID_FILL * c.w * c.h) solid.add(c.label);
+    if (lo >= 4 && hi <= 2 * lo && c.area >= SOLID_FILL * c.w * c.h) {
+      solid.add(c.label);
+      solidArea += c.area;
+    }
   }
-  if (!solid.size || solid.size === lab.components.length) return ink;
+  if (!solid.size || total - solidArea < SOLID_MIN_RESIDUAL * total) return ink;
   const data = ink.data.slice();
   for (let i = 0; i < data.length; i++) if (data[i] && solid.has(lab.labels[i])) data[i] = 0;
-  return { data, width: ink.width, height: ink.height };
+  const rest = { data, width: ink.width, height: ink.height };
+  const uRest = estimateStrokeWidth(rest);
+  const uAll = estimateStrokeWidth(ink);
+  if (uRest === 0 || uAll < 2 * uRest) return ink;
+  return rest;
 }
-
-/** Fracao minima de preenchimento da caixa para uma nota quadrada cheia. */
-const SOLID_FILL = 0.85;
 
 /**
  * Espessura do traco medida fora da linha de texto: a caneta do texto costuma ser mais grossa que a
@@ -244,7 +259,7 @@ const SOLID_FILL = 0.85;
  * fica a medida da faixa inteira; a medida de fora so e aceita se for menor. Na notacao quadrada
  * as notas cheias ficam fora da medida (`withoutSolidNotes`).
  */
-function measureU(grayInk: Mask, notation: SuggestInput['notation']): number {
+export function measureU(grayInk: Mask, notation: SuggestInput['notation']): number {
   const ink = notation === 'diastematic' ? withoutSolidNotes(grayInk) : grayInk;
   const u0 = estimateStrokeWidth(ink);
   if (u0 === 0) return 0;
