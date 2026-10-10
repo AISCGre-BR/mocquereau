@@ -150,7 +150,8 @@ export function useRecortesCommands(): RecortesCommands {
     },
     acceptAllSuggestions: () => suggestions?.acceptAll(),
     discardSuggestions: () => suggestions?.discardPage(),
-    toggleSuggestions: () => suggestions?.setEnabled(!suggestionsEnabled),
+    // Until Task 15 (submenu): on/off toggles between off and sequential.
+    toggleSuggestions: () => suggestions?.setMode(suggestionsEnabled ? "off" : "sequential"),
     removeBox: () => {
       if (active !== null) removeBoxAt(active);
     },

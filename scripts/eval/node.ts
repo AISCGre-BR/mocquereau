@@ -6,14 +6,14 @@
 import { frameOf } from "@shared/box-frame";
 import { suggestBoxes } from "../../src/renderer/lib/neume-detect";
 import type { RasterRGBA } from "../../src/renderer/lib/neume-detect";
-import { planSuggestion, regionToView, viewToRegion, type SuggestPlan } from "../../src/renderer/lib/suggest/request";
+import { planCandidates, planSuggestion, regionToView, viewToRegion, type SuggestPlan } from "../../src/renderer/lib/suggest/request";
 import { coveredByOtherPages } from "../../src/renderer/lib/sources";
 import type { EvalCase } from "./cases";
 import type { Rect } from "./metrics";
 
 export { loadCases, gtAreas, samePage } from "./cases";
 export * from "./metrics";
-export { suggestBoxes, planSuggestion, regionToView, viewToRegion, coveredByOtherPages, frameOf };
+export { suggestBoxes, planSuggestion, planCandidates, regionToView, viewToRegion, coveredByOtherPages, frameOf };
 
 /**
  * The plan, built by the app's planSuggestion. `anchors` (one-anchor scenario) are ground-truth boxes
@@ -21,18 +21,25 @@ export { suggestBoxes, planSuggestion, regionToView, viewToRegion, coveredByOthe
  * (the stored boxes), so the app skips them as targets and passes them as anchors (suggest: false),
  * exactly as when the user has drawn them. Without anchors: the page as the user starts it.
  */
-export function planCase(c: EvalCase, anchors: { index: number }[] = []): SuggestPlan | null {
-  let line = c.line;
-  let sourceModel = c.sourceModel;
-  if (anchors.length) {
-    const boxes = { ...(c.line.syllableBoxes ?? {}) };
-    for (const a of anchors) {
-      const stored = c.storedBoxes[a.index];
-      if (stored) boxes[a.index] = { ...stored };
-    }
-    line = { ...c.line, syllableBoxes: boxes };
-    sourceModel = { ...c.sourceModel, lines: c.sourceModel.lines.map((l) => (l.id === line.id ? line : l)) };
+function caseLine(c: EvalCase, anchors: { index: number }[]): EvalCase["line"] {
+  if (!anchors.length) return c.line;
+  const boxes = { ...(c.line.syllableBoxes ?? {}) };
+  for (const a of anchors) {
+    const stored = c.storedBoxes[a.index];
+    if (stored) boxes[a.index] = { ...stored };
   }
+  return { ...c.line, syllableBoxes: boxes };
+}
+
+function caseSource(c: EvalCase, anchors: { index: number }[]): EvalCase["sourceModel"] {
+  if (!anchors.length) return c.sourceModel;
+  const line = caseLine(c, anchors);
+  return { ...c.sourceModel, lines: c.sourceModel.lines.map((l) => (l.id === line.id ? line : l)) };
+}
+
+export function planCase(c: EvalCase, anchors: { index: number }[] = []): SuggestPlan | null {
+  const line = caseLine(c, anchors);
+  const sourceModel = caseSource(c, anchors);
   // M2: the queue starts at the case's first ground-truth syllable, as if it were the active one
   return planSuggestion(sourceModel, line, c.words, coveredByOtherPages(sourceModel, line.id, ""), new Set(), c.firstGt);
 }
@@ -59,19 +66,18 @@ export function runSequential(
 }
 
 /**
- * Candidate boxes of the detector, in view fractions. There is no candidates plan in the app yet:
- * the sequential plan with `mode: 'candidates'` and no syllables. Its anchors (the page's boxes) make
- * the detector drop glyphs mostly inside them and set the box height on staves (Task 7b).
+ * Candidate boxes of the detector, in view fractions, from the app's planCandidates. Its anchors
+ * (every box of the page in the region) make the detector drop glyphs mostly inside them and set the
+ * box height on staves (Task 7b).
  */
 export function runCandidates(
   c: EvalCase,
   raster: RasterRGBA,
   anchors: { index: number }[] = [],
 ): { cands: Rect[]; ms: number | null } {
-  const plan = planCase(c, anchors);
-  if (!plan) return { cands: [], ms: null }; // no detector call: not a timing sample
+  const plan = planCandidates(caseSource(c, anchors), caseLine(c, anchors));
   const t0 = performance.now();
-  const res = suggestBoxes({ ...plan.input, image: raster, mode: "candidates", syllables: [] });
+  const res = suggestBoxes({ ...plan.input, image: raster });
   const ms = performance.now() - t0;
   const cands = (res.candidates ?? []).map((k) => regionToView(k.box, plan.region));
   return { cands, ms };

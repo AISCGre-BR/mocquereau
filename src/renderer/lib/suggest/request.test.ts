@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ManuscriptLine, ManuscriptSource, StoredImage, SyllabifiedWord } from "../models";
-import { collectTargets, planSuggestion, regionToView, resolveNotation, sequentialStart, viewToRegion } from "./request";
+import { collectTargets, planCandidates, planSuggestion, regionToView, resolveNotation, sequentialStart, viewToRegion } from "./request";
 import { IMAGE_ADJUSTMENTS_DEFAULT } from "../image-adjustments";
 
 const IMG: StoredImage = { dataUrl: "data:,", width: 100, height: 200, mimeType: "image/png" };
@@ -200,5 +200,24 @@ describe("planSuggestion — fila a partir da ativa (M2)", () => {
     const l = line({ neumeBands: [bottom, top] });
     const p = planSuggestion(source([l]), l, words, none, noRej, null)!;
     expect(p.input.bands!.map((b) => b.y)).toEqual([...p.input.bands!.map((b) => b.y)].sort((a, b) => a - b));
+  });
+});
+
+describe("planCandidates", () => {
+  it("planCandidates: modo candidates, sem sílabas, âncoras = caixas na região, bands da região", () => {
+    const l = line({ syllableBoxes: { 1: BOX, 2: null }, neumeBands: [{ x: 0.1, y: 0.1, w: 0.8, h: 0.2 }] });
+    const p = planCandidates(source([l]), l);
+    expect(p.input.mode).toBe("candidates");
+    expect(p.input.syllables).toEqual([]);
+    expect(p.input.anchors!.map((a) => a.index)).toEqual([1]);
+    expect(p.input.bands).toHaveLength(1);
+  });
+
+  it("sem área: a página inteira, todas as caixas como âncoras", () => {
+    const l = line({ syllableBoxes: { 0: BOX, 3: { x: 0.8, y: 0.8, w: 0.1, h: 0.1 } } });
+    const p = planCandidates(source([l]), l);
+    expect(p.region).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+    expect(p.input.anchors!.map((a) => a.index)).toEqual([0, 3]);
+    expect(p.input.bands).toBeUndefined();
   });
 });

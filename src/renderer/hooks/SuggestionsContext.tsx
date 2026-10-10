@@ -6,6 +6,9 @@
 // the project as it is now, so undo, drawing a box or marking a gap hides the
 // suggestion of that syllable; a new frame (rotation/flip) or range discards
 // the page's suggestions. Accepting is the only write: one UPDATE_LINE_BOXES.
+// M3: in the candidates mode a run stores the page's candidate neume groups
+// instead (no syllable); they follow the same rules (transient, per page,
+// discarded on a new frame or range) and hide while a box of the page covers them.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { projectReducer, useProject, type ProjectAction } from "./useProject";
@@ -13,7 +16,9 @@ import { useRecortesContext } from "./RecortesContext";
 import { boxesInView, frameOf, framesEqual } from "@shared/box-frame";
 import type { BoxFrame } from "@shared/project-schema";
 import { createNeumeDetectClient, NeumeDetectCancelledError, type NeumeDetectClient, type SuggestResult } from "../lib/neume-detect";
-import { planSuggestion, regionToView } from "../lib/suggest/request";
+import { planCandidates, planSuggestion, regionToView, type SuggestPlan } from "../lib/suggest/request";
+import { liveCandidates, type LiveCandidate } from "../lib/suggest/candidates";
+import type { SuggestionsMode } from "@shared/suggestions-mode";
 import { loadSuggestImage, renderSuggestRaster } from "../lib/suggest/raster";
 import { isLineGap } from "../lib/syllable-gap";
 import { coveredByOtherPages } from "../lib/sources";
@@ -27,14 +32,28 @@ export interface PageSuggestions {
   range: { start: number; end: number };
 }
 
+/** M3: candidate neume groups of a page, in reading order. */
+export interface PageCandidates {
+  /** Boxes in view fractions at request time. */
+  boxes: SyllableBox[];
+  /** Detector area of each box (same order as `boxes`). */
+  bands: number[];
+  frame: BoxFrame;
+  range: { start: number; end: number };
+}
+
 export type SuggestStatus = "idle" | "running";
 export type SuggestNotice = "needsBand" | "none" | "error";
 
 export interface SuggestionsValue {
-  /** Preferência S8 (padrão true; carregada da main). */
+  /** M1: how Sugerir works; "off" until the preference is known. */
+  mode: SuggestionsMode;
+  /** mode !== "off". */
   enabled: boolean;
-  /** Grava na main; desligar descarta tudo e encerra o worker. */
-  setEnabled(on: boolean): void;
+  /** "off" discards everything and ends the worker; changing mode discards suggestions and candidates. */
+  setMode(mode: SuggestionsMode): void;
+  /** M3: candidates of the active page still free, in reading order. */
+  candidates: LiveCandidate[];
   /** "running" while any run is active (one page or the whole source): Sugerir waits, Cancelar stops it. */
   status: SuggestStatus;
   /** Sugestões vivas da página ativa (já filtradas contra o projeto atual). */
@@ -71,6 +90,10 @@ type RunOutcome = { kind: "done"; result: SuggestResult } | { kind: "skipped" } 
 const SuggestionsContext = createContext<SuggestionsValue | null>(null);
 
 const EMPTY: Record<number, SyllableBox> = Object.freeze({}) as Record<number, SyllableBox>;
+const NO_CANDIDATES: LiveCandidate[] = [];
+
+/** Read through a call: the mode may change while an async loop awaits (no narrowing across awaits). */
+const isOff = (ref: { current: SuggestionsMode }) => ref.current === "off";
 
 function findLine(project: MocquereauProject | null, sourceId: string | null, lineId: string | null) {
   const source = project?.sources.find((s) => s.id === sourceId) ?? null;
@@ -92,7 +115,7 @@ function hasUsableImage(line: ManuscriptLine): boolean {
 }
 
 /** The page's suggestions still valid for the line as it is now (S5). */
-function stillValid(page: PageSuggestions, line: ManuscriptLine): boolean {
+function stillValid(page: { frame: BoxFrame; range: { start: number; end: number } }, line: ManuscriptLine): boolean {
   return (
     framesEqual(page.frame, frameOf(line.imageAdjustments)) &&
     page.range.start === line.syllableRange.start &&
@@ -127,9 +150,11 @@ export function SuggestionsProvider({
   const { activeSourceId, activeLineId } = recortes;
 
   // null = preference not loaded yet: treated as off (S8: no worker before we know).
-  const [enabledPref, setEnabledState] = useState<boolean | null>(null);
-  const enabled = enabledPref === true;
+  const [modePref, setModeState] = useState<SuggestionsMode | null>(null);
+  const mode: SuggestionsMode = modePref ?? "off";
+  const enabled = mode !== "off";
   const [pages, setPages] = useState<ReadonlyMap<string, PageSuggestions>>(() => new Map());
+  const [candPages, setCandPages] = useState<ReadonlyMap<string, PageCandidates>>(() => new Map());
   const [rejected, setRejected] = useState<ReadonlyMap<string, ReadonlySet<number>>>(() => new Map());
   const [notices, setNotices] = useState<ReadonlyMap<string, { notice: SuggestNotice; seq: number }>>(() => new Map());
   const noticeSeqRef = useRef(0);
@@ -143,7 +168,9 @@ export function SuggestionsProvider({
   projectRef.current = project;
   const pagesRef = useRef(pages);
   pagesRef.current = pages;
-  const enabledRef = useRef(enabled);
+  const candPagesRef = useRef(candPages);
+  candPagesRef.current = candPages;
+  const modeRef = useRef(mode);
   const rejectedRef = useRef(rejected);
   rejectedRef.current = rejected;
   const runningRef = useRef<Running | null>(null);
@@ -164,6 +191,16 @@ export function SuggestionsProvider({
     [],
   );
 
+  const updateCandPages = useCallback(
+    (fn: (prev: ReadonlyMap<string, PageCandidates>) => ReadonlyMap<string, PageCandidates>) => {
+      const next = fn(candPagesRef.current);
+      if (next === candPagesRef.current) return;
+      candPagesRef.current = next;
+      setCandPages(next);
+    },
+    [],
+  );
+
   // S8: the preference lives in the main process.
   useEffect(() => {
     let alive = true;
@@ -172,9 +209,11 @@ export function SuggestionsProvider({
       get()
         .then((on) => {
           // A choice the user made meanwhile wins over the stored value.
+          // Until Task 15 only on/off is stored: on = sequential.
           if (alive && typeof on === "boolean" && !userChoseRef.current) {
-            enabledRef.current = on;
-            setEnabledState(on);
+            const loaded: SuggestionsMode = on ? "sequential" : "off";
+            modeRef.current = loaded;
+            setModeState(loaded);
           }
         })
         .catch(() => {});
@@ -210,6 +249,21 @@ export function SuggestionsProvider({
     }
     if (changed) updatePages(() => next);
   }, [project, pages, updatePages]);
+
+  // Same rule for the candidates (S5).
+  useEffect(() => {
+    if (candPages.size === 0) return;
+    let changed = false;
+    const next = new Map(candPages);
+    for (const [lineId, page] of candPages) {
+      const { line } = findLineById(project, lineId);
+      if (!line || !stillValid(page, line)) {
+        next.delete(lineId);
+        changed = true;
+      }
+    }
+    if (changed) updateCandPages(() => next);
+  }, [project, candPages, updateCandPages]);
 
   const setNotice = useCallback((lineId: string, notice: SuggestNotice | null) => {
     // A new seq even for the same notice: "none" twice shows the line twice.
@@ -261,15 +315,20 @@ export function SuggestionsProvider({
   /** One request on one page; resolves when the page's suggestions (or notice) are stored. */
   const run = useCallback(
     async (lineId: string, start: number | null): Promise<RunOutcome> => {
-      if (!enabledRef.current || runningRef.current) return { kind: "skipped" };
+      const runMode = modeRef.current;
+      if (runMode === "off" || runningRef.current) return { kind: "skipped" };
       const { source, line } = findLineById(projectRef.current, lineId);
       const words = projectRef.current?.text.words;
       if (!source || !line || !words || !hasUsableImage(line)) return { kind: "skipped" };
 
-      let plan: ReturnType<typeof planSuggestion>;
+      let plan: SuggestPlan | null;
       try {
-        const covered = coveredByOtherPages(source, line.id, "");
-        plan = planSuggestion(source, line, words, covered, rejectedRef.current.get(line.id) ?? new Set(), start);
+        if (runMode === "candidates") {
+          plan = planCandidates(source, line);
+        } else {
+          const covered = coveredByOtherPages(source, line.id, "");
+          plan = planSuggestion(source, line, words, covered, rejectedRef.current.get(line.id) ?? new Set(), start);
+        }
       } catch {
         setNotice(line.id, "error");
         return { kind: "error" };
@@ -299,11 +358,21 @@ export function SuggestionsProvider({
         if (runningRef.current !== token) return { kind: "cancelled" };
 
         if (findLineById(projectRef.current, line.id).line) {
-          const boxes: Record<number, SyllableBox> = {};
-          for (const s of result.suggestions) boxes[s.index] = regionToView(s.box, plan.region);
-          updatePages((prev) => new Map(prev).set(line.id, { boxes, frame, range }));
+          const region = plan.region;
+          let found: number;
+          if (runMode === "candidates") {
+            const cands = result.candidates ?? [];
+            const page: PageCandidates = { boxes: cands.map((c) => regionToView(c.box, region)), bands: cands.map((c) => c.band), frame, range };
+            updateCandPages((prev) => new Map(prev).set(line.id, page));
+            found = cands.length;
+          } else {
+            const boxes: Record<number, SyllableBox> = {};
+            for (const s of result.suggestions) boxes[s.index] = regionToView(s.box, region);
+            updatePages((prev) => new Map(prev).set(line.id, { boxes, frame, range }));
+            found = result.suggestions.length;
+          }
           // Task 7 turns on the area tool on needsBand.
-          setNotice(line.id, result.debug.needsBand ? "needsBand" : result.suggestions.length === 0 ? "none" : null);
+          setNotice(line.id, result.debug.needsBand ? "needsBand" : found === 0 ? "none" : null);
         }
         return { kind: "done", result };
       } catch (err) {
@@ -314,7 +383,7 @@ export function SuggestionsProvider({
         finish(token);
       }
     },
-    [finish, setNotice, updatePages],
+    [finish, setNotice, updatePages, updateCandPages],
   );
 
   /** Stops whatever runs: the source-wide loop (no more pages) and the request in flight. */
@@ -336,6 +405,11 @@ export function SuggestionsProvider({
   const active = useMemo(
     () => (activeSource && activeLine ? liveBoxes(activePage, activeSource, activeLine) : EMPTY),
     [activePage, activeSource, activeLine],
+  );
+  const activeCandPage = activeLineId ? candPages.get(activeLineId) : undefined;
+  const candidates = useMemo(
+    () => (activeCandPage && activeLine && stillValid(activeCandPage, activeLine) ? liveCandidates(activeCandPage, activeLine) : NO_CANDIDATES),
+    [activeCandPage, activeLine],
   );
 
   /** Live suggestions of the active page from the latest project and pages (not this render's snapshot). */
@@ -380,27 +454,34 @@ export function SuggestionsProvider({
   }
 
   const value: SuggestionsValue = {
+    mode,
     enabled,
-    setEnabled(on) {
+    setMode(next) {
       userChoseRef.current = true;
-      setEnabledState(on);
-      enabledRef.current = on;
-      window.mocquereau?.setSuggestionsEnabled?.(on).catch(() => {});
-      if (!on) {
-        cancelRunning();
-        updatePages(() => new Map());
+      const prev = modeRef.current;
+      modeRef.current = next;
+      setModeState(next);
+      // Until Task 15 only on/off persists (the candidates mode is per session).
+      window.mocquereau?.setSuggestionsEnabled?.(next !== "off").catch(() => {});
+      if (next === prev) return;
+      // A run of the old mode never lands in the new one.
+      cancelRunning();
+      updatePages(() => new Map());
+      updateCandPages(() => new Map());
+      setNotices(new Map());
+      if (next === "off") {
         setRejected(new Map());
-        setNotices(new Map());
         clientRef.current?.dispose();
         clientRef.current = null;
       }
     },
+    candidates,
     status: running || sourceRunning ? "running" : "idle",
     active,
     notice: (activeLineId && notices.get(activeLineId)?.notice) || null,
     noticeSeq: (activeLineId && notices.get(activeLineId)?.seq) || 0,
     suggest() {
-      if (!activeLine || runningRef.current || sourceRunRef.current || !enabledRef.current) return;
+      if (!activeLine || runningRef.current || sourceRunRef.current || modeRef.current === "off") return;
       // An explicit Sugerir gives the page's rejected syllables another chance.
       const lineId = activeLine.id;
       if (rejectedRef.current.has(lineId)) {
@@ -433,18 +514,24 @@ export function SuggestionsProvider({
         next.delete(activeLineId);
         return next;
       });
+      updateCandPages((prev) => {
+        if (!prev.has(activeLineId)) return prev;
+        const next = new Map(prev);
+        next.delete(activeLineId);
+        return next;
+      });
       setNotice(activeLineId, null);
     },
     async suggestSource() {
       const skipped: string[] = [];
       const source = projectRef.current?.sources.find((s) => s.id === activeSourceId);
-      if (!source || !enabledRef.current || runningRef.current || sourceRunRef.current) return { skipped };
+      if (!source || modeRef.current === "off" || runningRef.current || sourceRunRef.current) return { skipped };
       const loop: SourceRun = { cancelled: false };
       sourceRunRef.current = loop;
       setSourceRunning(true);
       try {
         for (const { id } of source.lines) {
-          if (loop.cancelled || !enabledRef.current) break;
+          if (loop.cancelled || isOff(modeRef)) break;
           const outcome = await run(id, null);
           if (loop.cancelled || outcome.kind === "cancelled") break;
           if (outcome.kind === "done" && outcome.result.debug.needsBand) skipped.push(id);
