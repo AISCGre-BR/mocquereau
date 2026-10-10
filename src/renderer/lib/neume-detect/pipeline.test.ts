@@ -918,4 +918,11 @@ describe('M4f — canal automático', () => {
     const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates' });
     expect(res.debug.channel).toBe('r');
   });
+
+  it('rubrica vermelha numa faixa adiastemática sem pauta: continua no R', () => {
+    const fx = buildAdiastematicLine({ seed: 71, words: [['Do', 'mi', 'nus'], ['di', 'xit']] });
+    drawText(fx.raster, 'DOMINUS', 80, 150, 40, 6, RED_LINE); // letras grandes vermelhas
+    const res = suggestBoxes({ image: fx.raster, notation: 'adiastematic', syllables: [], mode: 'candidates' });
+    expect(res.debug.channel).toBe('r');
+  });
 });

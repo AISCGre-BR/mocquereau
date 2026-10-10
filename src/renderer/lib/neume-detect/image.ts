@@ -74,12 +74,14 @@ export function contrastScore(img: GrayImage, mask?: Mask | null): number {
   return (med - p2) / mad;
 }
 
+/** Razao de contraste sobre o do R a partir da qual outro canal substitui o R (M4f). */
+export const CHANNEL_SWITCH_RATIO = 1.25;
 /**
- * Razao de contraste sobre o do R a partir da qual outro canal substitui o R (M4f). O plano partia de
- * 1,25; pelo criterio da tarefa (SG339 piorou com a troca: achados do sequencial com uma ancora
- * 67% -> 33%) subiu para o menor valor que mantem o R em SG339 (razao medida 16,90 / 10,59 = 1,596).
+ * Contraste da tinta no R abaixo do qual o R e "fraco" (a tinta some nele). Calibrado entre a tinta
+ * avermelhada desbotada da fixture (R 1,11) e o menor contraste de R medido nas fontes reais (3,87,
+ * uma faixa do P-AR); SG339 tem R 10,59. A troca exige R fraco E a razao.
  */
-export const CHANNEL_SWITCH_RATIO = 1.6;
+export const R_WEAK_CONTRAST = 3;
 
 type Channels = { r: GrayImage; g: GrayImage; b: GrayImage; gray: GrayImage; valid: Mask };
 
@@ -114,8 +116,17 @@ function inkContrast(img: GrayImage, ink: Uint8Array, valid: Mask): number {
   return (mb - medianOf(fg)) / (1.4826 * histPercentile(dev, 50) + 1);
 }
 
-function inkContrasts(w: Channels): Record<ChannelName, number> {
+/**
+ * r - g a partir do qual um pixel e vermelho de rubrica (saturado: vermelhao r - g ~ 150), nao tinta
+ * avermelhada de neuma (desbotada: r - g ~ 90). O R existe para apagar rubricas: elas nao contam na
+ * medida de quanto a tinta some no R.
+ */
+export const RUBRIC_RG = 120;
+
+/** Contraste da tinta em cada canal (calcular uma vez por faixa e reusar). Rubricas ficam de fora. */
+export function inkContrasts(w: Channels): Record<ChannelName, number> {
   const ink = binarizeOtsu(w.gray, w.valid).data;
+  for (let i = 0; i < ink.length; i++) if (ink[i] && w.r.data[i] - w.g.data[i] >= RUBRIC_RG) ink[i] = 0;
   return {
     r: inkContrast(w.r, ink, w.valid),
     gray: inkContrast(w.gray, ink, w.valid),
@@ -126,19 +137,19 @@ function inkContrasts(w: Channels): Record<ChannelName, number> {
 
 /**
  * Canal da tinta: R por padrao (apaga rubricas); outro canal (gray, g, b, nessa ordem de empate) so
- * com contraste >= CHANNEL_SWITCH_RATIO x o do R (tinta avermelhada ou desbotada some no R).
+ * quando o R e fraco (contraste < R_WEAK_CONTRAST: tinta avermelhada ou desbotada some no R) e o outro
+ * tem contraste >= CHANNEL_SWITCH_RATIO x o do R. `sc` = inkContrasts(w), se ja calculado.
  */
-export function pickInkChannel(w: Channels): { name: ChannelName; image: GrayImage } {
-  const sc = inkContrasts(w);
+export function pickInkChannel(w: Channels, sc: Record<ChannelName, number> = inkContrasts(w)): { name: ChannelName; image: GrayImage } {
   let best: ChannelName = 'r';
-  for (const n of ['gray', 'g', 'b'] as const)
-    if (sc[n] > sc[best] && sc[n] >= CHANNEL_SWITCH_RATIO * sc.r) best = n;
+  if (sc.r < R_WEAK_CONTRAST)
+    for (const n of ['gray', 'g', 'b'] as const)
+      if (sc[n] > sc[best] && sc[n] >= CHANNEL_SWITCH_RATIO * sc.r) best = n;
   return { name: best, image: w[best] };
 }
 
 /** Canal de maior contraste da tinta entre r, gray, g, b (empate: nessa ordem). */
-export function bestContrastChannel(w: Channels): ChannelName {
-  const sc = inkContrasts(w);
+export function bestContrastChannel(w: Channels, sc: Record<ChannelName, number> = inkContrasts(w)): ChannelName {
   let best: ChannelName = 'r';
   for (const n of ['gray', 'g', 'b'] as const) if (sc[n] > sc[best]) best = n;
   return best;

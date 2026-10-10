@@ -10,8 +10,8 @@ import { dropIsolatedSpecks, filterComponents, labelComponents, labelsTouching, 
 import {
   cropGray,
   cropMask,
-  contrastScore,
   bestContrastChannel,
+  inkContrasts,
   pickInkChannel,
   prepareWork,
   rednessInk,
@@ -423,12 +423,13 @@ function analyzeBand(
       : darkBlobs(work.gray, work.valid, p);
   // M4f: R por padrao; outro canal so com contraste claramente maior (pickInkChannel). Pauta vermelha
   // (some no R) fica no R: as linhas somam "tinta" no cinza e puxariam a troca, mas o R ja as apaga.
-  let channel = pickInkChannel(work).name;
+  const contrasts = inkContrasts(work); // uma vez por faixa: primeira passada e repeticao
+  let channel = pickInkChannel(work, contrasts).name;
   if (staff && channel !== 'r' && staffCoverage(sauvola(work.r, p.window, p.k, 128, work.valid), staff) < RED_COVERAGE)
     channel = 'r';
   let st = inkStage(work, p, staff, channel, p.k, blobs);
   if (st.comps.length < needed) {
-    const retry = inkStage(work, p, staff, bestContrastChannel(work), 0.1, blobs);
+    const retry = inkStage(work, p, staff, bestContrastChannel(work, contrasts), 0.1, blobs);
     if (retry.comps.length > st.comps.length) st = retry;
   }
   debug.channel = st.channel;

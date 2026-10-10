@@ -6,6 +6,8 @@ import {
   prepareWork,
   pickInkChannel,
   CHANNEL_SWITCH_RATIO,
+  inkContrasts,
+  R_WEAK_CONTRAST,
   rednessInk,
   contrastScore,
   cropGray,
@@ -118,8 +120,22 @@ describe('image', () => {
     const img = (v: number[]) => ({ data: Uint8Array.from(v), width: v.length, height: 1 });
     const flat = img(Array.from({ length: 200 }, () => 200));
     const valid = { data: new Uint8Array(200).fill(1), width: 200, height: 1 };
-    // todos iguais: fica R
     expect(pickInkChannel({ r: flat, g: flat, b: flat, gray: flat, valid }).name).toBe('r');
-    expect(CHANNEL_SWITCH_RATIO).toBe(1.6);
+  });
+
+  it('pickInkChannel: tinta avermelhada com R ainda forte fica no R, mesmo com outro canal >= 1,25x', () => {
+    const fx = buildAdiastematicLine({ seed: 69, inkColor: [140, 40, 30] });
+    const w = prepareWork(fx.raster, { x: 0, y: 0, w: fx.raster.width, h: fx.raster.height }, 1);
+    const sc = inkContrasts(w);
+    expect(sc.r).toBeGreaterThanOrEqual(R_WEAK_CONTRAST);
+    expect(Math.max(sc.gray, sc.g, sc.b)).toBeGreaterThanOrEqual(CHANNEL_SWITCH_RATIO * sc.r);
+    expect(pickInkChannel(w).name).toBe('r');
+  });
+
+  it('pickInkChannel: tinta desbotada com R fraco troca de canal', () => {
+    const fx = buildAdiastematicLine({ seed: 69, inkColor: [215, 120, 90] });
+    const w = prepareWork(fx.raster, { x: 0, y: 0, w: fx.raster.width, h: fx.raster.height }, 1);
+    expect(inkContrasts(w).r).toBeLessThan(R_WEAK_CONTRAST);
+    expect(pickInkChannel(w).name).not.toBe('r');
   });
 });
