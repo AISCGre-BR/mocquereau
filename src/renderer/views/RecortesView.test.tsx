@@ -787,7 +787,7 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
   it("clique sem arrastar dentro de uma sugestão ativa a sílaba dela, sem aceitar nem desenhar", async () => {
     const v = await mountOn();
     await v.suggestWith({ 0: B0, 2: B2 });
-    expect(v.suggested().every((el) => el.className.includes("pointer-events-none"))).toBe(true);
+    expect(nonActive(v).every((el) => el.className.includes("pointer-events-none"))).toBe(true);
     // B2 ocupa x 90-110, y 20-40 na folha de 200 x 100.
     pointer(v.wrapper(), "pointerdown", 100, 30);
     pointer(v.wrapper(), "pointerup", 100, 30);
@@ -799,14 +799,118 @@ describe("RecortesView: sugestões de neumas (S3, S6, S10)", () => {
     const v = await mountOn();
     await v.suggestWith({ 0: B0, 2: B2 });
     expect(v.ref.recortes!.activeSyllable).toBe(0);
-    // Nenhuma sugestão recebe o ponteiro: o gesto começa na folha.
-    expect(v.suggested().every((el) => el.className.includes("pointer-events-none"))).toBe(true);
+    // As sugestões das outras sílabas não recebem o ponteiro: o gesto começa na folha.
+    expect(nonActive(v)).toHaveLength(1);
+    expect(nonActive(v).every((el) => el.className.includes("pointer-events-none"))).toBe(true);
     pointer(v.wrapper(), "pointerdown", 100, 30);
     pointer(v.wrapper(), "pointermove", 140, 80);
     pointer(v.wrapper(), "pointerup", 140, 80);
     expect(v.ref.recortes!.activeSyllable).toBe(0);
     const drawn = v.line().syllableBoxes![0]!;
     expect([drawn.x, drawn.y, drawn.w, drawn.h].map((n) => +n.toFixed(9))).toEqual([0.5, 0.3, 0.2, 0.5]);
+  });
+
+  /** Suggestions of the syllables other than the active one (shown only, no handles). */
+  const nonActive = (v: { container: HTMLElement }) => Array.from(v.container.querySelectorAll<HTMLElement>("[data-suggested]"));
+  const rounded = (b: SyllableBox | null | undefined) => b && [b.x, b.y, b.w, b.h].map((n) => +n.toFixed(9));
+  const suggestionOverlay = (v: { container: HTMLElement }) =>
+    v.container.querySelector<HTMLElement>("[data-suggested-overlay]");
+
+  it("só a sugestão da ativa tem as 8 alças, e continua tracejada no pigmento (não em rubrica)", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 1: B1, 2: B2 });
+    const overlay = suggestionOverlay(v)!;
+    expect(overlay).not.toBeNull();
+    expect(overlay.getAttribute("data-suggested-overlay")).toBe("0");
+    expect(overlay.className).toContain("sc-box--suggested");
+    expect(overlay.className).not.toContain("sc-box--active");
+    expect(overlay.className).not.toContain("pointer-events-none");
+    expect(overlay.querySelectorAll(".sc-box__h")).toHaveLength(8);
+    expect(nonActive(v)).toHaveLength(2);
+    for (const el of nonActive(v)) {
+      expect(el.querySelectorAll(".sc-box__h")).toHaveLength(0);
+      expect(el.className).toContain("pointer-events-none");
+    }
+    // A sugestão não é uma caixa: nenhuma caixa ativa com alças em rubrica.
+    expect(v.container.querySelector("[data-box-overlay]")).toBeNull();
+  });
+
+  it("arrastar a alça e da sugestão grava a caixa mais larga num passo, sem avançar; Ctrl+Z traz a sugestão de volta", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0, 1: B1 });
+    const overlay = suggestionOverlay(v)!;
+    const handle = overlay.querySelector('[data-handle="e"]')!;
+    // B0 ocupa x 10-30, y 20-40 na folha de 200 x 100: a alça e fica em x 30.
+    pointer(handle, "pointerdown", 30, 30);
+    pointer(overlay, "pointermove", 40, 30);
+    expect(v.line().syllableBoxes).toEqual({}); // rascunho local até soltar
+    pointer(overlay, "pointerup", 50, 30);
+    expect(rounded(v.line().syllableBoxes![0])).toEqual([0.05, 0.2, 0.2, 0.2]);
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    expect(suggestionOverlay(v)).toBeNull();
+    expect(v.container.querySelector("[data-box-overlay]")).not.toBeNull();
+    expect(v.suggested()).toHaveLength(1); // a de 1 continua
+
+    act(() => v.ref.history!.undo());
+    expect(v.line().syllableBoxes).toEqual({});
+    expect(v.ref.history!.canUndo).toBe(false);
+    expect(suggestionOverlay(v)).not.toBeNull();
+    expect(rounded(v.ref.suggestions!.active[0])).toEqual(rounded(B0));
+  });
+
+  it("arrastar o corpo da sugestão grava a caixa na posição nova", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0 });
+    const overlay = suggestionOverlay(v)!;
+    pointer(overlay, "pointerdown", 20, 30);
+    pointer(overlay, "pointermove", 40, 40);
+    pointer(overlay, "pointerup", 60, 50);
+    expect(rounded(v.line().syllableBoxes![0])).toEqual([0.25, 0.4, 0.1, 0.2]);
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+  });
+
+  it("clique na sugestão sem mover não grava nada (continua sugestão)", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0 });
+    const overlay = suggestionOverlay(v)!;
+    pointer(overlay, "pointerdown", 20, 30);
+    pointer(overlay, "pointerup", 20, 30);
+    expect(v.line().syllableBoxes).toEqual({});
+    expect(v.ref.history!.canUndo).toBe(false);
+    expect(suggestionOverlay(v)).not.toBeNull();
+  });
+
+  it("aceitar com a geometria ajustada nunca substitui uma caixa já gravada", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0 });
+    act(() => v.ref.suggestions!.accept(0, { ...B0, w: 0.3 }));
+    expect(rounded(v.line().syllableBoxes![0])).toEqual([0.05, 0.2, 0.3, 0.2]);
+    act(() => v.ref.suggestions!.accept(0, { ...B0, w: 0.4 }));
+    expect(rounded(v.line().syllableBoxes![0])).toEqual([0.05, 0.2, 0.3, 0.2]);
+  });
+
+  it("setas na sugestão ativa aceitam onde ela pousa; setas seguidas são um passo de desfazer", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0 });
+    v.key({ key: "ArrowRight" });
+    v.key({ key: "ArrowRight" });
+    expect(v.line().syllableBoxes![0]!.x).toBeCloseTo(0.05 + 2 / 200, 9);
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    act(() => v.ref.history!.undo());
+    expect(v.line().syllableBoxes).toEqual({});
+    expect(v.ref.history!.canUndo).toBe(false);
+  });
+
+  it("com a ferramenta de área ligada a sugestão não tem alças", async () => {
+    const v = await mountOn();
+    await v.suggestWith({ 0: B0 });
+    act(() => v.ref.recortes!.setBandTool(true));
+    expect(suggestionOverlay(v)).toBeNull();
+    expect(v.container.querySelectorAll(".sc-box__h")).toHaveLength(0);
+    expect(nonActive(v)).toHaveLength(1);
+    expect(nonActive(v)[0].className).toContain("pointer-events-none");
+    v.key({ key: "ArrowRight" });
+    expect(v.line().syllableBoxes).toEqual({});
   });
 
   it("Ctrl+Shift+Enter aceita todas num passo, sem avançar a sílaba", async () => {

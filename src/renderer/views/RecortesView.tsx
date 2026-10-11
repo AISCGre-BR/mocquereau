@@ -390,7 +390,9 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
 
     // Setas: movem a caixa ativa 1 px (Shift: 10 px); setas seguidas são um passo de desfazer.
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key) && active !== null) {
-      const box = viewBoxes[active];
+      // A suggestion nudged is accepted where it lands (the same nudge undo step).
+      const suggestion = viewBoxes[active] == null && !recortes.bandTool ? suggestions.active[active] : undefined;
+      const box = viewBoxes[active] ?? suggestion;
       if (!box || !activeLine) return;
       e.preventDefault();
       const img = document.querySelector<HTMLElement>("[data-image-wrapper]");
@@ -405,7 +407,9 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
       if (e.key === "ArrowDown") y += pixels / rect.height;
       x = Math.max(0, Math.min(1 - box.w, x));
       y = Math.max(0, Math.min(1 - box.h, y));
-      commitBox(active, { ...box, x, y }, { coalesceKey: `UPDATE_LINE_BOXES:${activeLine.id}:${active}:nudge` });
+      const meta = { coalesceKey: `UPDATE_LINE_BOXES:${activeLine.id}:${active}:nudge` };
+      if (suggestion) suggestions.accept(active, { ...box, x, y }, meta);
+      else commitBox(active, { ...box, x, y }, meta);
     }
   };
   useEffect(() => {
@@ -465,6 +469,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onActivateSyllable={recortes.setActiveSyllable}
                 onBoxCommit={(idx, box) => commitBox(idx, box)}
                 suggestedBoxes={suggestions.active}
+                onSuggestionCommit={(idx, box) => suggestions.accept(idx, box)}
                 candidates={candidateBoxes}
                 onPickCandidate={pickCandidate}
                 neumeBands={activeLine?.neumeBands}

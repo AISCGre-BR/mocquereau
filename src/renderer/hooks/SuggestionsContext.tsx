@@ -15,6 +15,7 @@ import { projectReducer, useProject, type ProjectAction } from "./useProject";
 import { useRecortesContext } from "./RecortesContext";
 import { boxesInView, frameOf, framesEqual } from "@shared/box-frame";
 import type { BoxFrame } from "@shared/project-schema";
+import type { HistoryMeta } from "../history/history";
 import { createNeumeDetectClient, NeumeDetectCancelledError, type NeumeDetectClient, type SuggestResult } from "../lib/neume-detect";
 import { planCandidates, planSuggestion, regionToView, type SuggestPlan } from "../lib/suggest/request";
 import { liveCandidates, type LiveCandidate } from "../lib/suggest/candidates";
@@ -67,7 +68,11 @@ export interface SuggestionsValue {
   noticeSeq: number;
   suggest(): void;
   cancel(): void;
-  accept(idx: number): void;
+  /**
+   * The syllable's suggestion becomes its box; `box` = the suggestion as the user
+   * adjusted it (moved, resized, nudged). `meta` = history meta (nudge coalescing).
+   */
+  accept(idx: number, box?: SyllableBox, meta?: HistoryMeta): void;
   /** Todas da página ativa, um dispatch. */
   acceptAll(): void;
   /** Some e entra nas rejeitadas da página (sessão); um Sugerir explícito na página as esquece. */
@@ -432,7 +437,7 @@ export function SuggestionsProvider({
     return { source, line, live: liveBoxes(pagesRef.current.get(line.id), source, line) };
   }
 
-  function acceptBoxes(pick: (live: Record<number, SyllableBox>) => Record<number, SyllableBox>) {
+  function acceptBoxes(pick: (live: Record<number, SyllableBox>) => Record<number, SyllableBox>, meta?: HistoryMeta) {
     const fresh = freshActive();
     if (!fresh) return;
     const { source, line } = fresh;
@@ -452,7 +457,7 @@ export function SuggestionsProvider({
       type: "UPDATE_LINE_BOXES",
       payload: { sourceId: source.id, lineId: line.id, syllableBoxes: merged, confirmed: true },
     };
-    dispatch(action);
+    dispatch(meta ? { ...action, meta } : action);
     projectRef.current = projectReducer({ project: projectRef.current, isDirty: false, currentFilePath: null }, action).project;
   }
 
@@ -506,8 +511,8 @@ export function SuggestionsProvider({
       void run(lineId, recortes.activeSyllable);
     },
     cancel: cancelRunning,
-    accept(idx) {
-      acceptBoxes((live) => (idx in live ? { [idx]: live[idx] } : {}));
+    accept(idx, box, meta) {
+      acceptBoxes((live) => (idx in live ? { [idx]: box ?? live[idx] } : {}), meta);
     },
     acceptAll() {
       acceptBoxes((live) => live);

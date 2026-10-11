@@ -25,8 +25,12 @@ interface SyllableBoxOverlayProps {
   onBoxChange: (newBox: SyllableBox) => void;           // every pointermove: the draft, kept by the canvas
   onBoxCommit: (newBox: SyllableBox) => void;           // end of the gesture (pointerup): written to the project
   onBoxCancel?: () => void;                             // gesture cancelled (pointercancel, capture lost): drop the draft
-  /** 'band': a neume line band (S7), outlined in rule-strong without pigment or tag. */
-  variant?: 'syllable' | 'band';
+  /**
+   * 'band': a neume line band (S7), outlined in rule-strong without pigment or tag.
+   * 'suggested': the active syllable's suggestion, still dashed in its pigment
+   * (it becomes a real box only when a gesture on it commits).
+   */
+  variant?: 'syllable' | 'band' | 'suggested';
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -122,6 +126,7 @@ export function SyllableBoxOverlay({
   onContextMenu,
 }: SyllableBoxOverlayProps) {
   const band = variant === 'band';
+  const suggested = variant === 'suggested';
   const dragState = useRef<DragState | null>(null);
 
   // ── Pointer events on the outer div (body drag + handle move relay) ────────
@@ -190,6 +195,12 @@ export function SyllableBoxOverlay({
       return;
     }
 
+    // A click without moving is no edit.
+    if (e.clientX === state.startClientX && e.clientY === state.startClientY) {
+      onBoxCancel?.();
+      return;
+    }
+
     const offW = container.offsetWidth;
     const offH = container.offsetHeight;
     const dx = (e.clientX - state.startClientX) / offW;
@@ -227,7 +238,7 @@ export function SyllableBoxOverlay({
     e.stopPropagation();
 
     // Transfer pointer capture to the outer div so its pointermove/pointerup handlers fire
-    const outer = e.currentTarget.closest('[data-box-overlay],[data-band-overlay]') as HTMLElement | null;
+    const outer = e.currentTarget.closest('[data-box-overlay],[data-band-overlay],[data-suggested-overlay]') as HTMLElement | null;
     if (outer) {
       outer.setPointerCapture(e.pointerId);
     }
@@ -245,10 +256,13 @@ export function SyllableBoxOverlay({
 
   return (
     <div
-      data-box-overlay={band ? undefined : ''}
+      data-box-overlay={band || suggested ? undefined : ''}
       data-band-overlay={band ? '' : undefined}
+      data-suggested-overlay={suggested ? syllableIdx : undefined}
       className={[
-        band ? 'absolute rounded-xs border border-dashed border-rule-strong' : cropBoxClass('active', syllableIdx),
+        band
+          ? 'absolute rounded-xs border border-dashed border-rule-strong'
+          : cropBoxClass(suggested ? 'suggested' : 'active', syllableIdx),
         'select-none touch-none',
       ].join(' ')}
       style={{
@@ -270,7 +284,8 @@ export function SyllableBoxOverlay({
           key={h.id}
           data-handle={h.id}
           className={`sc-box__h sc-box__h--${h.id}`}
-          style={{ cursor: h.cursor }}
+          // A suggestion's handles take its pigment, not the rubric of a real box.
+          style={suggested ? { cursor: h.cursor, borderColor: 'var(--pig, var(--lapis))' } : { cursor: h.cursor }}
           onPointerDown={(e) => onHandlePointerDown(e, h.id)}
         />
       ))}
