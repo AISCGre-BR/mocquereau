@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -33,6 +34,8 @@ function enabledItems(root: HTMLElement): HTMLButtonElement[] {
   );
 }
 
+const VIEWPORT_MARGIN = 8;
+
 /** Placa do menu (sc-menu). Serve à menubar e a menus de contexto. */
 export function MenuSurface({
   children,
@@ -47,6 +50,17 @@ export function MenuSurface({
   const ref = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  // Labels never wrap, so the plate sizes to its longest one: one that would
+  // pass the window's right edge is pulled back inside (8px margin).
+  const [shift, setShift] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const over = rect.right - (window.innerWidth - VIEWPORT_MARGIN);
+    setShift(over > 0 ? Math.min(over, Math.max(0, rect.left - VIEWPORT_MARGIN)) : 0);
+  }, []);
 
   useEffect(() => {
     if (!autoFocus || !ref.current) return;
@@ -117,7 +131,7 @@ export function MenuSurface({
         role="menu"
         aria-label={ariaLabel}
         className={["sc-menu", className ?? ""].filter(Boolean).join(" ")}
-        style={style}
+        style={shift > 0 ? { ...style, transform: `translateX(-${shift}px)` } : style}
         onKeyDown={onKeyDown}
       >
         {children}
@@ -155,7 +169,7 @@ export function MenuItem({ label, shortcut, checked, disabled, onSelect }: MenuI
       <span className="sc-menu__check" aria-hidden="true">
         {checked ? <Check className="mx-auto h-3 w-3" strokeWidth={2.25} /> : null}
       </span>
-      <span>{label}</span>
+      <span className="sc-menu__label">{label}</span>
       <span className="sc-menu__kbd">{shortcut ?? ""}</span>
     </button>
   );
@@ -215,7 +229,7 @@ export function MenuSubmenu({ label, icon, disabled, children }: MenuSubmenuProp
         <span className="sc-menu__check flex items-center justify-center" aria-hidden="true">
           {icon}
         </span>
-        <span>{label}</span>
+        <span className="sc-menu__label">{label}</span>
         <span className="sc-menu__kbd" aria-hidden="true">
           <ChevronRight className="h-3 w-3" strokeWidth={2} />
         </span>

@@ -26,7 +26,7 @@ function page(extra: Partial<ManuscriptLine>, syllableCuts: ManuscriptSource["sy
 }
 
 function suggestOn(source: ManuscriptSource, line: ManuscriptLine) {
-  const plan = planSuggestion(source, line, words, new Map(), new Set())!;
+  const plan = planSuggestion(source, line, words, new Map(), new Set(), null)!;
   const res = suggestBoxes({ ...plan.input, image: fx.raster });
   return new Map(res.suggestions.map((s) => [s.index, fracToPx(regionToView(s.box, plan.region), W, H)]));
 }

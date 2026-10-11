@@ -20,7 +20,8 @@ export function SuggestActions() {
   if (!suggestions.enabled) return null;
 
   const running = suggestions.status === "running";
-  const count = Object.keys(suggestions.active).length;
+  // M3: candidates are taken one by one (click/Enter); no bulk accept.
+  const count = suggestions.mode === "candidates" ? 0 : Object.keys(suggestions.active).length;
 
   return (
     <>

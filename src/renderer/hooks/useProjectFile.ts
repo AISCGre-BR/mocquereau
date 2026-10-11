@@ -13,7 +13,7 @@ import { syllabifyText } from "../lib/syllabify";
 import type { MocquereauProject } from "../lib/models";
 import { buildRecentMeta, firstPageLine } from "../lib/recent-meta";
 import { makeThumbnail } from "../lib/thumbnail";
-import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
+import { loadRasterForInk, realignLegacyProject, type RasterLoader } from "../lib/box-frame-realign";
 import type { NewProjectDraft } from "../lib/new-project";
 import { resolveUnsetRanges } from "../lib/sources";
 
@@ -148,26 +148,11 @@ export function useProjectFile(options: ProjectFileOptions = {}): ProjectFileAct
    * loading (done before the project is adopted): no toast, no history step,
    * not dirty. Failures fall back to the project as read.
    */
-  const realignLegacy = useCallback(async (project: MocquereauProject, isCancelled: () => boolean) => {
-    try {
-      const found = await detectRealignments(project, loadRasterRef.current, { isCancelled });
-      if (found.length === 0) return project;
-      const wanted = new Map(found.map((f) => [f.lineId, f.to] as const));
-      return {
-        ...project,
-        sources: project.sources.map((s) => ({
-          ...s,
-          lines: s.lines.map((l) => {
-            const frame = wanted.get(l.id);
-            return frame ? { ...l, boxFrame: frame } : l;
-          }),
-        })),
-      };
-    } catch (err) {
-      console.warn("[box-frame-realign] legacy realignment skipped", err);
-      return project;
-    }
-  }, []);
+  const realignLegacy = useCallback(
+    (project: MocquereauProject, isCancelled: () => boolean) =>
+      realignLegacyProject(project, loadRasterRef.current, { isCancelled }),
+    [],
+  );
 
   /** Opened from main: a legacy .mocquereau.json comes back without a writable path. */
   const adoptOpened = useCallback(

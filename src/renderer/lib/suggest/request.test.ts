@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ManuscriptLine, ManuscriptSource, StoredImage, SyllabifiedWord } from "../models";
-import { collectTargets, planSuggestion, regionToView, resolveNotation, viewToRegion } from "./request";
+import { collectTargets, planCandidates, planSuggestion, regionToView, resolveNotation, sequentialStart, viewToRegion } from "./request";
 import { IMAGE_ADJUSTMENTS_DEFAULT } from "../image-adjustments";
+import { suggestBoxes } from "../neume-detect/pipeline";
+import { buildAdiastematicLine, fracToPx, iou, pxToFrac } from "../neume-detect/synthetic";
 
 const IMG: StoredImage = { dataUrl: "data:,", width: 100, height: 200, mimeType: "image/png" };
 const BOX = { x: 0.1, y: 0.1, w: 0.1, h: 0.1 };
@@ -78,7 +80,7 @@ describe("collectTargets", () => {
 describe("planSuggestion", () => {
   it("sem areas: regiao e a pagina toda, sem bands, ancoras como estao", () => {
     const l = line({ syllableRange: { start: 0, end: 2 }, syllableBoxes: { 0: BOX } });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     expect(plan.lineId).toBe("L");
     expect(plan.region).toEqual({ x: 0, y: 0, w: 1, h: 1 });
     expect(plan.input.bands).toBeUndefined();
@@ -94,7 +96,7 @@ describe("planSuggestion", () => {
       neumeBands: [{ x: 0.1, y: 0.2, w: 0.5, h: 0.1 }, { x: 0.2, y: 0.5, w: 0.5, h: 0.1 }],
       syllableBoxes: { 0: { x: 0.3, y: 0.25, w: 0.1, h: 0.1 }, 1: { x: 0.8, y: 0.9, w: 0.1, h: 0.05 } },
     });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     // uniao (0.1,0.2)-(0.7,0.6); com margem (0.08,0.18)-(0.72,0.62)
     expect(plan.region.x).toBeCloseTo(0.08, 9);
     expect(plan.region.y).toBeCloseTo(0.18, 9);
@@ -116,7 +118,7 @@ describe("planSuggestion", () => {
 
   it("a regiao e recortada a [0,1]", () => {
     const l = line({ syllableRange: { start: 0, end: 2 }, neumeBands: [{ x: 0.01, y: 0.3, w: 0.98, h: 0.2 }] });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     expect(plan.region.x).toBe(0);
     expect(plan.region.w).toBeCloseTo(1, 9);
   });
@@ -128,13 +130,13 @@ describe("planSuggestion", () => {
       boxFrame: { rotation: 0, flipH: false, flipV: false },
       syllableBoxes: { 0: { x: 0, y: 0, w: 0.5, h: 0.25 } },
     });
-    const plan = planSuggestion(source([l]), l, words, none, noRej)!;
+    const plan = planSuggestion(source([l]), l, words, none, noRej, null)!;
     expect(plan.input.anchors).toEqual([{ index: 0, box: { x: 0.75, y: 0, w: 0.25, h: 0.5 } }]);
   });
 
   it("sem alvo sugerivel devolve null", () => {
     const l = line({ syllableRange: { start: 0, end: 1 }, gaps: [0] });
-    expect(planSuggestion(source([l]), l, words, none, new Set([1]))).toBeNull();
+    expect(planSuggestion(source([l]), l, words, none, new Set([1]), null)).toBeNull();
   });
 });
 
@@ -154,5 +156,117 @@ describe("regionToView / viewToRegion", () => {
     expect(back.y).toBeCloseTo(box.y, 9);
     expect(back.w).toBeCloseTo(box.w, 9);
     expect(back.h).toBeCloseTo(box.h, 9);
+  });
+});
+
+describe("planSuggestion — fila a partir da ativa (M2)", () => {
+  const B2 = { x: 0.2, y: 0.1, w: 0.1, h: 0.1 };
+  const B5 = { x: 0.5, y: 0.1, w: 0.1, h: 0.1 };
+  const rows = (p: ReturnType<typeof planSuggestion>) => p!.input.syllables.map((s) => [s.index, s.suggest !== false]);
+
+  it("ativa com caixa: começa na próxima pendente; a caixa da ativa abre a fila", () => {
+    const l = line({ syllableBoxes: { 2: B2, 5: B5 } });
+    const p = planSuggestion(source([l]), l, words, none, noRej, 2);
+    expect(rows(p)).toEqual([[2, false], [3, true], [4, true], [5, false], [6, true], [7, true]]);
+    expect(p!.input.anchors!.map((a) => a.index)).toEqual([2, 5]);
+  });
+
+  it("sem caixa antes da ativa: a fila abre no início do intervalo e as pendentes antes da ativa consomem seus neumas sem sugestão", () => {
+    const l = line();
+    expect(rows(planSuggestion(source([l]), l, words, none, noRej, 4))).toEqual([
+      [0, false], [1, false], [2, false], [3, false], [4, true], [5, true], [6, true], [7, true],
+    ]);
+  });
+
+  it("pendentes entre a âncora que abre a fila e a ativa ficam na fila com suggest:false", () => {
+    const l = line({ syllableBoxes: { 0: BOX, 1: B2 } });
+    const p = planSuggestion(source([l]), l, words, none, noRej, 5);
+    expect(rows(p)).toEqual([[1, false], [2, false], [3, false], [4, false], [5, true], [6, true], [7, true]]);
+    expect(p!.input.anchors!.map((a) => a.index)).toEqual([1]);
+  });
+
+  it("rejeitada e recorte legado no início do intervalo mantêm o lugar (Sugerir na fonte, sem ativa)", () => {
+    const l = line();
+    const src = source([l], [null, null, null], { 1: IMG });
+    expect(rows(planSuggestion(src, l, words, none, new Set([0]), null))).toEqual([
+      [0, false], [1, false], [2, true], [3, true], [4, true], [5, true], [6, true], [7, true],
+    ]);
+  });
+
+  it("só a âncora mais próxima antes do início entra", () => {
+    const l = line({ syllableBoxes: { 0: BOX, 2: B2 } });
+    const p = planSuggestion(source([l]), l, words, none, noRej, 3);
+    expect(p!.input.syllables[0].index).toBe(2);
+    expect(p!.input.anchors!.map((a) => a.index)).toEqual([2]);
+  });
+
+  it("sem ativa começa no início do intervalo; nenhuma pendente a partir da ativa: null", () => {
+    const l = line({ syllableBoxes: { 6: B5, 7: B2 } });
+    expect(rows(planSuggestion(source([l]), l, words, none, noRej, null))![0]).toEqual([0, true]);
+    expect(planSuggestion(source([l]), l, words, none, noRej, 6)).toBeNull();
+  });
+
+  it("sequentialStart: primeira pendente sugerível a partir da ativa (rejeitadas e recortes legados não abrem)", () => {
+    const l = line({ syllableBoxes: { 3: BOX } });
+    expect(sequentialStart(source([l]), l, words, none, new Set([4]), 3)).toBe(5);
+    expect(sequentialStart(source([l]), l, words, none, noRej, null)).toBe(0);
+    expect(sequentialStart(source([l]), l, words, none, noRej, 40)).toBe(0); // ativa de outra página
+  });
+
+  it("áreas fora de ordem no arquivo: bands vão ao detector em ordem de leitura", () => {
+    const top = { x: 0.1, y: 0.1, w: 0.8, h: 0.1 };
+    const bottom = { x: 0.1, y: 0.5, w: 0.8, h: 0.1 };
+    const l = line({ neumeBands: [bottom, top] });
+    const p = planSuggestion(source([l]), l, words, none, noRej, null)!;
+    expect(p.input.bands!.map((b) => b.y)).toEqual([...p.input.bands!.map((b) => b.y)].sort((a, b) => a - b));
+  });
+});
+
+describe("planCandidates", () => {
+  it("planCandidates: modo candidates, sem sílabas, âncoras = caixas na região, bands da região", () => {
+    const l = line({ syllableBoxes: { 1: BOX, 2: null }, neumeBands: [{ x: 0.1, y: 0.1, w: 0.8, h: 0.2 }] });
+    const p = planCandidates(source([l]), l);
+    expect(p.input.mode).toBe("candidates");
+    expect(p.input.syllables).toEqual([]);
+    expect(p.input.anchors!.map((a) => a.index)).toEqual([1]);
+    expect(p.input.bands).toHaveLength(1);
+  });
+
+  it("sem área: a página inteira, todas as caixas como âncoras", () => {
+    const l = line({ syllableBoxes: { 0: BOX, 3: { x: 0.8, y: 0.8, w: 0.1, h: 0.1 } } });
+    const p = planCandidates(source([l]), l);
+    expect(p.region).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+    expect(p.input.anchors!.map((a) => a.index)).toEqual([0, 3]);
+    expect(p.input.bands).toBeUndefined();
+  });
+});
+
+describe("planSuggestion + suggestBoxes — pendentes antes da ativa (linha sintética)", () => {
+  const fx = buildAdiastematicLine({ seed: 5 });
+  const { width: W, height: H } = fx.raster;
+  const fxWords: SyllabifiedWord[] = [
+    { original: "Puer", syllables: ["Pu", "er"] },
+    { original: "natus", syllables: ["na", "tus"] },
+    { original: "est", syllables: ["est"] },
+  ];
+  const run = (l: ManuscriptLine, active: number) => {
+    const plan = planSuggestion(source([l]), l, fxWords, none, noRej, active)!;
+    const res = suggestBoxes({ image: fx.raster, ...plan.input });
+    return Object.fromEntries(res.suggestions.map((s) => [s.index, fracToPx(regionToView(s.box, plan.region), W, H)]));
+  };
+
+  it("caixa na 0, ativa 3: a 3 recebe o próprio neuma (1 e 2 consomem os seus sem sugestão)", () => {
+    const l = line({ syllableRange: { start: 0, end: 4 }, syllableBoxes: { 0: pxToFrac(fx.truth[0], W, H) } });
+    const got = run(l, 3);
+    expect(Object.keys(got).map(Number)).toEqual([3, 4]);
+    expect(iou(got[3], fx.truth[3])).toBeGreaterThanOrEqual(0.9);
+    expect(iou(got[4], fx.truth[4])).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("sem caixas, ativa 2: a 2 recebe o próprio neuma", () => {
+    const l = line({ syllableRange: { start: 0, end: 4 } });
+    const got = run(l, 2);
+    expect(Object.keys(got).map(Number)).toEqual([2, 3, 4]);
+    for (const i of [2, 3, 4]) expect(iou(got[i], fx.truth[i])).toBeGreaterThanOrEqual(0.9);
   });
 });

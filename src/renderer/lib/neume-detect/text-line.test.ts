@@ -46,6 +46,23 @@ describe('text-line', () => {
     expect(findTextLine(textRow([4, 3, 5]), 600, { kind: 'lowest' }, 20)).toBeNull();
   });
 
+  it('sílabas curtas com letras de haste: as hastes contam como vizinhas no espaçamento', () => {
+    // 'Do mi nus di xit ad me fi li': letras 12 x 16, hastes 12 x 32 (D d t f l), sílabas afastadas
+    const sy = ['Do', 'mi', 'nus', 'di', 'xit', 'ad', 'me', 'fi', 'li'];
+    const comps: ReturnType<typeof c>[] = [];
+    sy.forEach((t, j) => {
+      let x = 40 + j * 160;
+      for (const ch of t) {
+        const tall = /[Ddtfl]/.test(ch);
+        comps.push(c(x, tall ? 168 : 184, 12, tall ? 32 : 16));
+        x += 16;
+      }
+    });
+    const tl = findTextLine(comps, 1500, { kind: 'lowest' }, 6);
+    expect(tl?.baseline).toBe(200);
+    expect(tl?.xHeight).toBe(16);
+  });
+
   it('modo D: primeiro pico abaixo da pauta', () => {
     const upper = textRow([5, 5], 50, 30, 100);
     const lower = textRow([5, 5], 50, 30, 200);
@@ -64,5 +81,31 @@ describe('text-line', () => {
     // 2 palavras pedidas com 2 vaos iguais: incoerente
     expect(wordSpans(text, 2)).toBeNull();
     expect(wordSpans([], 2)).toBeNull();
+  });
+});
+
+describe('findTextLine — fileira de neumas sem texto', () => {
+  it("'lowest': uma fileira de traços curtos com mais tinta embaixo dela não é texto", () => {
+    const comps: { x: number; y: number; w: number; h: number; area: number }[] = [];
+    // fileira de cima: pares de traços de 6 x 12 a 3 px um do outro (parecem letras), base em 30
+    for (let g = 0; g < 6; g++) for (let k = 0; k < 2; k++) comps.push({ x: 40 + g * 150 + k * 9, y: 18, w: 6, h: 12, area: 40 });
+    // embaixo: neumas maiores e esparsos, sem alinhamento de letra
+    for (let g = 0; g < 6; g++) comps.push({ x: 100 + g * 150, y: 40 + (g % 3) * 7, w: 22, h: 20 + (g % 2) * 9, area: 160 });
+    expect(findTextLine(comps, 1000, { kind: 'lowest' }, 8)).toBeNull();
+  });
+});
+
+describe('findTextLine — fileira de neumas sozinha', () => {
+  it("'lowest': traços curtos em pares, sozinhos na área (nada acima nem abaixo), não são texto", () => {
+    const comps: { x: number; y: number; w: number; h: number; area: number }[] = [];
+    for (let g = 0; g < 8; g++) for (let k = 0; k < 2; k++) comps.push({ x: 40 + g * 110 + k * 9, y: 18, w: 6, h: 12, area: 40 });
+    expect(findTextLine(comps, 1000, { kind: 'lowest', inkAbove: true }, 8)).toBeNull();
+  });
+
+  it("'lowest': texto com neumas acima continua achado", () => {
+    const comps: { x: number; y: number; w: number; h: number; area: number }[] = [];
+    for (let k = 0; k < 12; k++) comps.push({ x: 40 + k * 16, y: 80, w: 12, h: 16, area: 70 }); // letras
+    for (let g = 0; g < 4; g++) comps.push({ x: 50 + g * 50, y: 20, w: 14, h: 22, area: 90 }); // neumas acima
+    expect(findTextLine(comps, 300, { kind: 'lowest', inkAbove: true }, 6)).not.toBeNull();
   });
 });

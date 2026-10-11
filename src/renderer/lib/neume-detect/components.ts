@@ -126,3 +126,21 @@ export function passesFilters(c: Component, p: Params): boolean {
 export function filterComponents(lab: Labeling, p: Params, reject?: Set<number>): Component[] {
   return lab.components.filter((c) => !(reject && reject.has(c.label)) && passesFilters(c, p));
 }
+
+/**
+ * Pontos isolados: componente com area <= u^2 (no maximo um quadrado da largura da pena) so fica se
+ * houver outro componente nao minusculo a ate `reach` px (folga entre caixas). Os filtros minimos
+ * baixos (M4a) deixam passar pontos de neumas e tracos finos, mas tambem manchinhas do pergaminho.
+ */
+export function dropIsolatedSpecks<T extends Component>(comps: T[], u: number, reach: number): T[] {
+  const tinyMax = u * u;
+  const big = comps.filter((c) => c.area > tinyMax);
+  return comps.filter((c) => {
+    if (c.area > tinyMax) return true;
+    return big.some((b) => {
+      const dx = Math.max(0, b.x - (c.x + c.w), c.x - (b.x + b.w));
+      const dy = Math.max(0, b.y - (c.y + c.h), c.y - (b.y + b.h));
+      return Math.max(dx, dy) <= reach;
+    });
+  });
+}

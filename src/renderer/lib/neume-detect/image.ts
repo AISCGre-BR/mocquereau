@@ -5,6 +5,7 @@
 // Imagens de um canal, mascaras, escolha de canal, recorte e reamostragem.
 // contrastScore e pickChannel sao porte de othmar/candidates.py.
 // Diverge de numpy/skimage: percentis e mediana saem do histograma de 256 niveis (valores inteiros), nao de np.percentile interpolado.
+import { binarizeOtsu } from './threshold';
 import type { ChannelName, GrayImage, Mask, PxBox, RasterRGBA } from './types';
 
 /** Canal escolhido; pixels com alfa 0 viram 255 (fundo), para nunca parecerem tinta. */
@@ -71,6 +72,87 @@ export function contrastScore(img: GrayImage, mask?: Mask | null): number {
   for (let v = 0; v < 256; v++) dev[Math.abs(v - med)] += hist[v];
   const mad = 1.4826 * histPercentile(dev, 50) + 1;
   return (med - p2) / mad;
+}
+
+/** Razao de contraste sobre o do R a partir da qual outro canal substitui o R (M4f). */
+export const CHANNEL_SWITCH_RATIO = 1.25;
+/**
+ * Contraste da tinta no R abaixo do qual o R e "fraco" (a tinta some nele). Calibrado entre a tinta
+ * avermelhada desbotada da fixture (R 1,11) e o menor contraste de R medido nas fontes reais (3,87,
+ * uma faixa do P-AR); SG339 tem R 10,59. A troca exige R fraco E a razao.
+ */
+export const R_WEAK_CONTRAST = 3;
+
+type Channels = { r: GrayImage; g: GrayImage; b: GrayImage; gray: GrayImage; valid: Mask };
+
+function medianOf(hist: Float64Array): number {
+  return histPercentile(hist, 50);
+}
+
+/**
+ * Contraste da tinta num canal: (mediana do fundo - mediana da tinta) / (1,4826 MAD do fundo + 1),
+ * com tinta = pixels escuros do cinza (Otsu) e fundo = o resto. Ao contrario de contrastScore (que
+ * olha o percentil 2), nao depende de a tinta ocupar >= 2% da imagem.
+ */
+function inkContrast(img: GrayImage, ink: Uint8Array, valid: Mask): number {
+  const fg = new Float64Array(256);
+  const bg = new Float64Array(256);
+  let nf = 0;
+  let nb = 0;
+  for (let i = 0; i < img.data.length; i++) {
+    if (!valid.data[i]) continue;
+    if (ink[i]) {
+      fg[img.data[i]]++;
+      nf++;
+    } else {
+      bg[img.data[i]]++;
+      nb++;
+    }
+  }
+  if (nf < 20 || nb < 100) return 0;
+  const mb = medianOf(bg);
+  const dev = new Float64Array(256);
+  for (let v = 0; v < 256; v++) dev[Math.abs(v - mb)] += bg[v];
+  return (mb - medianOf(fg)) / (1.4826 * histPercentile(dev, 50) + 1);
+}
+
+/**
+ * r - g a partir do qual um pixel e vermelho de rubrica (saturado: vermelhao r - g ~ 150), nao tinta
+ * avermelhada de neuma (desbotada: r - g ~ 90). O R existe para apagar rubricas: elas nao contam na
+ * medida de quanto a tinta some no R.
+ */
+export const RUBRIC_RG = 120;
+
+/** Contraste da tinta em cada canal (calcular uma vez por faixa e reusar). Rubricas ficam de fora. */
+export function inkContrasts(w: Channels): Record<ChannelName, number> {
+  const ink = binarizeOtsu(w.gray, w.valid).data;
+  for (let i = 0; i < ink.length; i++) if (ink[i] && w.r.data[i] - w.g.data[i] >= RUBRIC_RG) ink[i] = 0;
+  return {
+    r: inkContrast(w.r, ink, w.valid),
+    gray: inkContrast(w.gray, ink, w.valid),
+    g: inkContrast(w.g, ink, w.valid),
+    b: inkContrast(w.b, ink, w.valid),
+  };
+}
+
+/**
+ * Canal da tinta: R por padrao (apaga rubricas); outro canal (gray, g, b, nessa ordem de empate) so
+ * quando o R e fraco (contraste < R_WEAK_CONTRAST: tinta avermelhada ou desbotada some no R) e o outro
+ * tem contraste >= CHANNEL_SWITCH_RATIO x o do R. `sc` = inkContrasts(w), se ja calculado.
+ */
+export function pickInkChannel(w: Channels, sc: Record<ChannelName, number> = inkContrasts(w)): { name: ChannelName; image: GrayImage } {
+  let best: ChannelName = 'r';
+  if (sc.r < R_WEAK_CONTRAST)
+    for (const n of ['gray', 'g', 'b'] as const)
+      if (sc[n] > sc[best] && sc[n] >= CHANNEL_SWITCH_RATIO * sc.r) best = n;
+  return { name: best, image: w[best] };
+}
+
+/** Canal de maior contraste da tinta entre r, gray, g, b (empate: nessa ordem). */
+export function bestContrastChannel(w: Channels, sc: Record<ChannelName, number> = inkContrasts(w)): ChannelName {
+  let best: ChannelName = 'r';
+  for (const n of ['gray', 'g', 'b'] as const) if (sc[n] > sc[best]) best = n;
+  return best;
 }
 
 /** 'auto' escolhe o canal de maior contrastScore (empate: ordem r, gray, g, b). */
@@ -217,7 +299,7 @@ function downscaleGrid(n: number, scale: number): { m: number; lo: Int32Array; h
 }
 
 /**
- * Raster de trabalho de `rect` em UMA passada: canal R, cinza (arredondado por pixel) e validade
+ * Raster de trabalho de `rect` em UMA passada: canais R, G, B, cinza (arredondado por pixel) e validade
  * (alfa > 0 em >= 50% da celula), reduzidos por media de area na mesma grade de `downscaleGray`.
  * Equivale a downscaleGray(extractChannel(cropRaster(raster, rect), ...)) e
  * downscaleMask(alphaMask(...)), sem recorte nem canais intermediarios. Alfa 0 conta 255.
@@ -226,23 +308,29 @@ export function prepareWork(
   raster: RasterRGBA,
   rect: PxBox,
   scale: number,
-): { r: GrayImage; gray: GrayImage; valid: Mask } {
+): { r: GrayImage; g: GrayImage; b: GrayImage; gray: GrayImage; valid: Mask } {
   const { data, width: W } = raster;
   const gx = downscaleGrid(rect.w, scale);
   const gy = downscaleGrid(rect.h, scale);
   const w = gx.m;
   const h = gy.m;
   const r = new Uint8Array(w * h);
+  const gc = new Uint8Array(w * h);
+  const bc = new Uint8Array(w * h);
   const gray = new Uint8Array(w * h);
   const valid = new Uint8Array(w * h);
   // coluna de destino de cada coluna de origem (-1: fora de toda celula, por arredondamento)
   const colOf = new Int32Array(rect.w).fill(-1);
   for (let x = 0; x < w; x++) for (let xx = gx.lo[x]; xx < gx.hi[x]; xx++) colOf[xx] = x;
   const sr = new Uint32Array(w);
+  const sgc = new Uint32Array(w);
+  const sbc = new Uint32Array(w);
   const sg = new Uint32Array(w);
   const sa = new Uint32Array(w);
   for (let y = 0; y < h; y++) {
     sr.fill(0);
+    sgc.fill(0);
+    sbc.fill(0);
     sg.fill(0);
     sa.fill(0);
     const ya = gy.lo[y];
@@ -254,12 +342,18 @@ export function prepareWork(
         if (c < 0) continue;
         if (data[p + 3] === 0) {
           sr[c] += 255;
+          sgc[c] += 255;
+          sbc[c] += 255;
           sg[c] += 255;
           continue;
         }
         const rv = data[p];
+        const gv = data[p + 1];
+        const bv = data[p + 2];
         sr[c] += rv;
-        sg[c] += Math.round(0.299 * rv + 0.587 * data[p + 1] + 0.114 * data[p + 2]);
+        sgc[c] += gv;
+        sbc[c] += bv;
+        sg[c] += Math.round(0.299 * rv + 0.587 * gv + 0.114 * bv);
         sa[c]++;
       }
     }
@@ -268,13 +362,24 @@ export function prepareWork(
       const area = rows * (gx.hi[x] - gx.lo[x]);
       const i = y * w + x;
       r[i] = Math.round(sr[x] / area);
+      gc[i] = Math.round(sgc[x] / area);
+      bc[i] = Math.round(sbc[x] / area);
       gray[i] = Math.round(sg[x] / area);
       valid[i] = Math.round((sa[x] * 255) / area) >= 128 ? 1 : 0;
     }
   }
   return {
     r: { data: r, width: w, height: h },
+    g: { data: gc, width: w, height: h },
+    b: { data: bc, width: w, height: h },
     gray: { data: gray, width: w, height: h },
     valid: { data: valid, width: w, height: h },
   };
+}
+
+/** Mapa de vermelhidao (tinta = escuro): 255 - min(255, 2 * max(0, r - g)). */
+export function rednessInk(r: GrayImage, g: GrayImage): GrayImage {
+  const out = new Uint8Array(r.data.length);
+  for (let i = 0; i < out.length; i++) out[i] = 255 - Math.min(255, 2 * Math.max(0, r.data[i] - g.data[i]));
+  return { data: out, width: r.width, height: r.height };
 }

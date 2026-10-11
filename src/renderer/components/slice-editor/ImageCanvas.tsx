@@ -49,6 +49,15 @@ interface ImageCanvasProps {
   onContextMenu?: (e: React.MouseEvent) => void;
   /** Neume suggestions of the page (S3): dashed, in the syllable's pigment. */
   suggestedBoxes?: Record<number, SyllableBox>;
+  /**
+   * End of a move or resize on the active syllable's suggestion: it becomes the
+   * syllable's box with the adjusted geometry. Without it the suggestion only shows.
+   */
+  onSuggestionCommit?: (syllableIdx: number, box: SyllableBox) => void;
+  /** Candidate neume groups of the page (M3), view fractions: neutral dotted outline (areas are dashed), no label. */
+  candidates?: SyllableBox[];
+  /** A click (no drag) over a candidate: its index, and whether Shift was held (unite). */
+  onPickCandidate?: (index: number, union: boolean) => void;
   /** Neume line bands of the page (S7), same frame as the boxes, sorted top to bottom. */
   neumeBands?: SyllableBox[];
   /** "Marcar linha de neumas": sheet gestures draw and select bands instead of boxes. */
@@ -82,6 +91,9 @@ export function ImageCanvas({
   onUpdateAdjustments,
   onContextMenu,
   suggestedBoxes,
+  onSuggestionCommit,
+  candidates,
+  onPickCandidate,
   neumeBands,
   bandTool = false,
   activeBand = null,
@@ -147,6 +159,29 @@ export function ImageCanvas({
     draft && draft.base === syllableBoxes && draft.idx === activeSyllableIdx
       ? { ...syllableBoxes, [draft.idx]: draft.box }
       : syllableBoxes;
+
+  // The active syllable's suggestion takes the 8 handles and the body drag
+  // (sequential mode, band tool off); its draft follows the box draft's
+  // staleness rule (another run, page or syllable drops it).
+  const editableSuggestion =
+    !bandTool &&
+    onSuggestionCommit &&
+    activeSyllableIdx !== null &&
+    boxes[activeSyllableIdx] == null &&
+    suggestedBoxes?.[activeSyllableIdx]
+      ? activeSyllableIdx
+      : null;
+  const [suggestionDraft, setSuggestionDraft] = useState<{
+    base: Record<number, SyllableBox> | undefined;
+    idx: number;
+    box: SyllableBox;
+  } | null>(null);
+  const shownSuggestion =
+    editableSuggestion === null
+      ? null
+      : suggestionDraft && suggestionDraft.base === suggestedBoxes && suggestionDraft.idx === editableSuggestion
+        ? suggestionDraft.box
+        : suggestedBoxes![editableSuggestion];
 
   // ── Neume bands (S7) ───────────────────────────────────────────────────────
   // A band being drawn, and the draft of the selected band while it is moved or
@@ -313,6 +348,21 @@ export function ImageCanvas({
     return null;
   }
 
+  /** Candidate under the point: the smallest one holding it (a group inside a bigger one stays reachable). */
+  function candidateAt(clientX: number, clientY: number): number | null {
+    if (!candidates?.length) return null;
+    const rect = imageWrapperRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    const fx = (clientX - rect.left) / rect.width;
+    const fy = (clientY - rect.top) / rect.height;
+    let best: number | null = null;
+    candidates.forEach((box, i) => {
+      if (fx < box.x || fx > box.x + box.w || fy < box.y || fy > box.y + box.h) return;
+      if (best === null || box.w * box.h < candidates[best].w * candidates[best].h) best = i;
+    });
+    return best;
+  }
+
   // Where the primary button went down on the sheet: a release without moving
   // is a click (it may land on a suggestion).
   const pressAt = useRef<{ x: number; y: number } | null>(null);
@@ -421,6 +471,11 @@ export function ImageCanvas({
     const isClick =
       press !== null && Math.abs(e.clientX - press.x) <= CLICK_SLOP && Math.abs(e.clientY - press.y) <= CLICK_SLOP;
     if (isClick) {
+      const cand = onPickCandidate ? candidateAt(e.clientX, e.clientY) : null;
+      if (cand !== null) {
+        onPickCandidate!(cand, e.shiftKey);
+        return;
+      }
       const hit = suggestionAt(e.clientX, e.clientY);
       if (hit !== null) {
         onActivateSyllable?.(hit);
@@ -538,6 +593,23 @@ export function ImageCanvas({
             ),
           )}
 
+          {/* Candidate neume groups (M3): never take the pointer, so a drag that
+              starts over one draws as usual; a plain click picks it (candidateAt
+              in the pointer-up path). */}
+          {candidates?.map((box, i) => (
+            <div
+              key={`candidate-${i}`}
+              data-candidate={i}
+              className="absolute rounded-xs border border-dotted border-rule-strong pointer-events-none"
+              style={{
+                left: `${box.x * 100}%`,
+                top: `${box.y * 100}%`,
+                width: `${box.w * 100}%`,
+                height: `${box.h * 100}%`,
+              }}
+            />
+          ))}
+
           {/* Non-active boxes — clickable to switch active syllable. Always rendered
               when there's a box (visible styling only when showAllBoxes is on). */}
           {(syllableRange
@@ -602,7 +674,7 @@ export function ImageCanvas({
           {suggestedBoxes &&
             Object.entries(suggestedBoxes).map(([key, box]) => {
               const idx = Number(key);
-              if (boxes[idx] != null) return null;
+              if (boxes[idx] != null || idx === editableSuggestion) return null;
               return (
                 <div
                   key={`suggested-${idx}`}
@@ -619,6 +691,25 @@ export function ImageCanvas({
                 </div>
               );
             })}
+
+          {/* The active syllable's suggestion, resizable in place: a move or a
+              resize commits it as the syllable's box (one undo step); a click
+              without moving leaves it a suggestion. */}
+          {editableSuggestion !== null && shownSuggestion && (
+            <SyllableBoxOverlay
+              variant="suggested"
+              box={shownSuggestion}
+              syllableIdx={editableSuggestion}
+              label={syllableTextAt(editableSuggestion)}
+              containerRef={imageWrapperRef}
+              onBoxChange={(next) => setSuggestionDraft({ base: suggestedBoxes, idx: editableSuggestion, box: next })}
+              onBoxCommit={(next) => {
+                setSuggestionDraft(null);
+                onSuggestionCommit?.(editableSuggestion, next);
+              }}
+              onBoxCancel={() => setSuggestionDraft(null)}
+            />
+          )}
 
           {/* With the band tool on, the active box is only shown (the sheet belongs to the tool). */}
           {bandTool && activeSyllableIdx !== null && boxes[activeSyllableIdx] != null && (() => {

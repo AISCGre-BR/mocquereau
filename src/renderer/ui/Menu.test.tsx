@@ -173,3 +173,43 @@ describe("Menu", () => {
     });
   });
 });
+
+describe("Menu: rótulos numa linha só, dentro da janela", () => {
+  it("o rótulo do item não quebra (classe própria)", () => {
+    render(
+      <MenuSurface onClose={() => {}} aria-label="m">
+        <MenuItem label="Sugerir em todas as páginas da fonte" onSelect={() => {}} />
+      </MenuSurface>,
+    );
+    expect(screen.getByText("Sugerir em todas as páginas da fonte").className).toContain("sc-menu__label");
+  });
+
+  it("uma placa que passaria da borda direita é puxada para dentro", () => {
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 900, right: 1100, top: 0, bottom: 100, width: 200, height: 100, x: 900, y: 0, toJSON() {},
+    } as DOMRect);
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+    render(
+      <MenuSurface onClose={() => {}} aria-label="m">
+        <MenuItem label="x" onSelect={() => {}} />
+      </MenuSurface>,
+    );
+    // 1100 - (1024 - 8) = 84 px para a esquerda.
+    expect(screen.getByRole("menu").style.transform).toBe("translateX(-84px)");
+    spy.mockRestore();
+  });
+
+  it("dentro da janela: sem deslocamento", () => {
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 10, right: 210, top: 0, bottom: 100, width: 200, height: 100, x: 10, y: 0, toJSON() {},
+    } as DOMRect);
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+    render(
+      <MenuSurface onClose={() => {}} aria-label="m">
+        <MenuItem label="x" onSelect={() => {}} />
+      </MenuSurface>,
+    );
+    expect(screen.getByRole("menu").style.transform).toBe("");
+    spy.mockRestore();
+  });
+});

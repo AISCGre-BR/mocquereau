@@ -13,18 +13,21 @@ import { CloseFlow, SaveThenClose, closeChoiceFromResponse, createQuitGuard } fr
 import { SaveQueue } from './save-queue';
 import { SUGGESTED_CLASSIFICATION, cloneClassification, type Classification } from '../shared/classification';
 import { readClassification } from '../shared/validate';
+import { isSuggestionsMode, readSuggestionsMode, type SuggestionsMode } from '../shared/suggestions-mode';
 
 interface UserPrefs {
   language: string;
   theme: ThemePreference;
   classification?: Classification;
-  /** "Sugestões de neumas" (S8). */
+  /** M1: how the Recortes view suggests neumes. */
+  suggestionsMode?: SuggestionsMode;
+  /** Old (C1): only read, then dropped on the first write of suggestionsMode. */
   suggestionsEnabled?: boolean;
 }
 
 const userPrefs = new Conf<UserPrefs>({
   name: 'user-prefs',
-  defaults: { language: 'pt-BR', theme: 'system', suggestionsEnabled: true },
+  defaults: { language: 'pt-BR', theme: 'system' },
 });
 
 // Barra de título nativa quando o overlay não é confiável (heurística do Linux
@@ -230,10 +233,15 @@ function registerSystemHandlers(): void {
     refreshTitleBarOverlays();
     return true;
   });
-  ipcMain.handle("settings:get-suggestions", async () => userPrefs.get('suggestionsEnabled') !== false);
-  ipcMain.handle("settings:set-suggestions", async (_event, value: unknown) => {
-    if (typeof value === "boolean") userPrefs.set('suggestionsEnabled', value);
-    return userPrefs.get('suggestionsEnabled') !== false;
+  const storedSuggestionsMode = () =>
+    readSuggestionsMode({ suggestionsMode: userPrefs.get('suggestionsMode'), suggestionsEnabled: userPrefs.get('suggestionsEnabled') });
+  ipcMain.handle("settings:get-suggestions-mode", async () => storedSuggestionsMode());
+  ipcMain.handle("settings:set-suggestions-mode", async (_event, value: unknown) => {
+    if (isSuggestionsMode(value)) {
+      userPrefs.set('suggestionsMode', value);
+      userPrefs.delete('suggestionsEnabled');
+    }
+    return storedSuggestionsMode();
   });
 }
 

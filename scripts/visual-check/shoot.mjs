@@ -120,8 +120,8 @@ const stub = ({ theme, data, emptyRecent }) => {
     setClassification: async () => {},
     getTheme: async () => theme,
     setTheme: async () => true,
-    getSuggestionsEnabled: async () => true,
-    setSuggestionsEnabled: async (on) => on,
+    getSuggestionsMode: async () => globalThis.__mocqSuggestionsMode ?? "sequential",
+    setSuggestionsMode: async (m) => (globalThis.__mocqSuggestionsMode = m),
   };
 };
 
@@ -142,6 +142,14 @@ async function openNeumePage(page) {
   if ((await laon.getAttribute("aria-expanded")) !== "true") await laon.getByTestId("source-chevron").click();
   await page.locator('[role=treeitem][data-line-id="line-1-neumas"]').click();
   await settle(page, 3000);
+}
+
+/** Menu Recortes da barra ▸ Sugestões (abre o submenu). */
+async function openSuggestionsSubmenu(page) {
+  await page.getByRole("menubar").getByRole("menuitem", { name: "Recortes" }).click();
+  // Passar por cima abre o submenu (um clique depois do hover o fecharia).
+  await page.getByRole("menuitem", { name: "Sugestões", exact: true }).hover();
+  await page.getByRole("menu", { name: "Sugestões" }).waitFor({ timeout: 5000 });
 }
 
 const GUIDE_TEXT = [
@@ -204,6 +212,22 @@ const SCREENS = {
     await page.keyboard.press("Control+Shift+G");
     await page.locator(".sc-box--suggested").first().waitFor({ timeout: 20000 });
     await settle(page, 600);
+  },
+  // M3: modo Candidatos escolhido no menu Recortes ▸ Sugestões (cliques reais), depois Sugerir.
+  "recortes-candidatos": async (page) => {
+    await openNeumePage(page);
+    await openSuggestionsSubmenu(page);
+    await page.getByRole("menuitemcheckbox", { name: "Candidatos" }).click();
+    await settle(page, 300);
+    await page.keyboard.press("Control+Shift+G");
+    await page.locator("[data-candidate]").first().waitFor({ timeout: 20000 });
+    await settle(page, 600);
+  },
+  // O submenu Sugestões aberto (M1).
+  "recortes-menu-sugestoes": async (page) => {
+    await openNeumePage(page);
+    await openSuggestionsSubmenu(page);
+    await settle(page, 300);
   },
   "recortes-area": async (page) => {
     await openNeumePage(page);

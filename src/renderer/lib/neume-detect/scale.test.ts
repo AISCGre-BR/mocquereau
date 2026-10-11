@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractChannel } from './image';
-import { deriveParams, estimateStrokeWidth, odd, staffMetrics } from './scale';
+import { deriveParams, estimateStrokeWidth, odd, staffMetrics, strokeWidthOutside } from './scale';
 import { createRaster, drawNeume, drawStaff, drawText } from './synthetic';
 import { binarizeOtsu } from './threshold';
 import type { Mask } from './types';
@@ -36,14 +36,36 @@ describe('scale', () => {
     expect(m.s).toBe(t + d);
   });
 
-  it('deriveParams(3) reproduz os valores do Othmar a 2400 px', () => {
+  it('filtros mínimos: 0,35u² e max(2, 0,5u)', () => {
+    expect(deriveParams(4).minArea).toBeCloseTo(5.6, 9);
+    expect(deriveParams(4).minSide).toBe(2);
+    expect(deriveParams(6).minSide).toBe(3);
+  });
+
+  it('ampliado 2x: pisos de minSide e minArea em pixels da imagem', () => {
+    expect(deriveParams(2, null, 2).minSide).toBe(4);
+    expect(deriveParams(2, null, 2).minArea).toBe(8);
+    expect(deriveParams(2, null, 1).minArea).toBeCloseTo(2, 9);
+    expect(deriveParams(12, null, 2).minSide).toBe(6);
+  });
+
+  it('strokeWidthOutside ignora as linhas excluídas', () => {
+    const m = { data: new Uint8Array(40 * 40), width: 40, height: 40 };
+    const fill = (x: number, y: number, w: number, h: number) => { for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) m.data[yy * 40 + xx] = 1; };
+    fill(2, 2, 2, 12); fill(10, 2, 2, 12);            // tracos finos (u = 2) em cima
+    fill(2, 25, 30, 6); fill(2, 33, 6, 6);            // "texto" grosso (6) embaixo, mais pixels
+    expect(estimateStrokeWidth(m)).toBe(6);
+    expect(strokeWidthOutside(m, [{ y0: 20, y1: 40 }])).toBe(2);
+  });
+
+  it('deriveParams(3) reproduz os valores do Othmar a 2400 px (filtros minimos menores, M4a)', () => {
     const p = deriveParams(3);
     expect(p.window).toBe(31);
     expect(p.darkOpen).toBe(7);
     expect(p.darkMargin).toBe(3);
-    expect(p.minArea).toBeCloseTo(11.7);
+    expect(p.minArea).toBeCloseTo(3.15);
     expect(p.maxArea).toBe(1530);
-    expect(p.minSide).toBe(3);
+    expect(p.minSide).toBe(2);
     expect(p.maxSide).toBe(90);
     expect(p.mergeGapX).toBeCloseTo(3.9);
     expect(p.mergeGapY).toBe(6);

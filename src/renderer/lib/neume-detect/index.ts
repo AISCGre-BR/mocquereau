@@ -6,6 +6,7 @@ export type { NeumeDetectClient, NeumeDetectClientOptions, WorkerLike } from './
 export type {
   BandDebug,
   BandSource,
+  Candidate,
   ChannelName,
   FracRect,
   GrayImage,
@@ -17,6 +18,7 @@ export type {
   SuggestAnchor,
   SuggestDebug,
   SuggestInput,
+  SuggestMode,
   SuggestResult,
   SuggestSyllable,
   Suggestion,

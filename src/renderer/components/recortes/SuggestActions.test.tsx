@@ -65,8 +65,8 @@ let enabled = true;
 beforeEach(() => {
   enabled = true;
   window.mocquereau = {
-    getSuggestionsEnabled: vi.fn(async () => enabled),
-    setSuggestionsEnabled: vi.fn(async (on: boolean) => on),
+    getSuggestionsMode: vi.fn(async () => (enabled ? "sequential" : "off")),
+    setSuggestionsMode: vi.fn(async (m: string) => m),
   } as unknown as MocquereauAPI;
 });
 afterEach(() => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
-import { buildMenus, type MenuActions, type MenuState } from "./menus";
+import { buildMenus, recortesMenuItems, type MenuActions, type MenuState, type RecortesMenuState } from "./menus";
 import type { MenuCommand, MenuDefinition, MenuEntry, MenuSubmenu } from "./menuTypes";
 
 const t = (key: string) => key;
@@ -32,11 +32,11 @@ function actions(): MenuActions {
     suggestSource: vi.fn(),
     acceptAllSuggestions: vi.fn(),
     discardSuggestions: vi.fn(),
-    toggleSuggestions: vi.fn(),
+    setSuggestionsMode: vi.fn(),
   };
 }
 
-const NO_SUGGESTIONS = { suggestionsEnabled: false, canSuggest: false, canSuggestSource: false, hasSuggestions: false };
+const NO_SUGGESTIONS = { suggestionsMode: "off" as const, canSuggest: false, canSuggestSource: false, hasSuggestions: false };
 
 const base: MenuState = { hasProject: true, canExport: true, view: "texto", theme: "dark", language: "en", canUndo: true, canRedo: false };
 
@@ -192,7 +192,9 @@ describe("buildMenus", () => {
       ["recortes.removeBox", "recortes.menu.removeBox", "Delete", false],
       ["recortes.clearPage", "recortes.menu.clearPage", undefined, false],
       ["recortes.realign", "recortes.menu.realign", undefined, true],
-      ["recortes.suggestionsEnabled", "recortes.menu.suggestionsEnabled", undefined, false],
+      ["recortes.suggestionsMode.sequential", "recortes.menu.suggestions.sequential", undefined, false],
+      ["recortes.suggestionsMode.candidates", "recortes.menu.suggestions.candidates", undefined, false],
+      ["recortes.suggestionsMode.off", "recortes.menu.suggestions.off", undefined, false],
       ["recortes.nextSource", "recortes.menu.nextSource", "Ctrl+Enter", false],
     ]);
     for (const id of ["recortes.removeBox", "recortes.clearPage", "recortes.realign", "recortes.nextSource"]) find(menus, id).onSelect();
@@ -207,7 +209,7 @@ describe("buildMenus", () => {
 
   it("menu Recortes: sugestões com a preferência ligada (S6, S8, S10)", () => {
     const a = actions();
-    const on = { canRemoveBox: false, canClearPage: false, canRealign: false, hasNextSource: false, suggestionsEnabled: true, canSuggest: true, canSuggestSource: true, hasSuggestions: true };
+    const on = { canRemoveBox: false, canClearPage: false, canRealign: false, hasNextSource: false, suggestionsMode: "sequential" as const, canSuggest: true, canSuggestSource: true, hasSuggestions: true };
     const menus = buildMenus({ ...base, view: "recortes", recortes: on }, a, t);
     const menu = menus.find((m) => m.id === "recortes")!;
     const rows = flat(menu.items).map((i) => [i.id, i.label, i.accelerator, i.disabled, i.checked]);
@@ -217,17 +219,17 @@ describe("buildMenus", () => {
         ["recortes.suggestSource", "recortes.menu.suggestSource", undefined, false, undefined],
         ["recortes.acceptAll", "recortes.menu.acceptAll", "Ctrl+Shift+Enter", false, undefined],
         ["recortes.discard", "recortes.menu.discard", undefined, false, undefined],
-        ["recortes.suggestionsEnabled", "recortes.menu.suggestionsEnabled", undefined, false, true],
+        ["recortes.suggestionsMode.sequential", "recortes.menu.suggestions.sequential", undefined, false, true],
       ]),
     );
-    for (const id of ["recortes.suggest", "recortes.suggestSource", "recortes.acceptAll", "recortes.discard", "recortes.suggestionsEnabled"]) {
+    for (const id of ["recortes.suggest", "recortes.suggestSource", "recortes.acceptAll", "recortes.discard", "recortes.suggestionsMode.candidates"]) {
       find(menus, id).onSelect();
     }
     expect(a.suggest).toHaveBeenCalledOnce();
     expect(a.suggestSource).toHaveBeenCalledOnce();
     expect(a.acceptAllSuggestions).toHaveBeenCalledOnce();
     expect(a.discardSuggestions).toHaveBeenCalledOnce();
-    expect(a.toggleSuggestions).toHaveBeenCalledOnce();
+    expect(a.setSuggestionsMode).toHaveBeenCalledWith("candidates");
 
     // Sem sugestões na página: Aceitar e Descartar desabilitados.
     const none = buildMenus({ ...base, view: "recortes", recortes: { ...on, hasSuggestions: false, canSuggest: false, canSuggestSource: false } }, a, t);
@@ -236,11 +238,44 @@ describe("buildMenus", () => {
     expect(find(none, "recortes.suggest").disabled).toBe(true);
     expect(find(none, "recortes.suggestSource").disabled).toBe(true);
 
-    // Preferência desligada: só o item marcável fica.
-    const off = buildMenus({ ...base, view: "recortes", recortes: { ...on, suggestionsEnabled: false } }, a, t);
+    // Preferência desligada: só o submenu fica.
+    const off = buildMenus({ ...base, view: "recortes", recortes: { ...on, suggestionsMode: "off" } }, a, t);
     const ids = flat(off.find((m) => m.id === "recortes")!.items).map((i) => i.id);
-    expect(ids).toContain("recortes.suggestionsEnabled");
+    expect(ids).toContain("recortes.suggestionsMode.off");
     for (const id of ["recortes.suggest", "recortes.suggestSource", "recortes.acceptAll", "recortes.discard"]) expect(ids).not.toContain(id);
-    expect(find(off, "recortes.suggestionsEnabled").checked).toBe(false);
+    expect(find(off, "recortes.suggestionsMode.off").checked).toBe(true);
+
+    // Candidatos: Aceitar todas desabilitado; Descartar segue o estado.
+    const cands = buildMenus({ ...base, view: "recortes", recortes: { ...on, suggestionsMode: "candidates" } }, a, t);
+    expect(find(cands, "recortes.acceptAll").disabled).toBe(true);
+    expect(find(cands, "recortes.discard").disabled).toBe(false);
+  });
+
+  describe("submenu Sugestões (M1)", () => {
+    const STATE: RecortesMenuState = { ...NO_SUGGESTIONS, canRemoveBox: false, canClearPage: false, canRealign: false, hasNextSource: false };
+    const ACTIONS = actions();
+
+    it("submenu Sugestões com três itens exclusivos; marca o atual; escolher chama setSuggestionsMode", () => {
+      const setSuggestionsMode = vi.fn();
+      const items = recortesMenuItems({ ...STATE, suggestionsMode: "candidates" }, { ...ACTIONS, setSuggestionsMode }, (k) => k);
+      const sub = items.find((e) => e !== "separator" && e.id === "recortes.suggestionsMode") as MenuSubmenu;
+      expect(sub.label).toBe("recortes.menu.suggestionsMode");
+      expect(sub.items.map((i) => (i as MenuCommand).checked)).toEqual([false, true, false]);
+      (sub.items[2] as MenuCommand).onSelect();
+      expect(setSuggestionsMode).toHaveBeenCalledWith("off");
+    });
+
+    it("modo off: só o submenu fica; os itens de sugestão somem", () => {
+      const items = recortesMenuItems({ ...STATE, suggestionsMode: "off" }, ACTIONS, (k) => k);
+      const ids = items.filter((e) => e !== "separator").map((e) => (e as { id: string }).id);
+      expect(ids).toContain("recortes.suggestionsMode");
+      expect(ids.some((id) => ["recortes.suggest", "recortes.acceptAll", "recortes.discard", "recortes.suggestSource"].includes(id))).toBe(false);
+    });
+
+    it("sem estado: os três desabilitados e nenhum marcado", () => {
+      const items = recortesMenuItems(undefined, ACTIONS, (k) => k);
+      const sub = items.find((e) => e !== "separator" && e.id === "recortes.suggestionsMode") as MenuSubmenu;
+      expect(sub.items.every((i) => (i as MenuCommand).disabled && !(i as MenuCommand).checked)).toBe(true);
+    });
   });
 });

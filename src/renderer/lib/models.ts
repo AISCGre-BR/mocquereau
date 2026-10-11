@@ -2,6 +2,7 @@
 
 import type { RecentEntry, RecentMeta } from "@shared/recent";
 import type { BoxFrame, Classification, ImageBytesPayload, PageNotation, ImageRef, SourceMetadata } from "@shared/project-schema";
+import type { SuggestionsMode } from "@shared/suggestions-mode";
 
 /** Imagem armazenada localmente */
 export interface StoredImage {
@@ -283,10 +284,10 @@ export interface MocquereauAPI {
   setClassification: (c: Classification) => Promise<void>;
   getTheme: () => Promise<ThemePreference>;
   setTheme: (theme: ThemePreference) => Promise<boolean>;
-  /** "Sugestões de neumas" (S8); padrão true. */
-  getSuggestionsEnabled: () => Promise<boolean>;
-  /** Grava a preferência; devolve o valor gravado (não booleano é ignorado). */
-  setSuggestionsEnabled: (on: boolean) => Promise<boolean>;
+  /** M1: modo das sugestões; padrão "sequential" (a preferência antiga desligada vira "off" na main). */
+  getSuggestionsMode: () => Promise<SuggestionsMode>;
+  /** Grava o modo; devolve o valor gravado (valor inválido é ignorado na main). */
+  setSuggestionsMode: (mode: SuggestionsMode) => Promise<SuggestionsMode>;
   platform: string;
 }
 

@@ -96,6 +96,35 @@ export async function detectRealignments(
   return opts.isCancelled?.() ? [] : out;
 }
 
+/**
+ * The legacy-open fix (useProjectFile): detect and store the ink's frame on each
+ * line that needs it. Same project when nothing changes or anything fails.
+ */
+export async function realignLegacyProject(
+  project: MocquereauProject,
+  load: RasterLoader,
+  opts: { isCancelled?: () => boolean; yieldFn?: () => Promise<void> } = {},
+): Promise<MocquereauProject> {
+  try {
+    const found = await detectRealignments(project, load, opts);
+    if (found.length === 0) return project;
+    const wanted = new Map(found.map((f) => [f.lineId, f.to] as const));
+    return {
+      ...project,
+      sources: project.sources.map((s) => ({
+        ...s,
+        lines: s.lines.map((l) => {
+          const frame = wanted.get(l.id);
+          return frame ? { ...l, boxFrame: frame } : l;
+        }),
+      })),
+    };
+  } catch (err) {
+    console.warn("[box-frame-realign] legacy realignment skipped", err);
+    return project;
+  }
+}
+
 /** Decodes a stored image into a raster no larger than maxLongSide (DOM only). */
 export async function loadRasterForInk(image: StoredImage, maxLongSide = INK_MAX_LONG_SIDE): Promise<RasterLike | null> {
   if (!image.dataUrl) return null;

@@ -4,6 +4,11 @@ import {
   alphaMask,
   downscaleMask,
   prepareWork,
+  pickInkChannel,
+  CHANNEL_SWITCH_RATIO,
+  inkContrasts,
+  R_WEAK_CONTRAST,
+  rednessInk,
   contrastScore,
   cropGray,
   downscaleGray,
@@ -13,7 +18,7 @@ import {
   pickChannel,
   upscale2xGray,
 } from './image';
-import { addNoise, createRaster } from './synthetic';
+import { addNoise, buildAdiastematicLine, createRaster } from './synthetic';
 import type { GrayImage, RasterRGBA } from './types';
 
 function raster(w: number, h: number, px: (x: number, y: number) => [number, number, number, number]): RasterRGBA {
@@ -81,6 +86,8 @@ describe('image', () => {
       const crop = cropRaster(r, rect);
       const want = {
         r: downscaleGray(extractChannel(crop, 'r'), scale),
+        g: downscaleGray(extractChannel(crop, 'g'), scale),
+        b: downscaleGray(extractChannel(crop, 'b'), scale),
         gray: downscaleGray(extractChannel(crop, 'gray'), scale),
         valid: downscaleMask(alphaMask(crop), scale),
       };
@@ -88,8 +95,47 @@ describe('image', () => {
       expect([got.r.width, got.r.height]).toEqual([want.r.width, want.r.height]);
       expect([got.valid.width, got.valid.height]).toEqual([want.valid.width, want.valid.height]);
       expect(Array.from(got.r.data)).toEqual(Array.from(want.r.data));
+      expect(Array.from(got.g.data)).toEqual(Array.from(want.g.data));
+      expect(Array.from(got.b.data)).toEqual(Array.from(want.b.data));
       expect(Array.from(got.gray.data)).toEqual(Array.from(want.gray.data));
       expect(Array.from(got.valid.data)).toEqual(Array.from(want.valid.data));
     }
+  });
+
+  it('rednessInk: tinta = vermelho (r - g alto), escuro e pergaminho ficam claros', () => {
+    const r = { data: Uint8Array.from([226, 235, 45, 226, 255]), width: 5, height: 1 };
+    const g = { data: Uint8Array.from([70, 150, 35, 212, 0]), width: 5, height: 1 };
+    expect(Array.from(rednessInk(r, g).data)).toEqual([0, 85, 235, 227, 0]);
+  });
+
+  it('pickInkChannel: R com tinta escura; cinza quando a tinta tem R próximo do pergaminho', () => {
+    const a = buildAdiastematicLine({ seed: 69 });
+    const b = buildAdiastematicLine({ seed: 69, inkColor: [215, 120, 90] });
+    const work = (r: RasterRGBA) => prepareWork(r, { x: 0, y: 0, w: r.width, h: r.height }, 1);
+    expect(pickInkChannel(work(a.raster)).name).toBe('r');
+    expect(pickInkChannel(work(b.raster)).name).not.toBe('r');
+  });
+
+  it('pickInkChannel: sem contraste maior, fica no R', () => {
+    const img = (v: number[]) => ({ data: Uint8Array.from(v), width: v.length, height: 1 });
+    const flat = img(Array.from({ length: 200 }, () => 200));
+    const valid = { data: new Uint8Array(200).fill(1), width: 200, height: 1 };
+    expect(pickInkChannel({ r: flat, g: flat, b: flat, gray: flat, valid }).name).toBe('r');
+  });
+
+  it('pickInkChannel: tinta avermelhada com R ainda forte fica no R, mesmo com outro canal >= 1,25x', () => {
+    const fx = buildAdiastematicLine({ seed: 69, inkColor: [140, 40, 30] });
+    const w = prepareWork(fx.raster, { x: 0, y: 0, w: fx.raster.width, h: fx.raster.height }, 1);
+    const sc = inkContrasts(w);
+    expect(sc.r).toBeGreaterThanOrEqual(R_WEAK_CONTRAST);
+    expect(Math.max(sc.gray, sc.g, sc.b)).toBeGreaterThanOrEqual(CHANNEL_SWITCH_RATIO * sc.r);
+    expect(pickInkChannel(w).name).toBe('r');
+  });
+
+  it('pickInkChannel: tinta desbotada com R fraco troca de canal', () => {
+    const fx = buildAdiastematicLine({ seed: 69, inkColor: [215, 120, 90] });
+    const w = prepareWork(fx.raster, { x: 0, y: 0, w: fx.raster.width, h: fx.raster.height }, 1);
+    expect(inkContrasts(w).r).toBeLessThan(R_WEAK_CONTRAST);
+    expect(pickInkChannel(w).name).not.toBe('r');
   });
 });

@@ -19,15 +19,30 @@ function median(v: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-export type TextPreference = { kind: 'lowest' } | { kind: 'below'; y: number };
+/** Componentes acima da linha (fracao dos da linha) para ela ser texto e nao a fileira de neumas. */
+export const TEXT_MIN_INK_ABOVE = 0.25;
+/** Espaco minimo (em altura-x) entre o topo da area e o topo da linha: onde ficam os neumas. */
+export const TEXT_MIN_ROOM_ABOVE = 1.5;
+
+/**
+ * 'lowest': o pico mais baixo. `inkAbove`: so aceita a linha com tinta (neumas) acima dela (ver
+ * TEXT_MIN_INK_ABOVE); a medida de u nao o usa (caneta do texto mais grossa infla a tinta da linha).
+ */
+export type TextPreference = { kind: 'lowest'; inkAbove?: boolean } | { kind: 'below'; y: number };
 
 /**
  * Histograma das bases (y + h) ponderado por area, suavizado (janela 0,5 x altura mediana). Cada pico
  * qualifica se tem >= 3 componentes de altura semelhante (+-40% da mediana do pico) cobrindo >= 30%
  * da largura, altura-x >= minXHeight (descarta tocos e ruido) e espacamento de letra (>= 40% dos
- * vaos entre vizinhos <= 0,6xh; neumas alinhados por acaso sao esparsos). Preferencia: o pico mais baixo (modo A) ou o primeiro abaixo de y (modo D).
+ * vaos entre vizinhos <= 0,6xh, com as letras de haste; neumas alinhados por acaso sao esparsos). Preferencia: o pico mais baixo (modo A) ou o primeiro abaixo de y (modo D).
  */
-export function findTextLine(comps: Comp[], bandWidth: number, pref: TextPreference, minXHeight = 0): TextLine | null {
+export function findTextLine(
+  comps: Comp[],
+  bandWidth: number,
+  pref: TextPreference,
+  minXHeight = 0,
+  inner?: { y0: number; y1: number },
+): TextLine | null {
   if (comps.length < 3) return null;
   const medH = median(comps.map((c) => c.h));
   let maxBase = 0;
@@ -66,11 +81,42 @@ export function findTextLine(comps: Comp[], bandWidth: number, pref: TextPrefere
     const xh = median(similar.map((c) => c.h));
     if (xh < minXHeight) continue;
     // espacamento de letra: >= 40% dos vaos entre vizinhos semelhantes sao <= 0,6xh (neumas sao esparsos)
-    const byX = [...similar].sort((a, b) => a.x - b.x);
+    // vizinhos entre as letras plausiveis (0,6 a 2,2 xh): as de haste (b d l t, maiusculas) contam como
+    // vizinhas; so as semelhantes deixariam um buraco em cada haste e palavras curtas nao passariam
+    const byX = members.filter((c) => c.h >= 0.6 * xh && c.h <= 2.2 * xh).sort((a, b) => a.x - b.x);
     let tight = 0;
     for (let k = 0; k + 1 < byX.length; k++) if (byX[k + 1].x - (byX[k].x + byX[k].w) <= 0.6 * xh) tight++;
     if (tight < 0.4 * (byX.length - 1)) continue;
     const baseline = median(similar.map((c) => c.y + c.h));
+    if (pref.kind === 'lowest') {
+      // Os neumas ficam sempre acima do texto. Mais tinta abaixo da linha do que nela (margem inclusa):
+      // a linha mais baixa nao e esta (fileira de neumas sobre outra). Acima so conta o que esta na
+      // area desenhada (a margem de cima e contexto). Com `inkAbove`, a linha tambem precisa de neumas acima: espaco de ao
+      // menos TEXT_MIN_ROOM_ABOVE·xh entre o topo da area e o da linha, e componentes acima em numero
+      // >= TEXT_MIN_INK_ABOVE x os da linha; senao e a propria fileira de neumas (grupos de tracos
+      // curtos parecem letras). Conta componentes, nao area: a caneta do texto e mais pesada (texto
+      // real medido com area acima de 0,14x a da linha).
+      const bottom = baseline + 0.8 * xh;
+      const top = baseline - xh;
+      const set = new Set(members);
+      let below = 0;
+      let own = 0;
+      let nAbove = 0;
+      for (const c of comps) {
+        if (set.has(c)) {
+          own += c.area;
+          continue;
+        }
+        const cy = c.y + c.h / 2;
+        if (cy > bottom) below += c.area;
+        else if (cy < top && !(inner && cy < inner.y0)) nAbove++;
+      }
+      if (below > own) continue;
+      if (pref.inkAbove) {
+        const room = top - (inner ? inner.y0 : 0);
+        if (room < TEXT_MIN_ROOM_ABOVE * xh || nAbove < TEXT_MIN_INK_ABOVE * members.length) continue;
+      }
+    }
     candidates.push({ y: baseline, line: { baseline, xHeight: xh, top: baseline - 2 * xh, bottom: baseline + 0.8 * xh } });
   }
   if (candidates.length === 0) return null;

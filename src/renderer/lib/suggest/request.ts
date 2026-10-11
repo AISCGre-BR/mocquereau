@@ -5,6 +5,7 @@
 // page to rasterize, and the maps between region fractions and view fractions.
 
 import { boxesInView } from "@shared/box-frame";
+import { orderNeumeBands } from "@shared/band-order";
 import { notationOf } from "@shared/classification";
 import { isLineGap } from "../syllable-gap";
 import { flattenSyllables } from "../sliceUtils";
@@ -79,61 +80,135 @@ export function viewToRegion(box: FracRect, region: FracRect): FracRect {
   return { x: (box.x - region.x) / region.w, y: (box.y - region.y) / region.h, w: box.w / region.w, h: box.h / region.h };
 }
 
+/** Raster region of the saved areas: their bounding rectangle with a margin, clamped to the view. */
+function areasRegion(areas: FracRect[]): FracRect {
+  const x0 = clamp01(Math.min(...areas.map((a) => a.x)) - BAND_MARGIN);
+  const y0 = clamp01(Math.min(...areas.map((a) => a.y)) - BAND_MARGIN);
+  const x1 = clamp01(Math.max(...areas.map((a) => a.x + a.w)) + BAND_MARGIN);
+  const y1 = clamp01(Math.max(...areas.map((a) => a.y + a.h)) + BAND_MARGIN);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function centerInside(box: FracRect, region: FracRect): boolean {
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  return cx >= region.x && cx <= region.x + region.w && cy >= region.y && cy <= region.y + region.h;
+}
+
+/** The page's boxes (view fractions), in range order; nulls ("no neume") left out. */
+function pageAnchors(line: ManuscriptLine): SuggestAnchor[] {
+  const view = boxesInView(line);
+  const all: SuggestAnchor[] = [];
+  for (let idx = line.syllableRange.start; idx <= line.syllableRange.end; idx++) {
+    const box = view[idx];
+    if (box) all.push({ index: idx, box });
+  }
+  return all;
+}
+
+/**
+ * M3: the candidates request for a page. Region and areas as in planSuggestion; anchors = every
+ * box of the page inside the region (the detector drops glyphs they already hold and, on staves,
+ * takes their height); no syllables. Never null: there is always something to look at.
+ */
+export function planCandidates(source: ManuscriptSource, line: ManuscriptLine): SuggestPlan {
+  const notation = resolveNotation(source, line);
+  const all = pageAnchors(line);
+  const areas = orderNeumeBands(line.neumeBands ?? []);
+  if (areas.length === 0) {
+    return { lineId: line.id, region: { x: 0, y: 0, w: 1, h: 1 }, input: { notation, syllables: [], anchors: all, mode: "candidates" } };
+  }
+  const region = areasRegion(areas);
+  const anchors = all.filter((a) => centerInside(a.box, region)).map((a) => ({ index: a.index, box: viewToRegion(a.box, region) }));
+  return {
+    lineId: line.id,
+    region,
+    input: { notation, syllables: [], anchors, bands: areas.map((a) => viewToRegion(a, region)), mode: "candidates" },
+  };
+}
+
+/**
+ * M2: first syllable of the sequential queue: the first suggestible target (collectTargets, range
+ * order) at or after the active syllable, or after the range start without one (or with one outside
+ * the range). null = nothing to
+ * suggest from there.
+ */
+export function sequentialStart(
+  source: ManuscriptSource,
+  line: ManuscriptLine,
+  words: SyllabifiedWord[],
+  covered: ReadonlyMap<number, string>,
+  rejected: ReadonlySet<number>,
+  active: number | null,
+): number | null {
+  // an active syllable outside this page's range (another page) does not move the start
+  const inRange = active !== null && active >= line.syllableRange.start && active <= line.syllableRange.end;
+  const from = inRange ? active : line.syllableRange.start;
+  const first = collectTargets(source, line, words, covered, rejected).find((s) => s.suggest !== false && s.index >= from);
+  return first ? first.index : null;
+}
+
+/**
+ * The detector request for a page. The sequential queue starts at `sequentialStart` (M2) and opens
+ * at the nearest box before it (or at the range start when there is none): every target from there
+ * on keeps its place, so the glyphs of the syllables before the start are consumed in order and the
+ * active syllable lands on its own neume. Targets before the start (pending, rejected or legacy)
+ * get suggest:false: they take their glyphs but receive no suggestion. Boxes from the start on and
+ * the opening one are anchors. Areas go to the detector in reading order (rows top to bottom, left
+ * to right).
+ */
 export function planSuggestion(
   source: ManuscriptSource,
   line: ManuscriptLine,
   words: SyllabifiedWord[],
   covered: ReadonlyMap<number, string>,
   rejected: ReadonlySet<number>,
+  active: number | null,
 ): SuggestPlan | null {
-  const syllables = collectTargets(source, line, words, covered, rejected);
-  if (!syllables.some((s) => s.suggest !== false)) return null;
+  const start = sequentialStart(source, line, words, covered, rejected, active);
+  if (start === null) return null;
+  const targets = collectTargets(source, line, words, covered, rejected);
 
-  const view = boxesInView(line);
-  const anchors: SuggestAnchor[] = [];
-  for (let idx = line.syllableRange.start; idx <= line.syllableRange.end; idx++) {
-    const box = view[idx];
-    if (box) anchors.push({ index: idx, box });
-  }
+  /** Boxes from the start on, plus the nearest one before it (it opens the queue). */
+  const fromStart = (list: SuggestAnchor[]): SuggestAnchor[] => {
+    const before = list.filter((a) => a.index < start);
+    return [...(before.length ? [before[before.length - 1]] : []), ...list.filter((a) => a.index >= start)];
+  };
 
   // The detector only honours anchors whose syllable is in `syllables` (reading order).
   const info = syllableInfo(words);
-  const withAnchors = (kept: SuggestAnchor[]): SuggestSyllable[] =>
-    [
-      ...syllables,
+  const queueOf = (kept: SuggestAnchor[]): SuggestSyllable[] => {
+    const open = kept.length && kept[0].index < start ? kept[0].index : line.syllableRange.start;
+    return [
+      ...targets.filter((s) => s.index >= open).map((s) => (s.index < start ? { ...s, suggest: false } : s)),
       ...kept.flatMap((a) => {
         const s = info(a.index);
         return s ? [{ ...s, suggest: false }] : [];
       }),
     ].sort((a, b) => a.index - b.index);
+  };
 
+  const all = pageAnchors(line);
   const notation = resolveNotation(source, line);
-  const areas = line.neumeBands ?? [];
+  const areas = orderNeumeBands(line.neumeBands ?? []);
   if (areas.length === 0) {
+    const anchors = fromStart(all);
     return {
       lineId: line.id,
       region: { x: 0, y: 0, w: 1, h: 1 },
-      input: { notation, syllables: withAnchors(anchors), anchors },
+      input: { notation, syllables: queueOf(anchors), anchors },
     };
   }
 
-  const x0 = clamp01(Math.min(...areas.map((a) => a.x)) - BAND_MARGIN);
-  const y0 = clamp01(Math.min(...areas.map((a) => a.y)) - BAND_MARGIN);
-  const x1 = clamp01(Math.max(...areas.map((a) => a.x + a.w)) + BAND_MARGIN);
-  const y1 = clamp01(Math.max(...areas.map((a) => a.y + a.h)) + BAND_MARGIN);
-  const region: FracRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-
-  const inside = anchors
-    .filter((a) => {
-      const cx = a.box.x + a.box.w / 2;
-      const cy = a.box.y + a.box.h / 2;
-      return cx >= region.x && cx <= region.x + region.w && cy >= region.y && cy <= region.y + region.h;
-    })
-    .map((a) => ({ index: a.index, box: viewToRegion(a.box, region) }));
+  const region = areasRegion(areas);
+  const inside = fromStart(all.filter((a) => centerInside(a.box, region))).map((a) => ({
+    index: a.index,
+    box: viewToRegion(a.box, region),
+  }));
 
   return {
     lineId: line.id,
     region,
-    input: { notation, syllables: withAnchors(inside), anchors: inside, bands: areas.map((a) => viewToRegion(a, region)) },
+    input: { notation, syllables: queueOf(inside), anchors: inside, bands: areas.map((a) => viewToRegion(a, region)) },
   };
 }

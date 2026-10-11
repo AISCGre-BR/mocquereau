@@ -162,7 +162,7 @@ function Workbench() {
       suggestSource: recortes.suggestSource,
       acceptAllSuggestions: recortes.acceptAllSuggestions,
       discardSuggestions: recortes.discardSuggestions,
-      toggleSuggestions: recortes.toggleSuggestions,
+      setSuggestionsMode: recortes.setSuggestionsMode,
       clearRecent: () => {
         if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
         void window.mocquereau
