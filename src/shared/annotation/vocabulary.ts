@@ -28,23 +28,37 @@ export function resolveEquivalent(v: NeumeVocabulary, kindId: string): string {
   return id;
 }
 
+/**
+ * Visible kinds matching the query, grouped by category in vocabulary order. Kinds without a
+ * category (or whose category no longer exists) come last, in a group with `category: null`.
+ */
 export function filterKinds(
   v: NeumeVocabulary,
   query: string,
-): Array<{ category: NeumeCategory; kinds: NeumeKind[] }> {
+): Array<{ category: NeumeCategory | null; kinds: NeumeKind[] }> {
   const q = fold(query.trim());
   const match = (k: NeumeKind) => q === "" || fold(k.name).split(/\s+/).some((w) => w.startsWith(q));
   // Hidden kinds (or kinds of a hidden category) stay out of the list, but typing the exact
   // name still offers them: otherwise there is no match and no "Create" either.
   const exact = (k: NeumeKind) => q !== "" && fold(k.name.trim()) === q;
-  return v.categories
-    .map((category) => ({
-      category,
-      kinds: v.kinds.filter(
-        (k) => k.categoryId === category.id && ((!category.hidden && !k.hidden && match(k)) || exact(k)),
-      ),
-    }))
-    .filter((g) => g.kinds.length > 0);
+  const offered = (k: NeumeKind, category: NeumeCategory | null) =>
+    (!category?.hidden && !k.hidden && match(k)) || exact(k);
+  const categoryIds = new Set(v.categories.map((c) => c.id));
+  return [
+    ...v.categories.map((category) => ({
+      category: category as NeumeCategory | null,
+      kinds: v.kinds.filter((k) => k.categoryId === category.id && offered(k, category)),
+    })),
+    {
+      category: null,
+      kinds: v.kinds.filter((k) => !isCategorized(k, categoryIds) && offered(k, null)),
+    },
+  ].filter((g) => g.kinds.length > 0);
+}
+
+/** Whether the kind belongs to an existing category (`categoryIds` = ids of the vocabulary). */
+export function isCategorized(k: NeumeKind, categoryIds: ReadonlySet<string>): boolean {
+  return k.categoryId !== undefined && categoryIds.has(k.categoryId);
 }
 
 export function getVocabulary(

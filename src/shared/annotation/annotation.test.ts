@@ -16,6 +16,11 @@ describe("anotação", () => {
   it("tipo desconhecido sem notas conta como indefinido, não como zero", () => {
     expect(effectiveNotes({ neumes: [{ kind: "sumido" }], tags: [] }, v)).toBeUndefined();
   });
+  it("tipo sem notas padrão: indefinido sem notas no item, soma quando o item informa", () => {
+    const w = { ...v, kinds: [...v.kinds, { id: "solto", name: "solto" }] };
+    expect(effectiveNotes({ neumes: [{ kind: "solto" }, { kind: "pes" }], tags: [] }, w)).toBeUndefined();
+    expect(effectiveNotes({ neumes: [{ kind: "solto", notes: 3 }, { kind: "pes" }], tags: [] }, w)).toBe(5);
+  });
   it("normalizar tira campos vazios e devolve null se nada sobrar", () => {
     expect(normalizeAnnotation({ neumes: [], tags: [], comment: "" })).toBeNull();
     expect(normalizeAnnotation({ neumes: [{ kind: "pes", letters: [], comment: "" }], tags: [] }))

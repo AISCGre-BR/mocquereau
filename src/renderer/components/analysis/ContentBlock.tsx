@@ -4,7 +4,7 @@
 // grouped by category; Total column with a bar; last row = mean notes per syllable.
 import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { neumeContent, selectCells, type KindRow } from "@shared/analysis";
+import { groupContentRows, neumeContent, selectCells } from "@shared/analysis";
 import { Panel } from "../../ui/Panel";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { ValueBar } from "./BarRow";
@@ -23,17 +23,15 @@ export function ContentBlock({ project, filters, vocabulary, onDrill, className 
     [project, filters, vocabulary],
   );
 
-  const groups = useMemo(() => {
-    const names = new Map(vocabulary.categories.map((c) => [c.id, c.name]));
-    const out: Array<{ id: string; name: string; rows: KindRow[] }> = [];
-    for (const c of vocabulary.categories) {
-      const rows = content.rows.filter((r) => !r.unknown && r.categoryId === c.id);
-      if (rows.length > 0) out.push({ id: c.id, name: c.name, rows });
-    }
-    const unknown = content.rows.filter((r) => r.unknown || !names.has(r.categoryId ?? ""));
-    if (unknown.length > 0) out.push({ id: "", name: t("indicators.unknown"), rows: unknown });
-    return out;
-  }, [content, vocabulary, t]);
+  const groups = useMemo(
+    () =>
+      groupContentRows(content.rows, vocabulary).map((g) => ({
+        id: g.type === "category" ? g.id : `:${g.type}`,
+        name: g.type === "category" ? g.name : t(`indicators.${g.type}`),
+        rows: g.rows,
+      })),
+    [content, vocabulary, t],
+  );
 
   const maxTotal = Math.max(0, ...content.rows.map((r) => r.total));
   const span = sources.length + 2;

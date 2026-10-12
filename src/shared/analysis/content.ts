@@ -72,6 +72,29 @@ export function neumeContent(
   return { rows, meanNotes };
 }
 
+export type ContentGroup =
+  | { type: "category"; id: string; name: string; rows: KindRow[] }
+  | { type: "noCategory"; rows: KindRow[] }
+  | { type: "unknown"; rows: KindRow[] };
+
+/**
+ * Content rows grouped for display: categories in vocabulary order, then known kinds without a
+ * category (or whose category no longer exists), then kinds missing from the vocabulary.
+ * Empty groups are left out.
+ */
+export function groupContentRows(rows: KindRow[], v: NeumeVocabulary): ContentGroup[] {
+  const ids = new Set(v.categories.map((c) => c.id));
+  const groups: ContentGroup[] = [
+    ...v.categories.map((c) => ({
+      type: "category" as const, id: c.id, name: c.name,
+      rows: rows.filter((r) => !r.unknown && r.categoryId === c.id),
+    })),
+    { type: "noCategory", rows: rows.filter((r) => !r.unknown && !ids.has(r.categoryId ?? "")) },
+    { type: "unknown", rows: rows.filter((r) => r.unknown) },
+  ];
+  return groups.filter((g) => g.rows.length > 0);
+}
+
 export const LIQ_KEYS = ["liq.augmentative", "liq.diminutive", "liq.none", "liq.unset"] as const;
 export const EPISEMA_KEYS = ["episema.yes", "episema.no", "episema.unset"] as const;
 export const CERTAINTY_KEYS = ["certainty.secure", "certainty.probable", "certainty.illegible", "certainty.unset"] as const;

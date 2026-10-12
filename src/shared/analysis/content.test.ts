@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { marks, neumeContent } from "./content";
+import { groupContentRows, marks, neumeContent } from "./content";
 import { makeAnalysisProject, vocabulary as v } from "./__fixtures__/analysis-project";
 
 const p = makeAnalysisProject();
@@ -49,6 +49,25 @@ describe("neumeContent", () => {
 
   it("marks kinds missing from the vocabulary as unknown", () => {
     expect(row("sumido")).toMatchObject({ name: "sumido", categoryId: null, unknown: true, total: 1 });
+  });
+
+  it("a known kind without category is not unknown: categoryId null", () => {
+    const w = { ...v, kinds: [...v.kinds, { id: "solto", name: "solto" }] };
+    const q = makeAnalysisProject();
+    q.sources[3].annotations![1] = { neumes: [{ kind: "solto" }], tags: [] };
+    const solto = neumeContent(q, {}, w).rows.find((r) => r.kindId === "solto")!;
+    expect(solto).toMatchObject({ name: "solto", categoryId: null, total: 1 });
+    expect(solto.unknown).toBeUndefined();
+  });
+
+  it("groups rows: categories, then without category, then unknown", () => {
+    const w = { ...v, kinds: [...v.kinds, { id: "solto", name: "solto" }] };
+    const q = makeAnalysisProject();
+    q.sources[3].annotations![1] = { neumes: [{ kind: "solto" }], tags: [] };
+    const groups = groupContentRows(neumeContent(q, {}, w).rows, w);
+    expect(groups.map((g) => g.type)).toEqual(["category", "category", "noCategory", "unknown"]);
+    expect(groups[2].rows.map((r) => r.kindId)).toEqual(["solto"]);
+    expect(groups[3].rows.map((r) => r.kindId)).toEqual(["sumido"]);
   });
 
   it("averages effective notes over annotated syllables with a defined total", () => {

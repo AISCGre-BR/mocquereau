@@ -343,16 +343,29 @@ export function readVocabulary(v: unknown, ctx: Ctx): NeumeVocabulary | undefine
   }
   const categories = readEntries<NeumeCategory>(v.categories, "neumeVocabulary.categories", ctx, (e) =>
     isStr(e.name) ? withHidden(e, { id: e.id as string, name: e.name }) : null);
+  // categoryId and defaultNotes are optional (absent stays absent), but validated when present.
   const kinds = readEntries<NeumeKind>(v.kinds, "neumeVocabulary.kinds", ctx, (e) => {
-    if (!isStr(e.name) || !isStr(e.categoryId) || !isNum(e.defaultNotes) || !Number.isInteger(e.defaultNotes) || e.defaultNotes < 0) {
+    if (!isStr(e.name)) return null;
+    if (e.categoryId !== undefined && !isStr(e.categoryId)) return null;
+    if (e.defaultNotes !== undefined && (!isNum(e.defaultNotes) || !Number.isInteger(e.defaultNotes) || e.defaultNotes < 0)) {
       return null;
     }
-    const k: NeumeKind = withHidden(e, { id: e.id as string, categoryId: e.categoryId, name: e.name, defaultNotes: e.defaultNotes });
+    const k: NeumeKind = withHidden(e, { id: e.id as string, name: e.name });
+    if (isStr(e.categoryId)) k.categoryId = e.categoryId;
+    if (isNum(e.defaultNotes)) k.defaultNotes = e.defaultNotes;
     if (isStr(e.equivalentTo)) k.equivalentTo = e.equivalentTo;
     return k;
   });
   const letters = readEntries<SignificantLetter>(v.letters, "neumeVocabulary.letters", ctx, (e) =>
     isStr(e.abbr) && isStr(e.meaning) ? withHidden(e, { id: e.id as string, abbr: e.abbr, meaning: e.meaning }) : null);
+
+  const categoryIds = new Set(categories.map((c) => c.id));
+  for (const k of kinds) {
+    if (k.categoryId !== undefined && !categoryIds.has(k.categoryId)) {
+      ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.categoryId: unknown category, dropped`);
+      delete k.categoryId;
+    }
+  }
 
   const ids = new Set(kinds.map((k) => k.id));
   for (const k of kinds) {

@@ -171,6 +171,49 @@ describe("useAnnotation", () => {
     expect(voc.categories).toHaveLength(4);
   });
 
+  it("createKind with only a name: no category, no default notes, one undo step", () => {
+    const r = mount(mkProject());
+    act(() => {
+      const id = r.api.createKind({ name: " solto " });
+      r.api.update({ neumes: [{ kind: id }], tags: [] }, "neumes");
+    });
+    const voc = r.state.project!.neumeVocabulary!;
+    const kind = voc.kinds.find((k) => k.name === "solto")!;
+    expect(kind).toEqual({ id: kind.id, name: "solto" });
+    expect(voc.categories).toHaveLength(4);
+    expect(ann(r)?.neumes).toEqual([{ kind: kind.id }]);
+    act(() => r.history.undo());
+    expect(r.state.project!.neumeVocabulary).toBeUndefined();
+    expect(ann(r)).toBeUndefined();
+  });
+
+  it("createKind with an empty category name creates no category", () => {
+    const r = mount(mkProject());
+    let id = "";
+    act(() => {
+      id = r.api.createKind({ name: "x", categoryName: "  ", defaultNotes: 2 });
+      r.api.update({ neumes: [{ kind: id }], tags: [] }, "neumes");
+    });
+    const voc = r.state.project!.neumeVocabulary!;
+    expect(voc.kinds.find((k) => k.id === id)).toEqual({ id, name: "x", defaultNotes: 2 });
+    expect(voc.categories).toHaveLength(4);
+  });
+
+  it("several creates in the same event keep every kind (one undo step)", () => {
+    const r = mount(mkProject());
+    act(() => {
+      const a = r.api.createKind({ name: "a" });
+      const b = r.api.createKind({ name: "b" });
+      r.api.update({ neumes: [{ kind: a }, { kind: b }], tags: [] }, "neumes");
+    });
+    const names = r.state.project!.neumeVocabulary!.kinds.map((k) => k.name);
+    expect(names).toContain("a");
+    expect(names).toContain("b");
+    expect(ann(r)?.neumes).toHaveLength(2);
+    act(() => r.history.undo());
+    expect(r.state.project!.neumeVocabulary).toBeUndefined();
+  });
+
   it("seeds the vocabulary again after a create is undone", () => {
     const r = mount(mkProject());
     act(() => {

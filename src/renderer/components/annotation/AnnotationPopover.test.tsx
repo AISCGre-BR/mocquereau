@@ -77,6 +77,19 @@ describe("AnnotationPopover", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("pointerdown outside blurs the focused field before closing (commit on leave)", () => {
+    const { onClose } = mount();
+    const input = screen.getByRole("combobox", { name: "Neumas" });
+    input.focus();
+    let blurredBeforeClose = false;
+    onClose.mockImplementation(() => {
+      blurredBeforeClose = document.activeElement !== input;
+    });
+    fireEvent.pointerDown(document.body);
+    expect(onClose).toHaveBeenCalled();
+    expect(blurredBeforeClose).toBe(true);
+  });
+
   it("pointerdown outside closes", () => {
     const { onClose } = mount();
     fireEvent.pointerDown(document.body);

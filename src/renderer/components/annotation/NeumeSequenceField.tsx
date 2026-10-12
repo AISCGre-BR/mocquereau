@@ -4,12 +4,13 @@ import { Plus } from "lucide-react";
 import { Button } from "../../ui/Button";
 import { filterKinds, fold, kindMap } from "@shared/annotation/vocabulary";
 import { ownsKey } from "./keys";
-import type { NeumeItem, NeumeKind, NeumeVocabulary } from "@shared/annotation/types";
+import type { NeumeCategory, NeumeItem, NeumeKind, NeumeVocabulary } from "@shared/annotation/types";
 
+/** Absent category name = no category; absent notes = no default notes. */
 export interface NeumeKindDraft {
   name: string;
-  categoryName: string;
-  defaultNotes: number;
+  categoryName?: string;
+  defaultNotes?: number;
 }
 
 export interface NeumeSequenceFieldProps {
@@ -32,7 +33,9 @@ const NOTES = /^\s*\d+\s*$/;
 /**
  * Neume sequence as serif words in a box (D13): no chips. Focus opens the vocabulary list
  * grouped by category; Enter or click appends, repetitions allowed. A filter that names no
- * kind offers "Create «filter»" with an inline category/notes form.
+ * kind offers "Create «filter»" with an inline form (category and notes both optional).
+ * Leaving the field or typing a comma commits the typed text: the kind with that (folded)
+ * name, or a new kind with only that name.
  */
 export function NeumeSequenceField({
   vocabulary,
@@ -52,7 +55,13 @@ export function NeumeSequenceField({
 
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState("");
+  // Mirrors `query` synchronously, so a commit right after another (comma then blur) sees it.
+  const queryRef = useRef("");
+  const setQuery = (q: string) => {
+    queryRef.current = q;
+    setQueryState(q);
+  };
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [form, setForm] = useState<{ category: string; notes: string } | null>(null);
@@ -79,6 +88,38 @@ export function NeumeSequenceField({
     setQuery("");
     setActive(0);
     setForm(null);
+  }
+
+  /**
+   * Appends each name (trimmed; blanks ignored): the kind with that folded name, visible or
+   * hidden, or a new kind with only the name (no category, no default notes). Creating and
+   * appending share the sequence's undo step.
+   */
+  function commitNames(names: string[]) {
+    const ids = new Map(vocabulary.kinds.map((k) => [fold(k.name.trim()), k.id]));
+    const added: NeumeItem[] = [];
+    for (const raw of names) {
+      const typed = raw.trim();
+      if (typed === "") continue;
+      const key = fold(typed);
+      let kindId = ids.get(key);
+      if (kindId === undefined) {
+        kindId = onCreateKind({ name: typed });
+        ids.set(key, kindId);
+      }
+      added.push({ kind: kindId });
+    }
+    if (added.length > 0) onChange([...value, ...added]);
+  }
+
+  /** Commits the pending filter text (leaving the field, comma) and clears it. */
+  function commitPending() {
+    const pending = queryRef.current;
+    if (pending.trim() === "") return;
+    setQuery("");
+    setActive(0);
+    setForm(null);
+    commitNames([pending]);
   }
 
   function choose(i: number) {
@@ -145,6 +186,11 @@ export function NeumeSequenceField({
           remove(selectedIndex);
         }
         return;
+      case ",":
+        if (e.nativeEvent.isComposing) return;
+        e.preventDefault();
+        commitPending();
+        return;
       case "Escape":
         // Consumed only when it closes the list; otherwise it reaches the popover (closes it).
         if (open) {
@@ -166,7 +212,12 @@ export function NeumeSequenceField({
 
   function submitForm() {
     if (!form || !formValid) return;
-    const kindId = onCreateKind({ name, categoryName: form.category.trim(), defaultNotes: Number(form.notes) });
+    const category = form.category.trim();
+    const kindId = onCreateKind({
+      name,
+      ...(category !== "" ? { categoryName: category } : {}),
+      ...(form.notes.trim() !== "" ? { defaultNotes: Number(form.notes) } : {}),
+    });
     setForm(null);
     append(kindId);
     inputRef.current?.focus();
@@ -182,11 +233,14 @@ export function NeumeSequenceField({
   }
 
   const categoryName = form?.category.trim() ?? "";
-  const notesValue = form && NOTES.test(form.notes) ? Number(form.notes) : 0;
-  const formValid = name !== "" && categoryName !== "" && Number.isInteger(notesValue) && notesValue >= 1;
+  // Both optional (nothing is presumed); typed notes must be an integer >= 1.
+  const notesOk = !form || form.notes.trim() === "" || (NOTES.test(form.notes) && Number(form.notes) >= 1);
+  const formValid = name !== "" && notesOk;
   const isNewCategory =
     categoryName !== "" && !vocabulary.categories.some((c) => fold(c.name.trim()) === fold(categoryName));
   const visibleCategories = vocabulary.categories.filter((c) => !c.hidden);
+
+  const groupLabelId = (c: NeumeCategory | null) => (c ? `${baseId}-cat-${c.id}` : `${baseId}-nocat`);
 
   let flat = -1;
   return (
@@ -197,6 +251,7 @@ export function NeumeSequenceField({
         if (rootRef.current?.contains(e.relatedTarget as Node | null)) return;
         setOpen(false);
         setForm(null);
+        commitPending();
       }}
     >
       <div
@@ -257,7 +312,11 @@ export function NeumeSequenceField({
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
-            setQuery(e.target.value);
+            // Pasted (or IME) commas: every complete name is committed, the rest stays.
+            const parts = e.target.value.split(",");
+            const rest = parts.pop()!;
+            if (parts.length > 0) commitNames(parts);
+            setQuery(parts.length > 0 ? rest.trimStart() : rest);
             setActive(0);
             setForm(null);
             setOpen(true);
@@ -273,12 +332,12 @@ export function NeumeSequenceField({
           )}
           <div role="listbox" id={listId} aria-label={t("annotation.neumes")}>
             {groups.map((g) => (
-              <div key={g.category.id} role="group" aria-labelledby={`${baseId}-cat-${g.category.id}`}>
+              <div key={g.category?.id ?? ""} role="group" aria-labelledby={groupLabelId(g.category)}>
                 <div
-                  id={`${baseId}-cat-${g.category.id}`}
+                  id={groupLabelId(g.category)}
                   className="px-3 pt-2 pb-0.5 font-sans text-caption font-semibold text-ink-muted"
                 >
-                  {g.category.name}
+                  {g.category ? g.category.name : t("annotation.noCategory")}
                 </div>
                 {g.kinds.map((kind) => {
                   const i = ++flat;
@@ -297,9 +356,11 @@ export function NeumeSequenceField({
                       onClick={() => choose(i)}
                     >
                       <span>{kind.name}</span>
-                      <span aria-hidden="true" className="font-sans text-caption text-ink-muted tabular-nums">
-                        {kind.defaultNotes}
-                      </span>
+                      {kind.defaultNotes !== undefined && (
+                        <span aria-hidden="true" className="font-sans text-caption text-ink-muted tabular-nums">
+                          {kind.defaultNotes}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -372,7 +433,7 @@ export function NeumeSequenceField({
                     id={`${baseId}-notes`}
                     className="sc-input tabular-nums"
                     inputMode="numeric"
-                    required
+                    aria-invalid={notesOk ? undefined : true}
                     autoComplete="off"
                     value={form.notes}
                     onChange={(e) => setForm({ ...form, notes: e.target.value })}

@@ -44,6 +44,18 @@ describe("vocabulário padrão", () => {
     expect(ids).not.toContain("tractulus");
     expect(filterKinds(w, "vir").flatMap((g) => g.kinds.map((k) => k.id))).not.toContain("virga");
   });
+  it("tipos sem categoria (ou de categoria inexistente) vêm num grupo final com category null", () => {
+    const w = structuredClone(v);
+    w.kinds.push({ id: "solto", name: "pes solto" }, { id: "orfao", categoryId: "cat.nada", name: "pes orfao", defaultNotes: 2 });
+    w.kinds.push({ id: "escondido", name: "pes escondido", hidden: true });
+    const groups = filterKinds(w, "pes");
+    const last = groups[groups.length - 1];
+    expect(last.category).toBeNull();
+    expect(last.kinds.map((k) => k.id)).toEqual(["solto", "orfao"]);
+    expect(groups.slice(0, -1).every((g) => g.category !== null)).toBe(true);
+    expect(filterKinds(w, "pes escondido").at(-1)!.kinds.map((k) => k.id)).toEqual(["escondido"]);
+    expect(filterKinds(v, "").every((g) => g.category !== null)).toBe(true);
+  });
   it("restaurar padrão acrescenta o que falta e mantém o que o usuário criou", () => {
     const w = structuredClone(v);
     w.kinds = w.kinds.filter((k) => k.id !== "pes");

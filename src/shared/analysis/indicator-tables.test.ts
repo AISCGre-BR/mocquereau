@@ -30,6 +30,19 @@ describe("buildIndicatorTables", () => {
     expect(uncinus.values[2]).toMatch(/^1 \(\d+\.\d%\)$/);
   });
 
+  it("tipo conhecido sem categoria vai para o grupo sem categoria, antes do desconhecido", () => {
+    const w = { ...vocabulary, kinds: [...vocabulary.kinds, { id: "solto", name: "solto" }] };
+    const q = makeAnalysisProject();
+    q.sources[3].annotations![1] = { neumes: [{ kind: "solto" }], tags: [] };
+    const labels = buildIndicatorTables(q, w, t)[1].rows.map((r) => r.label);
+    const noCat = labels.indexOf("indicators.noCategory");
+    const unknown = labels.indexOf("indicators.unknown");
+    expect(noCat).toBeGreaterThan(-1);
+    expect(labels[noCat + 1]).toBe("solto");
+    expect(unknown).toBeGreaterThan(noCat);
+    expect(labels[unknown + 1]).toBe("sumido");
+  });
+
   it("marcas incluem não informado; etiquetas agrupadas", () => {
     expect(tables[2].rows.some((r) => r.label === "indicators.unset")).toBe(true);
     expect(tables[4].rows.find((r) => r.label === "raspagem")!.values).toEqual(["1", "1", "0", "0"]);

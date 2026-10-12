@@ -16,7 +16,13 @@ import { IconButton } from "../../ui/IconButton";
 import { MenuItem, MenuSubmenu, MenuSurface } from "../../ui/Menu";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { belowElement } from "../texto/SyllableText";
-import { fold as foldName, getVocabulary, restoreDefaults, resolveEquivalent } from "@shared/annotation/vocabulary";
+import {
+  fold as foldName,
+  getVocabulary,
+  isCategorized,
+  restoreDefaults,
+  resolveEquivalent,
+} from "@shared/annotation/vocabulary";
 import type { NeumeCategory, NeumeKind, NeumeVocabulary, SignificantLetter } from "@shared/annotation/types";
 
 export interface VocabularyDialogProps {
@@ -30,6 +36,9 @@ type Editing = { target: Target; id: string | null };
 type Menu = { target: Target; id: string; x: number; y: number };
 
 const fold = (s: string) => foldName(s).trim();
+
+/** Selection key of the "No category" entry (kinds without a category, or of a missing one). */
+const NO_CATEGORY = ":none";
 
 const INPUT_CLASS =
   "h-8 min-w-0 rounded-sm bg-surface px-2.5 text-body text-ink shadow-inset outline-none ring-2 ring-rubric aria-invalid:ring-danger";
@@ -71,7 +80,11 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
   if (!project) return null;
   const translate = (key: string) => t(key);
   const vocab = getVocabulary(project, translate);
-  const selected = vocab.categories.find((c) => c.id === selectedId) ?? vocab.categories[0];
+  const categoryIds = new Set(vocab.categories.map((c) => c.id));
+  // undefined = "No category" (chosen, or no category exists at all).
+  const selected = selectedId === NO_CATEGORY ? undefined : (vocab.categories.find((c) => c.id === selectedId) ?? vocab.categories[0]);
+  /** Group of a kind in the category column: its category id, or NO_CATEGORY. */
+  const groupOf = (k: NeumeKind) => (isCategorized(k, categoryIds) ? k.categoryId! : NO_CATEGORY);
 
   function commit(next: NeumeVocabulary, coalesce?: string) {
     const meta: HistoryMeta = { coalesceKey: coalesce };
@@ -102,10 +115,10 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     return { ok: true, id: target.id };
   }
 
-  /** Nothing is presumed: name must be unique and notes an explicit integer >= 1. */
+  /** Nothing is presumed: name must be unique; notes optional, but an integer >= 1 when typed. */
   function kindProblems(kindId: string | null) {
     const typed = fold(name);
-    const notesOk = /^\d+$/.test(notes.trim()) && Number.parseInt(notes, 10) >= 1;
+    const notesOk = notes.trim() === "" || (/^\d+$/.test(notes.trim()) && Number.parseInt(notes, 10) >= 1);
     return {
       name: typed === "" || vocab.kinds.some((k) => k.id !== kindId && fold(k.name) === typed),
       notes: !notesOk,
@@ -123,7 +136,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     const letter = next.target === "letter" ? vocab.letters.find((l) => l.id === next.id) : undefined;
     const category = next.target === "category" ? vocab.categories.find((c) => c.id === next.id) : undefined;
     setName(kind?.name ?? category?.name ?? "");
-    setNotes(kind ? String(kind.defaultNotes) : "");
+    setNotes(kind?.defaultNotes !== undefined ? String(kind.defaultNotes) : "");
     setEquivalent(kind?.equivalentTo ? (vocab.kinds.find((k) => k.id === kind.equivalentTo)?.name ?? "") : "");
     setAbbr(letter?.abbr ?? "");
     setMeaning(letter?.meaning ?? "");
@@ -186,14 +199,13 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     const check = checkEquivalent(current.id, equivalent);
     stop();
     const typedName = name.trim();
-    const parsed = Number.parseInt(notes, 10);
+    const parsed = notes.trim() === "" ? undefined : Number.parseInt(notes, 10);
     if (current.id === null) {
-      if (!selected) return true;
       const added: NeumeKind = {
         id: `kind.${crypto.randomUUID()}`,
-        categoryId: selected.id,
+        ...(selected ? { categoryId: selected.id } : {}),
         name: typedName,
-        defaultNotes: parsed,
+        ...(parsed !== undefined ? { defaultNotes: parsed } : {}),
         ...(check.id ? { equivalentTo: check.id } : {}),
       };
       commit({ ...vocab, kinds: [...vocab.kinds, added] });
@@ -248,7 +260,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
   function moveKind(id: string, delta: number) {
     const kind = vocab.kinds.find((k) => k.id === id);
     if (!kind) return;
-    const peers = vocab.kinds.filter((k) => k.categoryId === kind.categoryId);
+    const peers = vocab.kinds.filter((k) => groupOf(k) === groupOf(kind));
     const neighbour = peers[peers.indexOf(kind) + delta];
     if (!neighbour) return;
     commit({ ...vocab, kinds: swap(vocab.kinds, vocab.kinds.indexOf(kind), vocab.kinds.indexOf(neighbour)) });
@@ -359,7 +371,8 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     );
   }
 
-  const kindsOfSelected = selected ? vocab.kinds.filter((k) => k.categoryId === selected.id) : [];
+  const selectedGroup = selected?.id ?? NO_CATEGORY;
+  const kindsOfSelected = vocab.kinds.filter((k) => groupOf(k) === selectedGroup);
   const nameOfKind = (id?: string) => (id ? (vocab.kinds.find((k) => k.id === id)?.name ?? "") : "");
   const menuKind = menu?.target === "kind" ? vocab.kinds.find((k) => k.id === menu.id) : undefined;
   const menuCategory = menu?.target === "category" ? vocab.categories.find((c) => c.id === menu.id) : undefined;
@@ -436,6 +449,19 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
                     </li>
                   ),
                 )}
+                <li className="flex items-center rounded-sm hover:bg-ink-wash">
+                  <button
+                    type="button"
+                    aria-current={selectedGroup === NO_CATEGORY ? "true" : undefined}
+                    onClick={() => setSelectedId(NO_CATEGORY)}
+                    className={[
+                      "min-w-0 flex-1 truncate rounded-sm px-2 py-1.5 text-left text-body outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                      selectedGroup === NO_CATEGORY ? "bg-rubric-wash text-rubric" : "text-ink-soft",
+                    ].join(" ")}
+                  >
+                    {t("annotation.noCategory")}
+                  </button>
+                </li>
               </ul>
               {isEditing("category", null) && categoryInput}
               <Button
@@ -486,7 +512,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
                           </span>
                           {hiddenSuffix(k.hidden)}
                         </td>
-                        <td className="px-2 py-1">{k.defaultNotes}</td>
+                        <td className="px-2 py-1">{k.defaultNotes ?? ""}</td>
                         <td className="px-2 py-1 font-serif text-ink-soft">{nameOfKind(k.equivalentTo)}</td>
                         <td className="px-1 py-0.5">{menuButton("kind", k.id)}</td>
                       </tr>
@@ -593,12 +619,21 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
               <>
                 <MenuItem label={t("vocabularyDialog.moveUp")} onSelect={() => moveKind(menuKind.id, -1)} />
                 <MenuItem label={t("vocabularyDialog.moveDown")} onSelect={() => moveKind(menuKind.id, 1)} />
-                <MenuSubmenu label={t("vocabularyDialog.moveTo")} disabled={vocab.categories.length < 2}>
+                <MenuSubmenu
+                  label={t("vocabularyDialog.moveTo")}
+                  disabled={vocab.categories.filter((c) => c.id !== groupOf(menuKind)).length === 0 && groupOf(menuKind) === NO_CATEGORY}
+                >
                   {vocab.categories
-                    .filter((c) => c.id !== menuKind.categoryId)
+                    .filter((c) => c.id !== groupOf(menuKind))
                     .map((c) => (
                       <MenuItem key={c.id} label={c.name} onSelect={() => patchKind(menuKind.id, { categoryId: c.id })} />
                     ))}
+                  {groupOf(menuKind) !== NO_CATEGORY && (
+                    <MenuItem
+                      label={t("annotation.noCategory")}
+                      onSelect={() => patchKind(menuKind.id, { categoryId: undefined })}
+                    />
+                  )}
                 </MenuSubmenu>
               </>
             )}

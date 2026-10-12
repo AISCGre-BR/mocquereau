@@ -91,7 +91,7 @@ export function rawRows(p: ProjectBody<unknown>, f: AnalysisFilters, v: NeumeVoc
         String(i + 1),
         kind?.name ?? n.kind,
         resolved !== n.kind ? (kinds.get(resolved)?.name ?? resolved) : "",
-        kind ? (categories.get(kind.categoryId) ?? kind.categoryId) : "",
+        kind?.categoryId !== undefined ? (categories.get(kind.categoryId) ?? "") : "",
         notes === undefined ? "" : String(notes),
         n.liquescence ?? "",
         n.episema === undefined ? "" : n.episema ? "yes" : "no",

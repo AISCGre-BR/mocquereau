@@ -76,15 +76,23 @@ export function AnnotationPopover({
   }, [anchor]);
 
   useEffect(() => {
+    // Closing unmounts the fields before the browser moves focus, and an unmounted field gets
+    // no blur: blur it first, so the fields that commit on leaving (Neumas, Etiquetas) do.
+    function blurInside() {
+      const el = document.activeElement;
+      if (el instanceof HTMLElement && ref.current?.contains(el)) el.blur();
+    }
     function onPointerDown(e: Event) {
       const target = e.target as Node;
       if (ref.current?.contains(target) || anchor.contains(target)) return;
+      blurInside();
       onCloseRef.current();
     }
     function onKeyDown(e: KeyboardEvent) {
       // An inner control (a select's list, a menu) that handled Escape keeps it.
       if (e.key !== "Escape" || e.defaultPrevented) return;
       e.preventDefault();
+      blurInside();
       onCloseRef.current();
       anchor.focus();
     }

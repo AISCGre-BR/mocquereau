@@ -115,7 +115,7 @@ export function NeumeDetail({ item, vocabulary, tags, onChange, onTagNames }: Ne
           <NotesInput
             id={`${baseId}-notes`}
             value={item.notes}
-            placeholder={kind ? String(kind.defaultNotes) : undefined}
+            placeholder={kind?.defaultNotes !== undefined ? String(kind.defaultNotes) : undefined}
             onChange={(n) => onChange(withField(item, "notes", n), "notes")}
           />
         </Row>

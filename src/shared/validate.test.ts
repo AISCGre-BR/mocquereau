@@ -247,6 +247,38 @@ describe("anotações", () => {
     expect(byId.tractulus.equivalentTo).toBeUndefined();
   });
 
+  it("tipo sem categoria e sem notas padrão faz a viagem sem aviso; ausente continua ausente", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds.push({ id: "solto", name: "solto" });
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.warnings).toEqual([]);
+    const k = r.project.neumeVocabulary!.kinds.find((x) => x.id === "solto")!;
+    expect(k).toEqual({ id: "solto", name: "solto" });
+    expect("categoryId" in k).toBe(false);
+    expect("defaultNotes" in k).toBe(false);
+  });
+
+  it("categoria inexistente cai com aviso e o tipo fica sem categoria", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[0].categoryId = "cat.nada";
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    const k = r.project.neumeVocabulary!.kinds.find((x) => x.id === "virga")!;
+    expect(k.categoryId).toBeUndefined();
+    expect(k.defaultNotes).toBe(1);
+    expect(r.warnings.some((w) => w.includes("virga") && w.includes("categoryId"))).toBe(true);
+  });
+
+  it("categoria ou notas padrão presentes mas inválidas ainda descartam o tipo", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[0].categoryId = 3;
+    p.neumeVocabulary.kinds[1].defaultNotes = 1.5;
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.project.neumeVocabulary!.kinds.map((k) => k.id)).toEqual(["uncinus"]);
+  });
+
   it("equivalência para tipo inexistente some com aviso", () => {
     const p = withAnnotations();
     p.neumeVocabulary.kinds[2].equivalentTo = "nada";

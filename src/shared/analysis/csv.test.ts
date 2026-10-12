@@ -53,6 +53,15 @@ describe("rawRows", () => {
     expect(r[col("syllable_tags")]).toBe("raspagem");
   });
 
+  it("tipo sem categoria nem notas padrão: categoria e notas vazias", () => {
+    const w = { ...vocabulary, kinds: [...vocabulary.kinds, { id: "solto", name: "solto" }] };
+    const q = makeAnalysisProject();
+    q.sources[3].annotations![1] = { neumes: [{ kind: "solto" }], tags: [] };
+    const r = rawRows(q, {}, w).find((x) => x[0] === "X" && x[col("neume")] === "solto")!;
+    expect(r[col("category")]).toBe("");
+    expect(r[col("notes")]).toBe("");
+  });
+
   it("uma linha por neuma, com posição", () => {
     expect(find("L", 3, "1")[col("neume")]).toBe("clivis");
     expect(find("L", 3, "2")[col("neume")]).toBe("virga");

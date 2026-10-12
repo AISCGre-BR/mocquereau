@@ -27,9 +27,11 @@ export interface SyllableAnnotation {
 export interface NeumeCategory { id: string; name: string; hidden?: boolean }
 export interface NeumeKind {
   id: string;
-  categoryId: string;
+  /** Absent: the kind has no category. */
+  categoryId?: string;
   name: string;
-  defaultNotes: number;
+  /** Absent: no default; an item without its own notes leaves the total undefined. */
+  defaultNotes?: number;
   hidden?: boolean;
   equivalentTo?: string;
 }

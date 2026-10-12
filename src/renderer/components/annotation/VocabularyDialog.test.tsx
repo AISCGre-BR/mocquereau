@@ -126,36 +126,81 @@ describe("VocabularyDialog", () => {
     expect(added.defaultNotes).toBe(3);
   });
 
-  it("a new kind starts with empty notes and cannot be saved until a valid integer >= 1 is typed", () => {
+  it("notes are optional: empty saves the kind without default notes; typed must be an integer >= 1", () => {
     const { vocab } = mount();
     fireEvent.click(screen.getByRole("button", { name: "Neuma" }));
     const name = screen.getByRole("textbox", { name: "Nome" });
     const notes = screen.getByRole("spinbutton", { name: "Notas" }) as HTMLInputElement;
     expect(notes.value).toBe("");
     fireEvent.change(name, { target: { value: "novo" } });
-    expect(notes.getAttribute("aria-invalid")).toBe("true");
+    expect(notes.getAttribute("aria-invalid")).toBeNull();
     const count = vocab().kinds.length;
-    fireEvent.keyDown(name, { key: "Enter" });
-    expect(vocab().kinds).toHaveLength(count);
-    expect(screen.getByRole("textbox", { name: "Nome" })).toBeTruthy();
     fireEvent.change(notes, { target: { value: "0" } });
     expect(notes.getAttribute("aria-invalid")).toBe("true");
     fireEvent.keyDown(name, { key: "Enter" });
     expect(vocab().kinds).toHaveLength(count);
-    fireEvent.change(notes, { target: { value: "2" } });
-    expect(notes.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.change(notes, { target: { value: "" } });
     fireEvent.keyDown(name, { key: "Enter" });
-    expect(vocab().kinds.find((k) => k.name === "novo")!.defaultNotes).toBe(2);
+    const added = vocab().kinds.find((k) => k.name === "novo")!;
+    expect(added.categoryId).toBe("cat.simple");
+    expect("defaultNotes" in added).toBe(false);
+    expect(kindRow("novo").querySelectorAll("td")[1].textContent).toBe("");
   });
 
-  it("clearing the notes of an existing kind is invalid and is not coerced", () => {
-    const { saved } = mount();
+  it("clearing the notes of an existing kind removes its default notes", () => {
+    const { vocab } = mount();
     fireEvent.doubleClick(kindRow("virga"));
     const notes = screen.getByRole("spinbutton", { name: "Notas" });
     fireEvent.change(notes, { target: { value: "" } });
-    expect(notes.getAttribute("aria-invalid")).toBe("true");
+    expect(notes.getAttribute("aria-invalid")).toBeNull();
     fireEvent.keyDown(notes, { key: "Enter" });
-    expect(saved()).toBeUndefined();
+    expect("defaultNotes" in kindMap(vocab()).get("virga")!).toBe(false);
+  });
+
+  it("'Sem categoria' comes last, lists uncategorized kinds and has no actions", () => {
+    const { ref, vocab } = mount();
+    const base = vocab();
+    act(() =>
+      ref.dispatch!({
+        type: "SET_NEUME_VOCABULARY",
+        payload: { ...base, kinds: [...base.kinds, { id: "solto", name: "solto" }, { id: "orfao", categoryId: "cat.nada", name: "orfao" }] },
+      }),
+    );
+    const items = within(screen.getByRole("list", { name: "Categorias" })).getAllByRole("listitem");
+    const last = items[items.length - 1];
+    expect(last.textContent).toBe("Sem categoria");
+    expect(within(last).queryByRole("button", { name: "Ações" })).toBeNull();
+    fireEvent.doubleClick(within(last).getByRole("button", { name: "Sem categoria" }));
+    expect(screen.queryByRole("textbox", { name: "Categoria" })).toBeNull();
+    fireEvent.click(within(last).getByRole("button", { name: "Sem categoria" }));
+    expect(kindRow("solto")).toBeTruthy();
+    expect(kindRow("orfao")).toBeTruthy();
+    expect(screen.queryByText("virga", { selector: "td [data-kind-name]" })).toBeNull();
+  });
+
+  it("'+ Neuma' with 'Sem categoria' selected creates an uncategorized kind", () => {
+    const { vocab } = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Sem categoria" }));
+    fireEvent.click(screen.getByRole("button", { name: "Neuma" }));
+    const name = screen.getByRole("textbox", { name: "Nome" });
+    fireEvent.change(name, { target: { value: "avulso" } });
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(vocab().kinds.find((k) => k.name === "avulso")).toEqual({ id: expect.stringMatching(/^kind\./), name: "avulso" });
+    expect(kindRow("avulso")).toBeTruthy();
+  });
+
+  it("moves a kind into 'Sem categoria' and back into a category", () => {
+    const { vocab } = mount();
+    fireEvent.click(within(kindRow("punctum")).getByRole("button", { name: "Ações" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mover para categoria" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sem categoria" }));
+    expect("categoryId" in kindMap(vocab()).get("punctum")!).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Sem categoria" }));
+    fireEvent.click(within(kindRow("punctum")).getByRole("button", { name: "Ações" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mover para categoria" }));
+    expect(screen.queryByRole("menuitem", { name: "Sem categoria" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Compostos" }));
+    expect(kindMap(vocab()).get("punctum")!.categoryId).toBe("cat.compound");
   });
 
   it("kind names are unique (accent and case insensitive) when adding or renaming", () => {

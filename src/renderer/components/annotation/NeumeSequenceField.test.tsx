@@ -19,11 +19,12 @@ function vocab(): NeumeVocabulary {
 interface Opts {
   initial?: NeumeItem[];
   onSelect?: (i: number | null) => void;
-  onCreateKind?: (d: { name: string; categoryName: string; defaultNotes: number }) => string;
+  onCreateKind?: (d: { name: string; categoryName?: string; defaultNotes?: number }) => string;
+  vocabulary?: NeumeVocabulary;
 }
 
-function setup({ initial = [], onSelect = () => {}, onCreateKind = () => "kind.new" }: Opts = {}) {
-  const v = vocab();
+function setup({ initial = [], onSelect = () => {}, onCreateKind = () => "kind.new", vocabulary }: Opts = {}) {
+  const v = vocabulary ?? vocab();
   function Harness() {
     const [value, setValue] = useState<NeumeItem[]>(initial);
     const [sel, setSel] = useState<number | null>(null);
@@ -174,11 +175,16 @@ describe("NeumeSequenceField", () => {
 
     fireEvent.click(screen.getByRole("option", { name: "Criar «climacus sub»" }));
     category = screen.getByLabelText("Categoria");
+    expect(screen.queryByText("Nova categoria")).toBeNull();
     fireEvent.change(category, { target: { value: "Formas raras" } });
     expect(screen.getByText("Nova categoria")).toBeTruthy();
     const submit = screen.getByRole("button", { name: "Criar" }) as HTMLButtonElement;
-    expect(submit.disabled).toBe(true);
+    expect(submit.disabled).toBe(false);
     const notes = screen.getByLabelText("Notas");
+    fireEvent.change(notes, { target: { value: "0" } });
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(notes, { target: { value: "x" } });
+    expect(submit.disabled).toBe(true);
     fireEvent.change(notes, { target: { value: "5" } });
     expect(submit.disabled).toBe(false);
     fireEvent.keyDown(notes, { key: "Enter" });
@@ -222,5 +228,111 @@ describe("NeumeSequenceField", () => {
     fireEvent.change(input, { target: { value: "zzz" } });
     expect(screen.getByRole("listbox").textContent).not.toContain("Nenhum neuma encontrado");
     expect(screen.getByRole("option", { name: "Criar «zzz»" }).hasAttribute("aria-expanded")).toBe(false);
+  });
+  it("the create form accepts neither category nor notes", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "xyz" } });
+    fireEvent.click(screen.getByRole("option", { name: "Criar «xyz»" }));
+    fireEvent.click(screen.getByRole("button", { name: "Criar" }));
+    expect(onCreateKind).toHaveBeenCalledWith({ name: "xyz" });
+    expect(kinds()).toEqual(["kind.new"]);
+  });
+
+  it("leaving the field with the exact name of a kind (accents/case folded) appends it", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: " CLÍVIS " } });
+    fireEvent.blur(input);
+    expect(kinds()).toEqual(["clivis"]);
+    expect(onCreateKind).not.toHaveBeenCalled();
+    expect((input as HTMLInputElement).value).toBe("");
+  });
+
+  it("leaving the field with the exact name of a hidden kind appends it", () => {
+    const { input, kinds } = setup();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "punctum" } });
+    fireEvent.blur(input);
+    expect(kinds()).toEqual(["punctum"]);
+  });
+
+  it("leaving the field with a new name creates the kind (name only) and appends it", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ initial: [{ kind: "virga" }], onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "  cl  " } });
+    fireEvent.blur(input);
+    expect(onCreateKind).toHaveBeenCalledTimes(1);
+    expect(onCreateKind).toHaveBeenCalledWith({ name: "cl" });
+    expect(kinds()).toEqual(["virga", "kind.new"]);
+    expect((input as HTMLInputElement).value).toBe("");
+  });
+
+  it("leaving the field with blank text does nothing", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.blur(input);
+    expect(kinds()).toEqual([]);
+    expect(onCreateKind).not.toHaveBeenCalled();
+  });
+
+  it("moving focus into the create form does not commit; leaving the form does", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "xyz" } });
+    fireEvent.click(screen.getByRole("option", { name: "Criar «xyz»" }));
+    const category = screen.getByLabelText("Categoria");
+    fireEvent.blur(input, { relatedTarget: category });
+    expect(onCreateKind).not.toHaveBeenCalled();
+    fireEvent.change(category, { target: { value: "Formas raras" } });
+    fireEvent.blur(category, { relatedTarget: document.body });
+    expect(onCreateKind).toHaveBeenCalledWith({ name: "xyz" });
+    expect(kinds()).toEqual(["kind.new"]);
+  });
+
+  it("a comma commits the text typed so far and keeps the list open", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "pes" } });
+    fireEvent.keyDown(input, { key: "," });
+    expect(kinds()).toEqual(["pes"]);
+    expect((input as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "," });
+    expect(kinds()).toEqual(["pes"]);
+    expect(onCreateKind).not.toHaveBeenCalled();
+  });
+
+  it("pasted text with commas commits every complete name, once per new name", () => {
+    let n = 0;
+    const onCreateKind = vi.fn(() => `kind.${++n}`);
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "virga, novo,, Novo, pe" } });
+    expect(kinds()).toEqual(["virga", "kind.1", "kind.1"]);
+    expect(onCreateKind).toHaveBeenCalledTimes(1);
+    expect((input as HTMLInputElement).value).toBe("pe");
+  });
+
+  it("lists kinds without category in a final group and omits absent default notes", () => {
+    const v = vocab();
+    v.kinds.push({ id: "solto", name: "pes solto" });
+    const { input } = setup({ vocabulary: v });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "pes" } });
+    const groups = screen.getAllByRole("group");
+    const last = groups[groups.length - 1];
+    expect(last.getAttribute("aria-labelledby")).toBeTruthy();
+    expect(document.getElementById(last.getAttribute("aria-labelledby")!)!.textContent).toBe("Sem categoria");
+    const option = screen.getByRole("option", { name: "pes solto" });
+    expect(option.textContent).toBe("pes solto");
+    expect(screen.getByRole("option", { name: "pes" }).textContent).toBe("pes2");
   });
 });

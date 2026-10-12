@@ -6,7 +6,7 @@ import type { ProjectBody } from "../project-schema";
 import type { NeumeVocabulary } from "../annotation/types";
 import { selectCells } from "./cells";
 import { concordanceBySource } from "./concordance";
-import { marks, neumeContent } from "./content";
+import { groupContentRows, marks, neumeContent } from "./content";
 import { progressBySource } from "./progress";
 import { tagCounts } from "./tag-counts";
 
@@ -50,14 +50,9 @@ export function buildIndicatorTables(
   // 2. Neume content: count (% of annotated syllables), grouped by category.
   const content = neumeContent(p, EMPTY, v);
   const contentRows: IndicatorTable["rows"] = [];
-  const categoryName = new Map(v.categories.map((c) => [c.id, c.name]));
-  const categoryOrder = [...v.categories.map((c) => c.id), null];
-  for (const categoryId of categoryOrder) {
-    const kindRows = content.rows.filter((r) =>
-      categoryId === null ? r.unknown || !categoryName.has(r.categoryId ?? "") : r.categoryId === categoryId && !r.unknown);
-    if (kindRows.length === 0) continue;
-    contentRows.push(group(categoryId === null ? t("indicators.unknown") : (categoryName.get(categoryId) ?? categoryId)));
-    for (const r of kindRows) {
+  for (const g of groupContentRows(content.rows, v)) {
+    contentRows.push(group(g.type === "category" ? g.name : t(`indicators.${g.type}`)));
+    for (const r of g.rows) {
       contentRows.push({
         label: r.name,
         values: ids.map((id) => {

@@ -5,7 +5,7 @@ import { emptyAnnotation, normalizeAnnotation } from "@shared/annotation/annotat
 import { createDefaultVocabulary } from "@shared/annotation/default-vocabulary";
 import { fold, getVocabulary } from "@shared/annotation/vocabulary";
 import { findTagByName, parseHashTags, resolveTagNames } from "@shared/annotation/tags";
-import type { NeumeVocabulary, SyllableAnnotation, Tag } from "@shared/annotation/types";
+import type { NeumeKind, NeumeVocabulary, SyllableAnnotation, Tag } from "@shared/annotation/types";
 
 export interface AnnotationTarget {
   sourceId: string;
@@ -35,13 +35,14 @@ export function useAnnotation(target: AnnotationTarget | null) {
   );
   const tags = project?.tags ?? NO_TAGS;
   /**
-   * Project snapshot for which createKind already dispatched a vocabulary that has not been
+   * Vocabulary that createKind already dispatched for a project snapshot that has not been
    * rendered yet (create + append in the same event). Consumed by the next update and cleared
-   * on every new snapshot, so an undo back to that same snapshot seeds normally again.
+   * on every new snapshot, so an undo back to that same snapshot seeds normally again. Several
+   * creates in the same event build on it, so none of them is lost.
    */
-  const vocabularyWrittenFor = useRef<unknown>(null);
+  const vocabularyWritten = useRef<{ for: unknown; vocabulary: NeumeVocabulary } | null>(null);
   useEffect(() => {
-    vocabularyWrittenFor.current = null;
+    vocabularyWritten.current = null;
   }, [project]);
 
   const update = useCallback(
@@ -50,8 +51,8 @@ export function useAnnotation(target: AnnotationTarget | null) {
       // Nothing changed (e.g. a blur after no edit): no dispatch, so the project stays clean.
       if (JSON.stringify(normalizeAnnotation(next)) === JSON.stringify(normalizeAnnotation(annotation))) return;
       const coalesceKey = `ANNOTATION:${sourceId}:${syllable}:${field}`;
-      const vocabularyPending = vocabularyWrittenFor.current === project;
-      vocabularyWrittenFor.current = null;
+      const vocabularyPending = vocabularyWritten.current?.for === project;
+      vocabularyWritten.current = null;
       if (!project.neumeVocabulary && !vocabularyPending && next.neumes.length > 0) {
         dispatch({ type: "SET_NEUME_VOCABULARY", payload: createDefaultVocabulary(t), meta: { coalesceKey } });
       }
@@ -65,27 +66,29 @@ export function useAnnotation(target: AnnotationTarget | null) {
   );
 
   /**
-   * Adds a neume kind (and its category, reused by folded name or created) to the project
-   * vocabulary and returns the new kind id. Shares the coalesce key of the neume sequence,
-   * so creating and appending the kind is one undo step.
+   * Adds a neume kind to the project vocabulary and returns the new kind id. A non-empty
+   * category name is reused by folded name or created; empty = no category. Absent notes = no
+   * default (nothing is presumed). Shares the coalesce key of the neume sequence, so creating
+   * and appending the kind is one undo step.
    */
   const createKind = useCallback(
-    (draft: { name: string; categoryName: string; defaultNotes: number }): string => {
+    (draft: { name: string; categoryName?: string; defaultNotes?: number }): string => {
       const kindId = `kind.${crypto.randomUUID()}`;
       if (!project || sourceId === undefined || syllable === undefined) return kindId;
-      const base = getVocabulary(project, t);
-      const categoryName = draft.categoryName.trim();
-      const existing = base.categories.find((c) => fold(c.name.trim()) === fold(categoryName));
-      const category = existing ?? { id: `cat.${crypto.randomUUID()}`, name: categoryName };
+      const pending = vocabularyWritten.current;
+      const base = pending?.for === project ? pending.vocabulary : getVocabulary(project, t);
+      const categoryName = draft.categoryName?.trim() ?? "";
+      const existing = categoryName === "" ? undefined : base.categories.find((c) => fold(c.name.trim()) === fold(categoryName));
+      const category = existing ?? (categoryName === "" ? undefined : { id: `cat.${crypto.randomUUID()}`, name: categoryName });
+      const kind: NeumeKind = { id: kindId, name: draft.name.trim() };
+      if (category) kind.categoryId = category.id;
+      if (draft.defaultNotes !== undefined) kind.defaultNotes = draft.defaultNotes;
       const next: NeumeVocabulary = {
         ...base,
-        categories: existing ? base.categories : [...base.categories, category],
-        kinds: [
-          ...base.kinds,
-          { id: kindId, categoryId: category.id, name: draft.name.trim(), defaultNotes: draft.defaultNotes },
-        ],
+        categories: category && !existing ? [...base.categories, category] : base.categories,
+        kinds: [...base.kinds, kind],
       };
-      vocabularyWrittenFor.current = project;
+      vocabularyWritten.current = { for: project, vocabulary: next };
       dispatch({
         type: "SET_NEUME_VOCABULARY",
         payload: next,
