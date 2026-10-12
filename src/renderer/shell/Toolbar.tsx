@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { formatAccelerator } from "./accelerator";
 
-export type ViewId = "texto" | "recortes" | "tabela";
-export const VIEW_ORDER: readonly ViewId[] = ["texto", "recortes", "tabela"];
+export type ViewId = "texto" | "recortes" | "tabela" | "analise";
+export const VIEW_ORDER: readonly ViewId[] = ["texto", "recortes", "tabela", "analise"];
 
 export interface ToolbarProps {
   view: ViewId;

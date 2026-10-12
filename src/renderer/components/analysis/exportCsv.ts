@@ -1,7 +1,8 @@
 // src/renderer/components/analysis/exportCsv.ts
 //
 // Builds the two CSV texts (raw neumes + totals) for the given filters and asks the main
-// process to save them. Called by the Arquivo menu (no filters) and by the Análise toolbar.
+// process to save them. Called by the Arquivo menu and the Análise toolbar: in the Análise
+// view with its active filters (D9), elsewhere with none.
 import type { AnalysisFilters } from "@shared/analysis";
 import { rawRows, toCsv, totalsRows } from "@shared/analysis/csv";
 import { getVocabulary } from "@shared/annotation/vocabulary";

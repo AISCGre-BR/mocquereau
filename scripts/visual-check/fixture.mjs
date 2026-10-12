@@ -178,6 +178,29 @@ function neumeLine(id, first, image, folio) {
   };
 }
 
+/**
+ * Anotações sintéticas (vista Análise): leituras que concordam em parte entre as fontes,
+ * uma sílaba ilegível, liquescência, episema, letra e etiqueta; "upTo" deixa o resto por anotar.
+ */
+const READINGS = [
+  ["virga"], ["tractulus"], ["pes"], ["clivis"], ["torculus"], ["virga", "punctum"],
+  ["porrectus"], ["climacus"], ["pes"], ["uncinus"], ["clivis"], ["virga"], ["tractulus"], ["pes"], ["clivis"],
+];
+function annotations(variant, upTo) {
+  const out = {};
+  for (let i = 0; i < Math.min(upTo, TOTAL); i++) {
+    const kinds = (i + variant) % 4 === 0 ? [...READINGS[(i + 1) % READINGS.length]] : [...READINGS[i % READINGS.length]];
+    const neumes = kinds.map((kind) => ({ kind }));
+    if (i === 3) neumes[0] = { ...neumes[0], liquescence: "augmentative", episema: true, letters: ["letter.c"] };
+    out[i] = {
+      neumes,
+      tags: i === 5 ? ["tag-raspagem"] : [],
+      ...(i === 2 && variant === 1 ? { certainty: "illegible" } : i % 3 === 0 ? { certainty: "secure" } : {}),
+    };
+  }
+  return out;
+}
+
 export function buildFixture() {
   const a = makeImage(11);
   const b = makeImage(29);
@@ -209,6 +232,10 @@ export function buildFixture() {
       source(2, "Graduale Novum", "", "Regensburg", "XXI",
         ["tipo.quadrada", null, null], "28", c.ref, true),
     ],
+    tags: [{ id: "tag-raspagem", name: "raspagem", group: "suporte" }],
   };
+  project.sources[0].annotations = annotations(0, TOTAL);
+  project.sources[1].annotations = annotations(1, 9);
+  project.sources[2].annotations = annotations(2, 12);
   return { project, images: [a.stored, b.stored, c.stored, d.stored] };
 }

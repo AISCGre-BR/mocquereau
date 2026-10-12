@@ -78,17 +78,18 @@ describe("buildMenus", () => {
     for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.tags", "file.vocabulary", "file.exportDocx", "file.exportCsv", "file.close"]) {
       expect(find(menus, id).disabled).toBe(true);
     }
-    for (const id of ["view.texto", "view.recortes", "view.tabela"]) {
+    for (const id of ["view.texto", "view.recortes", "view.tabela", "view.analise"]) {
       expect(find(menus, id).disabled).toBe(true);
       expect(find(menus, id).checked).toBe(false);
     }
   });
 
-  it("marca a vista, o tema e o idioma atuais; atalhos das vistas são Ctrl+1…3", () => {
+  it("marca a vista, o tema e o idioma atuais; atalhos das vistas são Ctrl+1…4", () => {
     const menus = buildMenus(base, actions(), t);
     expect(find(menus, "view.texto").checked).toBe(true);
     expect(find(menus, "view.recortes").checked).toBe(false);
     expect(find(menus, "view.tabela").accelerator).toBe("Ctrl+3");
+    expect(find(menus, "view.analise").accelerator).toBe("Ctrl+4");
     expect(find(menus, "theme.dark").checked).toBe(true);
     expect(find(menus, "theme.system").checked).toBe(false);
     expect(find(menus, "lang.en").checked).toBe(true);

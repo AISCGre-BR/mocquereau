@@ -40,6 +40,7 @@ const SAME_AS_EN: Record<string, "*" | readonly Translated[]> = {
   "annotation.liquescence.diminutive": ["it", "de", "pl"],
   "annotation.episema": ["it", "es"],
   "annotation.no": ["it", "es"],
+  "analysis.total": ["es"],
 };
 
 function allowed(key: string, lng: Translated): boolean {

@@ -231,6 +231,14 @@ const SCREENS = {
     await settle(page, 600);
   },
   tabela: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+3"); await settle(page, 5000); },
+  analise: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+4"); await settle(page, 800); },
+  "analise-ocorrencias": async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+4");
+    await settle(page, 600);
+    await page.locator('[data-pair="src-0:src-1"] button').click();
+    await settle(page, 600);
+  },
   exportar: async (page) => {
     await openFixtureProject(page);
     await page.keyboard.press("Control+3");

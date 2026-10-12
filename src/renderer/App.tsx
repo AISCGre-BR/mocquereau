@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { FileDown } from "lucide-react";
+import { FileDown, FileSpreadsheet } from "lucide-react";
 import { ProjectContext, useProject, useProjectReducer } from "./hooks/useProject";
 import { useProjectFile } from "./hooks/useProjectFile";
 import { createPendingEdits } from "./hooks/pendingEdits";
-import { Toaster } from "./ui/Toast";
+import { Toaster, useToast } from "./ui/Toast";
 import { Button } from "./ui/Button";
 import { AppShell } from "./shell/AppShell";
 import { MenuBar } from "./shell/MenuBar";
@@ -18,8 +18,11 @@ import { NewProjectGuide } from "./views/NewProjectGuide";
 import { TextoView } from "./views/TextoView";
 import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
+import { AnaliseView } from "./views/AnaliseView";
 import { ExportDialog } from "./components/ExportDialog";
 import { exportAnalysisCsv } from "./components/analysis/exportCsv";
+import { AnalysisFiltersProvider, useAnalysisFilters } from "./components/analysis/AnalysisContext";
+import { FilterBar } from "./components/analysis/FilterBar";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
 import { TagsDialog } from "./components/annotation/TagsDialog";
 import { VocabularyDialog } from "./components/annotation/VocabularyDialog";
@@ -44,9 +47,11 @@ export function App() {
       <RecortesProvider>
         <TableZoomProvider>
           <SuggestionsProvider>
-            <Toaster dismissLabel={t("toast.dismiss")}>
-              <Workbench />
-            </Toaster>
+            <AnalysisFiltersProvider>
+              <Toaster dismissLabel={t("toast.dismiss")}>
+                <Workbench />
+              </Toaster>
+            </AnalysisFiltersProvider>
           </SuggestionsProvider>
         </TableZoomProvider>
       </RecortesProvider>
@@ -63,6 +68,8 @@ function Workbench() {
   const [classificationOpen, setClassificationOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [vocabularyOpen, setVocabularyOpen] = useState(false);
+  const [analysisFilters, setAnalysisFilters] = useAnalysisFilters();
+  const toast = useToast();
   // Painel Anotação da Recortes: preferência de interface, lembrada entre sessões.
   const [annotationPanelOpen, setAnnotationPanelOpenState] = useState(false);
   useEffect(() => {
@@ -105,7 +112,8 @@ function Workbench() {
     setVocabularyOpen(false);
     setRecortesDialog(null);
     resetSourceTreeSession();
-  }, [file.projectEpoch, setRecortesDialog]);
+    setAnalysisFilters({});
+  }, [file.projectEpoch, setRecortesDialog, setAnalysisFilters]);
 
   // Fonte nova pedida pela Texto: Recortes abre o diálogo Fonte dela ao montar.
   const [newSourceId, setNewSourceId] = useState<string | null>(null);
@@ -150,6 +158,16 @@ function Workbench() {
   const edited = !creating && project !== null && state.isDirty;
   const platform = window.mocquereau.platform;
 
+  // Exportar CSV… (barra da Análise e menu Arquivo): na Análise, com os filtros ativos (D9).
+  function exportCsv() {
+    if (!project) return;
+    exportAnalysisCsv(project, view === "analise" ? analysisFilters : {}, (key) => t(key))
+      .then((result) => {
+        if (result) toast.show({ kind: "ok", message: t("analysis.csvExported") });
+      })
+      .catch(() => toast.show({ kind: "error", message: t("analysis.csvError") }));
+  }
+
   const menus = buildMenus(
     {
       hasProject: !creating && project !== null,
@@ -171,9 +189,7 @@ function Workbench() {
       editTags: () => setTagsOpen(true),
       editVocabulary: () => setVocabularyOpen(true),
       exportDocx: () => setExportOpen(true),
-      exportCsv: () => {
-        if (project) void exportAnalysisCsv(project, {}, (key) => t(key)).catch(() => {});
-      },
+      exportCsv,
       closeProject: file.close,
       undo: () => stepHistory("undo"),
       redo: () => stepHistory("redo"),
@@ -230,6 +246,8 @@ function Workbench() {
                 />
               ) : view === "tabela" ? (
                 <TabelaTools />
+              ) : view === "analise" ? (
+                <FilterBar />
               ) : undefined
             }
             primaryAction={
@@ -244,6 +262,10 @@ function Workbench() {
                 </Button>
               ) : view === "recortes" ? (
                 <SuggestActions />
+              ) : view === "analise" ? (
+                <Button variant="filled" icon={<FileSpreadsheet aria-hidden="true" />} onClick={exportCsv}>
+                  {t("shell.file.exportCsv")}
+                </Button>
               ) : undefined
             }
           />
@@ -277,6 +299,9 @@ function Workbench() {
             />
           )}
           {view === "tabela" && <TabelaView onNavigateToEditor={openInRecortes} />}
+          {view === "analise" && (
+            <AnaliseView onOpenOccurrence={(sourceId, syllable) => openInRecortes(sourceId, syllable, { annotate: true })} />
+          )}
         </div>
       )}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
