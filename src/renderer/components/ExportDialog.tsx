@@ -8,7 +8,6 @@ import { Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ProjectContext } from '../hooks/useProject';
 import { collectDocxCrops } from '../lib/docx-collect';
-import type { MocquereauProject } from '../lib/models';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 
@@ -52,9 +51,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
         { untitled: t('file.untitled') },
       );
       setExportState({ phase: 'saving' });
-      // A ponte do preload tipa o argumento como MocquereauProject; o valor real é o
-      // DocxExportPayload, que o handler do main lê corretamente.
-      const result = await window.mocquereau.exportDocx(payload as unknown as MocquereauProject);
+      const result = await window.mocquereau.exportDocx(payload);
       if (result === null) {
         setExportState({ phase: 'idle' }); // diálogo de salvar cancelado
       } else {

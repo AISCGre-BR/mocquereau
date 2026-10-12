@@ -2,6 +2,7 @@
 
 import type { RecentEntry, RecentMeta } from "@shared/recent";
 import type { Annotations, ExportPrefs, NeumeVocabulary, Tag } from "@shared/annotation/types";
+import type { CsvExportPayload } from "@shared/analysis/csv";
 import type { BoxFrame, Classification, ImageBytesPayload, PageNotation, ImageRef, SourceMetadata } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
@@ -274,7 +275,9 @@ export interface MocquereauAPI {
   importGueranger: () => Promise<GuerangerExport | null>;
 
   // Exportação
-  exportDocx: (project: MocquereauProject) => Promise<{ filePath: string } | null>;
+  exportDocx: (payload: DocxExportPayload) => Promise<{ filePath: string } | null>;
+  /** Saves the two CSV files (neumes + totals) beside the chosen name; null when cancelled. */
+  exportCsv: (payload: CsvExportPayload) => Promise<{ files: string[] } | null>;
 
   // Imagens
   /** Stores bytes in the main-process session (wave A2: no UI consumer yet). */

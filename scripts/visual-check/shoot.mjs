@@ -105,6 +105,7 @@ const stub = ({ theme, data, emptyRecent }) => {
     openProject: async () => opened(),
     importGueranger: async () => null,
     exportDocx: async () => ({ filePath: "/fixture/saida.docx" }),
+    exportCsv: async () => ({ files: ["/fixture/saida-neumas.csv", "/fixture/saida-totais.csv"] }),
     putImage: async () => { throw new Error("visual-check: putImage não suportado"); },
     getImages: async (ids) =>
       ids.filter((id) => images.has(id)).map((id) => ({

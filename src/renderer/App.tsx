@@ -19,6 +19,7 @@ import { TextoView } from "./views/TextoView";
 import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
+import { exportAnalysisCsv } from "./components/analysis/exportCsv";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
 import { TagsDialog } from "./components/annotation/TagsDialog";
 import { VocabularyDialog } from "./components/annotation/VocabularyDialog";
@@ -170,6 +171,9 @@ function Workbench() {
       editTags: () => setTagsOpen(true),
       editVocabulary: () => setVocabularyOpen(true),
       exportDocx: () => setExportOpen(true),
+      exportCsv: () => {
+        if (project) void exportAnalysisCsv(project, {}, (key) => t(key)).catch(() => {});
+      },
       closeProject: file.close,
       undo: () => stepHistory("undo"),
       redo: () => stepHistory("redo"),

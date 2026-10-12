@@ -16,6 +16,7 @@ function actions(): MenuActions {
     editTags: vi.fn(),
     editVocabulary: vi.fn(),
     exportDocx: vi.fn(),
+    exportCsv: vi.fn(),
     closeProject: vi.fn(),
     undo: vi.fn(),
     redo: vi.fn(),
@@ -74,7 +75,7 @@ describe("buildMenus", () => {
     const menus = buildMenus({ ...base, hasProject: false, canExport: false }, actions(), t);
     expect(find(menus, "file.new").disabled).toBeFalsy();
     expect(find(menus, "file.open").disabled).toBeFalsy();
-    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.tags", "file.vocabulary", "file.exportDocx", "file.close"]) {
+    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.tags", "file.vocabulary", "file.exportDocx", "file.exportCsv", "file.close"]) {
       expect(find(menus, id).disabled).toBe(true);
     }
     for (const id of ["view.texto", "view.recortes", "view.tabela"]) {
@@ -159,6 +160,15 @@ describe("buildMenus", () => {
     const a = actions();
     find(buildMenus(base, a, t), "help.openExample").onSelect();
     expect(a.openExample).toHaveBeenCalledTimes(1);
+  });
+
+  it("Exportar CSV… fica no Arquivo, habilitado com projeto, e chama a ação", () => {
+    const a = actions();
+    const item = find(buildMenus(base, a, t), "file.exportCsv");
+    expect(item.label).toBe("shell.file.exportCsv");
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(a.exportCsv).toHaveBeenCalledOnce();
   });
 
   it("Classificação… fica no Arquivo, habilitada só com projeto aberto, e chama a ação", () => {

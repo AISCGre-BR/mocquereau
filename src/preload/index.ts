@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld("mocquereau", {
   exportDocx: (project: unknown) =>
     ipcRenderer.invoke("export:docx", project),
 
+  exportCsv: (payload: unknown) =>
+    ipcRenderer.invoke("export:csv", payload),
+
   // Imagens
   putImage: (bytes: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke("images:put", { bytes, mimeType }),

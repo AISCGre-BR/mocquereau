@@ -60,6 +60,7 @@ export interface MenuActions extends RecortesMenuActions {
   editTags: () => void;
   editVocabulary: () => void;
   exportDocx: () => void;
+  exportCsv: () => void;
   closeProject: () => void;
   undo: () => void;
   redo: () => void;
@@ -171,6 +172,7 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         { id: "file.tags", label: t("shell.file.tags"), disabled: noProject, onSelect: actions.editTags },
         { id: "file.vocabulary", label: t("shell.file.vocabulary"), disabled: noProject, onSelect: actions.editVocabulary },
         { id: "file.exportDocx", label: t("shell.file.exportDocx"), accelerator: "Ctrl+E", disabled: !state.canExport, onSelect: actions.exportDocx },
+        { id: "file.exportCsv", label: t("shell.file.exportCsv"), disabled: noProject, onSelect: actions.exportCsv },
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },
         ...(noProject

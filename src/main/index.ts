@@ -4,6 +4,7 @@ import { Conf } from "electron-conf/main";
 import { registerProjectHandlers } from './project-io';
 import { registerImageHandlers } from './iiif-fetch';
 import { registerDocxExportHandler } from './docx-export';
+import { registerCsvExportHandler } from './csv-export';
 import { registerAppStateHandlers } from './app-state';
 import { normalizeTheme, overlayFor, shouldUseNativeFrame, windowChromeOptions, type ThemePreference } from './window-chrome';
 import { SessionStore } from './session-store';
@@ -258,6 +259,7 @@ app.whenReady().then(async () => {
     onSaveFinished: (token, ok) => saveThenClose.onSaveFinished(token, ok),
   });
   registerDocxExportHandler();
+  registerCsvExportHandler();
   registerImageHandlers();
   registerSessionImageHandlers(getSession);
   registerSystemHandlers();
