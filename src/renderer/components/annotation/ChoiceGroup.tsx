@@ -18,7 +18,8 @@ export function ChoiceGroup<V extends string>({ label, options, value, onChange,
       options={options}
       value={value ?? null}
       onChange={(v) => onChange(v === value ? undefined : v)}
-      className={size === "sm" ? "text-xs" : undefined}
+      // .sc-seg fixes the segment font and padding: the small size overrides them on the buttons.
+      className={size === "sm" ? "max-w-full self-start [&>button]:h-6 [&>button]:px-2 [&>button]:text-xs" : undefined}
     />
   );
 }
