@@ -372,7 +372,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
       open
       title={t("vocabularyDialog.title")}
       onClose={onClose}
-      className="flex w-[min(820px,100%)] h-[min(640px,90vh)] flex-col gap-4 p-6 [&_.sc-dialog__body]:min-h-0 [&_.sc-dialog__body]:flex-1"
+      className="flex w-[min(820px,100%)] h-[min(640px,90vh)] flex-col gap-4 p-6 [&_.sc-dialog\_\_body]:min-h-0 [&_.sc-dialog\_\_body]:flex-1"
       header={
         <div className="flex items-center justify-between gap-3">
           <h2 className="sc-dialog__title">{t("vocabularyDialog.title")}</h2>
@@ -405,7 +405,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
       <div className="relative flex h-full min-h-0 gap-4 text-ink">
         {tab === "neumes" ? (
           <>
-            <nav className="flex w-[200px] flex-none flex-col gap-0.5 overflow-y-auto rounded-lg bg-parchment p-2 shadow-inset">
+            <nav className="flex w-[240px] flex-none flex-col gap-0.5 overflow-y-auto rounded-lg bg-parchment p-2 shadow-inset">
               <ul aria-label={t("vocabularyDialog.categories")} className="flex flex-col gap-0.5">
                 {vocab.categories.map((c) =>
                   isEditing("category", c.id) ? (
