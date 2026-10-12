@@ -168,7 +168,7 @@ describe("useAnnotation", () => {
     });
     const voc = r.state.project!.neumeVocabulary!;
     expect(voc.kinds.find((k) => k.id === id)!.categoryId).toBe("cat.compound");
-    expect(voc.categories).toHaveLength(4);
+    expect(voc.categories).toHaveLength(3);
   });
 
   it("createKind with only a name: no category, no default notes, one undo step", () => {
@@ -180,7 +180,7 @@ describe("useAnnotation", () => {
     const voc = r.state.project!.neumeVocabulary!;
     const kind = voc.kinds.find((k) => k.name === "solto")!;
     expect(kind).toEqual({ id: kind.id, name: "solto" });
-    expect(voc.categories).toHaveLength(4);
+    expect(voc.categories).toHaveLength(3);
     expect(ann(r)?.neumes).toEqual([{ kind: kind.id }]);
     act(() => r.history.undo());
     expect(r.state.project!.neumeVocabulary).toBeUndefined();
@@ -196,7 +196,7 @@ describe("useAnnotation", () => {
     });
     const voc = r.state.project!.neumeVocabulary!;
     expect(voc.kinds.find((k) => k.id === id)).toEqual({ id, name: "x", defaultNotes: 2 });
-    expect(voc.categories).toHaveLength(4);
+    expect(voc.categories).toHaveLength(3);
   });
 
   it("several creates in the same event keep every kind (one undo step)", () => {

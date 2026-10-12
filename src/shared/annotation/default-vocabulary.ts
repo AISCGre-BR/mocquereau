@@ -7,7 +7,6 @@ import type { NeumeVocabulary, NeumeKind, SignificantLetter } from "./types";
 export const DEFAULT_CATEGORY_KEYS: Record<string, string> = {
   "cat.simple": "annotation.category.simple",
   "cat.compound": "annotation.category.compound",
-  "cat.liquescent": "annotation.category.liquescent",
   "cat.ornamental": "annotation.category.ornamental",
 };
 
@@ -27,8 +26,9 @@ export const DEFAULT_KINDS: NeumeKind[] = [
   K("cat.compound", "porrectus flexus", 4), K("cat.compound", "torculus resupinus", 4),
   K("cat.compound", "pes subbipunctis", 4), K("cat.compound", "scandicus flexus", 4),
   K("cat.compound", "climacus resupinus", 4),
-  K("cat.liquescent", "epiphonus", 2), K("cat.liquescent", "cephalicus", 2), K("cat.liquescent", "ancus", 3),
-  K("cat.liquescent", "torculus liquescens", 3), K("cat.liquescent", "porrectus liquescens", 3),
+  // Liquescent forms are compound neumes; liquescence itself is the neume's own field (none implied).
+  K("cat.compound", "epiphonus", 2), K("cat.compound", "cephalicus", 2), K("cat.compound", "ancus", 3),
+  K("cat.compound", "torculus liquescens", 3), K("cat.compound", "porrectus liquescens", 3),
   K("cat.ornamental", "pes quilismaticus", 3), K("cat.ornamental", "oriscus", 1), K("cat.ornamental", "salicus", 3),
   K("cat.ornamental", "pressus maior", 3), K("cat.ornamental", "pressus minor", 2), K("cat.ornamental", "virga strata", 2),
   K("cat.ornamental", "trigon", 3), K("cat.ornamental", "distropha", 2), K("cat.ornamental", "tristropha", 3),

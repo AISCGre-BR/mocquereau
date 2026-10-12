@@ -6,11 +6,18 @@ const t = (k: string) => k;
 
 describe("vocabulário padrão", () => {
   const v = createDefaultVocabulary(t);
-  it("tem as quatro categorias e os itens da spec, com notas padrão", () => {
-    expect(v.categories.map((c) => c.id)).toEqual(["cat.simple", "cat.compound", "cat.liquescent", "cat.ornamental"]);
+  it("tem as três categorias e os itens da spec, com notas padrão", () => {
+    expect(v.categories.map((c) => c.id)).toEqual(["cat.simple", "cat.compound", "cat.ornamental"]);
     const notes = Object.fromEntries(v.kinds.map((k) => [k.name, k.defaultNotes]));
     expect(notes).toMatchObject({ virga: 1, uncinus: 1, pes: 2, "porrectus flexus": 4, ancus: 3, "pes quilismaticus": 3, trivirga: 3 });
     expect(v.kinds).toHaveLength(32);
+    // Sem categoria de liquescentes (a liquescência tem campo próprio): os tipos ficam nos compostos,
+    // sem liquescência implícita.
+    for (const name of ["epiphonus", "cephalicus", "ancus", "torculus liquescens", "porrectus liquescens"]) {
+      const kind = v.kinds.find((k) => k.name === name)!;
+      expect(kind.categoryId).toBe("cat.compound");
+      expect(Object.keys(kind).sort()).toEqual(["categoryId", "defaultNotes", "id", "name"]);
+    }
     expect(v.letters.map((l) => l.abbr)).toEqual(["c", "t", "a", "x", "e", "s", "m", "l", "i", "st", "nl"]);
   });
   it("uncinus equivale a tractulus", () => {

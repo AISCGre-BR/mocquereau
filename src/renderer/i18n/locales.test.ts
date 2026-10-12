@@ -91,7 +91,4 @@ describe("terminologia japonesa", () => {
     expect(values.filter((v) => v.includes("エピセマ"))).toEqual([]);
     expect(values.filter((v) => /(?<!符)音数/.test(v))).toEqual([]);
   });
-  it("a categoria dos liquescentes é de neumas", () => {
-    expect((ja as Catalog)["annotation.category.liquescent"]).toBe("リクエッセンス・ネウマ");
-  });
 });
