@@ -15,11 +15,9 @@ import { sameNeumeBands, sortNeumeBands } from "../lib/neume-bands";
 import { frameOf, framesEqual, hasAnyBox, remapBox } from "@shared/box-frame";
 import type { BoxFrame, Classification, PageNotation } from "@shared/project-schema";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "@shared/classification";
-import { isAnnotationEmpty } from "@shared/annotation/annotation";
+import { normalizeAnnotation, withAnnotation } from "@shared/annotation/annotation";
 import type {
-  Annotations,
   ExportPrefs,
-  NeumeItem,
   NeumeVocabulary,
   SyllableAnnotation,
   Tag,
@@ -306,13 +304,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case "SET_ANNOTATION": {
       if (!state.project) return state;
       const { sourceId, syllable, annotation } = action.payload;
-      const normalized = annotation ? normalizeAnnotationLocal(annotation) : null;
+      const normalized = annotation ? normalizeAnnotation(annotation) : null;
       return {
         ...state,
         project: {
           ...state.project,
           sources: state.project.sources.map((src) =>
-            src.id === sourceId ? withAnnotationLocal(src, syllable, normalized) : src,
+            src.id === sourceId ? withAnnotation(src, syllable, normalized) : src,
           ),
         },
         isDirty: true,
@@ -664,33 +662,6 @@ export const initialDocumentState: DocumentState = {
 
 function applyProjectAction(project: MocquereauProject | null, action: ProjectAction): MocquereauProject | null {
   return projectReducer({ project, isDirty: false, currentFilePath: null }, action).project;
-}
-
-// TODO(task-2 merge): replace with normalizeAnnotation/withAnnotation from @shared/annotation/annotation
-function normalizeAnnotationLocal(a: SyllableAnnotation): SyllableAnnotation | null {
-  const neumes = a.neumes.map((n) => {
-    const item: NeumeItem = { ...n };
-    if (item.letters?.length === 0) delete item.letters;
-    if (item.tags?.length === 0) delete item.tags;
-    if (!item.comment) delete item.comment;
-    return item;
-  });
-  const out: SyllableAnnotation = { ...a, neumes };
-  if (!out.comment) delete out.comment;
-  return isAnnotationEmpty(out) ? null : out;
-}
-
-// TODO(task-2 merge): replace with normalizeAnnotation/withAnnotation from @shared/annotation/annotation
-function withAnnotationLocal(
-  source: ManuscriptSource,
-  syllable: number,
-  annotation: SyllableAnnotation | null,
-): ManuscriptSource {
-  const map: Annotations = { ...(source.annotations ?? {}) };
-  if (annotation) map[syllable] = annotation;
-  else delete map[syllable];
-  const { annotations: _old, ...rest } = source;
-  return Object.keys(map).length > 0 ? { ...rest, annotations: map } : rest;
 }
 
 const sortedKeys = (o: object) => Object.keys(o).sort().join(",");
