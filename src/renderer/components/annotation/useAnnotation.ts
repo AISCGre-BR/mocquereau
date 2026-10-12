@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useProject } from "../../hooks/useProject";
 import { emptyAnnotation } from "@shared/annotation/annotation";
@@ -34,14 +34,23 @@ export function useAnnotation(target: AnnotationTarget | null) {
     [project, t],
   );
   const tags = project?.tags ?? NO_TAGS;
-  /** Project snapshot for which createKind already dispatched a vocabulary (not yet rendered). */
+  /**
+   * Project snapshot for which createKind already dispatched a vocabulary that has not been
+   * rendered yet (create + append in the same event). Consumed by the next update and cleared
+   * on every new snapshot, so an undo back to that same snapshot seeds normally again.
+   */
   const vocabularyWrittenFor = useRef<unknown>(null);
+  useEffect(() => {
+    vocabularyWrittenFor.current = null;
+  }, [project]);
 
   const update = useCallback(
     (next: SyllableAnnotation, field: string) => {
       if (!project || sourceId === undefined || syllable === undefined) return;
       const coalesceKey = `ANNOTATION:${sourceId}:${syllable}:${field}`;
-      if (!project.neumeVocabulary && vocabularyWrittenFor.current !== project && next.neumes.length > 0) {
+      const vocabularyPending = vocabularyWrittenFor.current === project;
+      vocabularyWrittenFor.current = null;
+      if (!project.neumeVocabulary && !vocabularyPending && next.neumes.length > 0) {
         dispatch({ type: "SET_NEUME_VOCABULARY", payload: createDefaultVocabulary(t), meta: { coalesceKey } });
       }
       dispatch({

@@ -179,4 +179,31 @@ describe("NeumeSequenceField", () => {
     fireEvent.change(screen.getByLabelText("Categoria"), { target: { value: "compostos" } });
     expect(screen.queryByText("Nova categoria")).toBeNull();
   });
+
+  it("appending an existing option closes the create form", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "cl" } });
+    fireEvent.click(screen.getByRole("option", { name: "Criar «cl»" }));
+    expect(screen.getByLabelText("Categoria")).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: "clivis" }));
+    expect(kinds()).toEqual(["clivis"]);
+    expect(screen.queryByLabelText("Categoria")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Criar" })).toBeNull();
+    expect(onCreateKind).not.toHaveBeenCalled();
+  });
+
+  it("only references the list while it is open, and keeps decoration out of the listbox", () => {
+    const { input } = setup();
+    expect(input.getAttribute("aria-controls")).toBeNull();
+    fireEvent.focus(input);
+    expect(input.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
+    fireEvent.change(input, { target: { value: "c" } });
+    const listbox = screen.getByRole("listbox");
+    expect(listbox.querySelector('[role="separator"]')).toBeNull();
+    fireEvent.change(input, { target: { value: "zzz" } });
+    expect(screen.getByRole("listbox").textContent).not.toContain("Nenhum neuma encontrado");
+    expect(screen.getByRole("option", { name: "Criar «zzz»" }).hasAttribute("aria-expanded")).toBe(false);
+  });
 });

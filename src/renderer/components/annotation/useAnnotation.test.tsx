@@ -170,4 +170,17 @@ describe("useAnnotation", () => {
     expect(voc.kinds.find((k) => k.id === id)!.categoryId).toBe("cat.compound");
     expect(voc.categories).toHaveLength(4);
   });
+
+  it("seeds the vocabulary again after a create is undone", () => {
+    const r = mount(mkProject());
+    act(() => {
+      const id = r.api.createKind({ name: "climacus sub", categoryName: "Formas raras", defaultNotes: 5 });
+      r.api.update({ neumes: [{ kind: id }], tags: [] }, "neumes");
+    });
+    act(() => r.history.undo());
+    expect(r.state.project!.neumeVocabulary).toBeUndefined();
+    act(() => r.api.update({ neumes: [{ kind: "virga" }], tags: [] }, "neumes"));
+    expect(r.state.project!.neumeVocabulary).toBeDefined();
+    expect(ann(r)?.neumes).toEqual([{ kind: "virga" }]);
+  });
 });

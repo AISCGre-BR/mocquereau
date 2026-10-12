@@ -83,6 +83,7 @@ export function NeumeSequenceField({
     onChange([...value, { kind: kindId }]);
     setQuery("");
     setActive(0);
+    setForm(null);
   }
 
   function choose(i: number) {
@@ -184,7 +185,7 @@ export function NeumeSequenceField({
 
   const categoryName = form?.category.trim() ?? "";
   const notesValue = form && NOTES.test(form.notes) ? Number(form.notes) : 0;
-  const formValid = categoryName !== "" && Number.isInteger(notesValue) && notesValue >= 1;
+  const formValid = name !== "" && categoryName !== "" && Number.isInteger(notesValue) && notesValue >= 1;
   const isNewCategory =
     categoryName !== "" && !vocabulary.categories.some((c) => fold(c.name.trim()) === fold(categoryName));
   const visibleCategories = vocabulary.categories.filter((c) => !c.hidden);
@@ -252,7 +253,7 @@ export function NeumeSequenceField({
           aria-describedby={value.length > 0 ? wordsId : undefined}
           aria-autocomplete="list"
           aria-expanded={open}
-          aria-controls={listId}
+          aria-controls={open ? listId : undefined}
           aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
           className="min-w-[6ch] flex-1 border-none bg-transparent p-0 font-serif text-ink outline-none"
           value={query}
@@ -269,6 +270,9 @@ export function NeumeSequenceField({
 
       {open && (
         <div className="absolute top-full right-0 left-0 z-30 mt-1 max-h-80 overflow-y-auto rounded-lg bg-surface-high py-1 shadow-elev-3">
+          {groups.length === 0 && (
+            <div className="px-3 py-1.5 font-sans text-sm text-ink-muted italic">{t("annotation.neumes.empty")}</div>
+          )}
           <div role="listbox" id={listId} aria-label={t("annotation.neumes")}>
             {groups.map((g) => (
               <div key={g.category.id} role="group" aria-labelledby={`${baseId}-cat-${g.category.id}`}>
@@ -303,19 +307,15 @@ export function NeumeSequenceField({
                 })}
               </div>
             ))}
-            {groups.length === 0 && (
-              <div className="px-3 py-1.5 font-sans text-sm text-ink-muted italic">{t("annotation.neumes.empty")}</div>
-            )}
             {canCreate && (() => {
               const i = options.length - 1;
               return (
                 <>
-                  {groups.length > 0 && <div role="separator" className="my-1 border-t border-rule" />}
+                  {groups.length > 0 && <div role="presentation" className="my-1 border-t border-rule" />}
                   <div
                     id={optionId(i)}
                     role="option"
                     aria-selected={i === activeIndex}
-                    aria-expanded={form !== null}
                     className={[
                       "flex cursor-pointer items-center gap-1.5 px-3 py-1 font-sans text-sm text-rubric",
                       i === activeIndex ? "bg-rubric-wash" : "",
