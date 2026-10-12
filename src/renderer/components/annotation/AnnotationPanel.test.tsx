@@ -42,7 +42,7 @@ function mount(target: AnnotationTarget | null, onClose = vi.fn()) {
     if (!state.project) return null;
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
-        <AnnotationPanel target={target} syllableText="Ad" sourceName="Einsiedeln 121" onClose={onClose} onNext={vi.fn()} />
+        <AnnotationPanel target={target} syllableText="Ad" sourceName="Einsiedeln 121" onClose={onClose} onNext={vi.fn()} onPrev={vi.fn()} />
       </ProjectContext.Provider>
     );
   }

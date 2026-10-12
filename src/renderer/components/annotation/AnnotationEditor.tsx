@@ -18,6 +18,8 @@ export interface AnnotationEditorProps {
   variant: "full" | "compact";
   /** Ctrl+Enter in any field. */
   onNext?: () => void;
+  /** Shift+Enter in an empty Neumas field (Enter there goes to `onNext`). */
+  onPrev?: () => void;
   autoFocus?: boolean;
 }
 
@@ -34,7 +36,7 @@ const blockClass = "flex flex-col rounded-md border border-rule bg-surface p-3";
  * neume (only `full`, the Recortes panel, and only while a word is selected) and the syllable.
  * `compact` (Tabela) has the first and last. Every edit is written at once; nothing is presumed (D12).
  */
-export function AnnotationEditor({ target, variant, onNext, autoFocus }: AnnotationEditorProps) {
+export function AnnotationEditor({ target, variant, onNext, onPrev, autoFocus }: AnnotationEditorProps) {
   const { t } = useTranslation();
   const baseId = useId();
   const { annotation, vocabulary, tags, update, createKind, setTagNames, setComment } = useAnnotation(target);
@@ -110,6 +112,15 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
         </label>
         <NeumeSequenceField
           id={neumesId}
+          onEmptyEnter={
+            onNext
+              ? (direction) => {
+                  blurInside();
+                  if (direction === 1) onNext();
+                  else onPrev?.();
+                }
+              : undefined
+          }
           vocabulary={vocabulary}
           value={annotation.neumes}
           onChange={(neumes) => update({ ...annotation, neumes }, "neumes")}

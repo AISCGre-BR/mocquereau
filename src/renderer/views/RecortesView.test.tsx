@@ -564,6 +564,24 @@ describe("RecortesView: painel Anotação", () => {
     expect(v.ref.recortes!.activeSyllable).toBe(4);
   });
 
+  it("Enter num campo Neumas vazio avança, Shift+Enter recua; ambos param nos limites e mantêm o foco", () => {
+    const v = mount(projectWith(), fakeClient(), { annotationPanelOpen: true });
+    const neumes = () => v.getByRole("combobox", { name: "Neumas" });
+    act(() => v.ref.recortes!.setActiveSyllable(0));
+    act(() => neumes().focus());
+    act(() => void fireEvent.keyDown(neumes(), { key: "Enter", shiftKey: true }));
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    act(() => void fireEvent.keyDown(neumes(), { key: "Enter" }));
+    expect(v.ref.recortes!.activeSyllable).toBe(1);
+    expect(document.activeElement).toBe(neumes());
+    act(() => void fireEvent.keyDown(neumes(), { key: "Enter", shiftKey: true }));
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    expect(document.activeElement).toBe(neumes());
+    act(() => v.ref.recortes!.setActiveSyllable(4));
+    act(() => void fireEvent.keyDown(neumes(), { key: "Enter" }));
+    expect(v.ref.recortes!.activeSyllable).toBe(4);
+  });
+
   it("Tab, setas e Delete dentro do painel não disparam os atalhos da vista", () => {
     const v = mount(projectWith(), fakeClient(), { annotationPanelOpen: true });
     const panel = v.getByRole("complementary", { name: "Anotação" });

@@ -13,12 +13,13 @@ export interface AnnotationPanelProps {
   sourceName: string;
   onClose: () => void;
   onNext: () => void;
+  onPrev: () => void;
 }
 
 /** Right-hand "Anotação" panel of the Recortes view. */
-export function AnnotationPanel({ target, syllableText, sourceName, onClose, onNext }: AnnotationPanelProps) {
+export function AnnotationPanel({ target, syllableText, sourceName, onClose, onNext, onPrev }: AnnotationPanelProps) {
   const { t } = useTranslation();
-  // After Ctrl+Enter the editor of the next syllable takes the focus back to Neumas.
+  // After Ctrl+Enter or Enter on empty Neumas the editor of the next syllable takes the focus back to Neumas.
   // Only that once: a syllable picked on the strip or the sheet leaves the focus where it is.
   const [advanced, setAdvanced] = useState(false);
   useEffect(() => {
@@ -52,6 +53,10 @@ export function AnnotationPanel({ target, syllableText, sourceName, onClose, onN
             onNext={() => {
               setAdvanced(true);
               onNext();
+            }}
+            onPrev={() => {
+              setAdvanced(true);
+              onPrev();
             }}
           />
         ) : (

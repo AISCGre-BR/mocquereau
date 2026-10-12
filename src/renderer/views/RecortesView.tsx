@@ -440,6 +440,9 @@ export function RecortesView({
             onNext={() => {
               if (activeSyllable !== null && activeSyllable + 1 < total) recortes.setActiveSyllable(activeSyllable + 1);
             }}
+            onPrev={() => {
+              if (activeSyllable !== null && activeSyllable > 0) recortes.setActiveSyllable(activeSyllable - 1);
+            }}
           />
         )}
         {sheetMenu && (

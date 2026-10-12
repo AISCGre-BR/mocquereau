@@ -22,6 +22,8 @@ export interface NeumeSequenceFieldProps {
   /** Adds the kind to the project vocabulary and returns its id. */
   onCreateKind: (draft: NeumeKindDraft) => string;
   id?: string;
+  /** Enter (1) / Shift+Enter (-1) with no pending text and the list closed. */
+  onEmptyEnter?: (direction: 1 | -1) => void;
   /**
    * Receives a function that commits the pending text (as leaving the field does) and returns
    * whether there was any. The owner calls it on unmount and before document actions.
@@ -52,6 +54,7 @@ export function NeumeSequenceField({
   onSelect,
   onCreateKind,
   id,
+  onEmptyEnter,
   flushRef,
 }: NeumeSequenceFieldProps) {
   const { t } = useTranslation();
@@ -192,6 +195,10 @@ export function NeumeSequenceField({
       case "Enter":
         if (e.ctrlKey || e.metaKey) return;
         e.preventDefault();
+        if (empty && !open && onEmptyEnter) {
+          onEmptyEnter(e.shiftKey ? -1 : 1);
+          return;
+        }
         // Closed list (after Esc): Enter commits the typed text, as a comma does.
         if (!open) commitPending();
         else if (activeIndex >= 0) choose(activeIndex);

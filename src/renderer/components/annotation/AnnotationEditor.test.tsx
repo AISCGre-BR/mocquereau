@@ -27,7 +27,7 @@ function mkProject(): MocquereauProject {
   return { ...p, sources: [src("s1"), src("s2")], tags: [{ id: "t-rasp", name: "raspagem" }] } as MocquereauProject;
 }
 
-function mount(variant: "full" | "compact" = "full", onNext = vi.fn()) {
+function mount(variant: "full" | "compact" = "full", onNext = vi.fn(), onPrev: (() => void) | undefined = vi.fn()) {
   const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; history?: HistoryApi } = {};
   function Harness() {
     const [state, dispatch, history] = useProjectReducer();
@@ -35,14 +35,14 @@ function mount(variant: "full" | "compact" = "full", onNext = vi.fn()) {
     if (!state.project) return null;
     return (
       <ProjectContext.Provider value={{ state, dispatch, history }}>
-        <AnnotationEditor target={{ sourceId: "s1", syllable: 0 }} variant={variant} onNext={onNext} />
+        <AnnotationEditor target={{ sourceId: "s1", syllable: 0 }} variant={variant} onNext={variant === "full" ? onNext : undefined} onPrev={variant === "full" ? onPrev : undefined} />
       </ProjectContext.Provider>
     );
   }
   render(<Harness />);
   act(() => ref.dispatch!({ type: "SET_PROJECT", payload: mkProject() }));
   const ann = () => ref.state!.project!.sources[0].annotations?.[0];
-  return { ref, ann, onNext };
+  return { ref, ann, onNext, onPrev };
 }
 
 function addNeume(name: string) {
@@ -218,6 +218,36 @@ describe("AnnotationEditor", () => {
     fireEvent.keyDown(screen.getByLabelText("Observação"), { key: "Enter", ctrlKey: true });
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Neumas" }), { key: "Enter", ctrlKey: true });
     expect(onNext).toHaveBeenCalledTimes(2);
+  });
+
+  it("Enter on an empty Neumas field calls onNext, Shift+Enter calls onPrev", () => {
+    const { onNext, onPrev } = mount();
+    const box = screen.getByRole("combobox", { name: "Neumas" });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onNext).toHaveBeenCalledTimes(1);
+    expect(onPrev).not.toHaveBeenCalled();
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(onPrev).toHaveBeenCalledTimes(1);
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("Enter and Shift+Enter with pending text commit it and do not move", () => {
+    const { onNext, onPrev, ann } = mount();
+    const box = screen.getByRole("combobox", { name: "Neumas" }) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "pes" } });
+    fireEvent.keyDown(box, { key: "Escape" }); // closes the list: Enter commits the text
+    box.focus();
+    fireEvent.change(box, { target: { value: "pes" } });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrev).not.toHaveBeenCalled();
+    expect(ann()?.neumes).toHaveLength(1);
+  });
+
+  it("compact variant: Enter on empty does nothing new", () => {
+    const { onNext } = mount("compact");
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Neumas" }), { key: "Enter" });
+    expect(onNext).not.toHaveBeenCalled();
   });
 });
 
