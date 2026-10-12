@@ -147,6 +147,27 @@ async function openNeumePage(page) {
   await settle(page, 3000);
 }
 
+/** Recortes na primeira página confirmada, com o painel Anotação aberto na sílaba `syllable`. */
+async function openAnnotationPanel(page, syllable) {
+  await openFixtureProject(page);
+  await page.keyboard.press("Control+2");
+  await settle(page);
+  await page.locator("[role=treeitem][data-line-id]").filter({ has: page.locator("[data-confirmed]") }).first().click();
+  await settle(page, 2000);
+  await page.keyboard.press("Control+Shift+A");
+  await settle(page, 400);
+  await page.locator(`[data-syllable="${syllable}"]`).first().click();
+  await settle(page, 600);
+}
+
+/** Abre um item do menu Arquivo (com o projeto da fixture aberto). */
+async function openFileMenuItem(page, name) {
+  await openFixtureProject(page);
+  await page.getByRole("menuitem", { name: "Arquivo" }).click();
+  await page.getByRole("menuitem", { name }).click();
+  await settle(page, 600);
+}
+
 const GUIDE_TEXT = [
   "Glória in excélsis Deo",
   "Et in terra pax homínibus bonae voluntátis",
@@ -215,6 +236,26 @@ const SCREENS = {
     await page.locator("[data-neume-band]").first().click();
     await settle(page, 600);
   },
+  // Painel Anotação (Ctrl+Shift+A) na sílaba "est" (liquescência, episema, letra), com o
+  // primeiro neuma selecionado: o bloco de detalhe aparece.
+  "recortes-anotacao": async (page) => {
+    await openAnnotationPanel(page, 4);
+    await page.locator("[data-annotation-panel] [data-neume-index]").first().click();
+    await settle(page, 300);
+    // O clique no neuma foca o campo e abre a lista; Esc a fecha e mantém a seleção.
+    await page.keyboard.press("Escape");
+    await settle(page, 400);
+  },
+  // Neuma que não existe no vocabulário: opção "Criar «…»" e o formulário em linha.
+  "recortes-anotacao-criar": async (page) => {
+    await openAnnotationPanel(page, 1);
+    const input = page.locator("[data-annotation-panel]").getByRole("combobox", { name: "Neumas" });
+    await input.click();
+    await input.fill("franculus");
+    await settle(page, 300);
+    await page.getByRole("option", { name: "Criar «franculus»" }).click();
+    await settle(page, 600);
+  },
   "fonte-dialog": async (page) => {
     await openFixtureProject(page);
     await page.keyboard.press("Control+2");
@@ -231,6 +272,19 @@ const SCREENS = {
     await settle(page, 600);
   },
   tabela: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+3"); await settle(page, 5000); },
+  // Clique numa célula preenchida e anotada: a anotação compacta abre sob ela.
+  "tabela-anotacao": async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+3");
+    await settle(page, 3000);
+    await page.locator("[data-annotated]").nth(1).click();
+    await settle(page, 300);
+    // O foco no campo Neumas abre a lista; Esc a fecha e mostra o editor compacto.
+    await page.keyboard.press("Escape");
+    await settle(page, 400);
+  },
+  etiquetas: async (page) => { await openFileMenuItem(page, "Etiquetas…"); },
+  vocabulario: async (page) => { await openFileMenuItem(page, "Vocabulário de neumas…"); },
   analise: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+4"); await settle(page, 800); },
   "analise-ocorrencias": async (page) => {
     await openFixtureProject(page);
@@ -248,12 +302,15 @@ const SCREENS = {
   },
 };
 
+// VISUAL_SCREENS=a,b captura só essas telas.
+const only = process.env.VISUAL_SCREENS?.split(",").map((s) => s.trim()).filter(Boolean);
 let failed = false;
 const browser = await chromium.launch();
 await rasterizeSvgs(browser, data);
 for (const theme of THEMES) {
   for (const [w, h] of VIEWPORTS) {
     for (const [name, run] of Object.entries(SCREENS)) {
+      if (only && !only.includes(name)) continue;
       // Contexto novo por captura: cada tela parte da tela inicial, sem estado de outra.
       const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme });
       const page = await ctx.newPage();
