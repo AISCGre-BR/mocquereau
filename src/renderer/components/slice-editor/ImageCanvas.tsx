@@ -25,6 +25,7 @@ import { isRotateShortcut, rotateQuarter } from '../../lib/canvas-rotation';
 import { isTextInput } from '../../shell/useMenuShortcuts';
 import { useTranslation } from 'react-i18next';
 import { sortNeumeBands } from '../../lib/neume-bands';
+import { useSheetPan } from './useSheetPan';
 
 interface ImageCanvasProps {
   image: StoredImage | null;
@@ -248,6 +249,8 @@ export function ImageCanvas({
     scroller.addEventListener('wheel', onWheel, { passive: false });
     return () => scroller.removeEventListener('wheel', onWheel);
   }, [hasImage]);
+  // Shift+arrastar ou botão do meio: arrasta a folha (rola o contêiner).
+  useSheetPan(scrollerRef, hasImage);
 
   // Ctrl+= / Ctrl+- / Ctrl+0: só existem com o editor (vista Recortes) montado.
   useEffect(() => {
@@ -459,7 +462,7 @@ export function ImageCanvas({
     <div className="relative flex flex-col h-full">
       {/* Image + boxes area: 16 px margins around the sheet, which sits in a
           card (radius-lg, elev-2). Zoom 1 still fits the sheet to the width. */}
-      <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto p-4">
+      <div ref={scrollerRef} data-canvas-scroller className="relative flex-1 min-h-0 overflow-auto p-4 data-[pan=grab]:cursor-grab data-[pan=grab]:**:cursor-grab! data-[pan=grabbing]:cursor-grabbing data-[pan=grabbing]:**:cursor-grabbing!">
         {/* Wrapper = AABB do retângulo da imagem rotacionada (axis-aligned com a tela).
             Não recebe rotation transform: só translate+aspect-ratio. As boxes
             são posicionadas em fração desse AABB. */}
