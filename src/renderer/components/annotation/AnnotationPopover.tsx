@@ -27,6 +27,34 @@ const WIDTH = 320;
 const GAP = 8;
 const MARGIN = 8;
 
+export interface PopoverPlacement {
+  left: number;
+  top: number;
+  /** Arrow offset from the popover's left edge. */
+  arrow: number;
+  /** Side of the popover the arrow is on; null when it fits neither below nor above the cell. */
+  side: "top" | "bottom" | null;
+}
+
+/**
+ * Below the cell when it fits, above when only that fits; otherwise kept inside the viewport
+ * (bottom edge at the margin) without an arrow, so it never runs off the window.
+ */
+export function placePopover(
+  cell: { left: number; top: number; bottom: number; width: number },
+  height: number,
+  viewport: { width: number; height: number },
+): PopoverPlacement {
+  const center = cell.left + cell.width / 2;
+  const left = Math.max(MARGIN, Math.min(viewport.width - WIDTH - MARGIN, center - WIDTH / 2));
+  const arrow = Math.max(16, Math.min(WIDTH - 16, center - left));
+  const below = cell.bottom + GAP;
+  if (below + height <= viewport.height - MARGIN) return { left, top: below, arrow, side: "top" };
+  const above = cell.top - GAP - height;
+  if (above >= MARGIN) return { left, top: above, arrow, side: "bottom" };
+  return { left, top: Math.max(MARGIN, viewport.height - MARGIN - height), arrow, side: null };
+}
+
 export function AnnotationPopover({
   sourceId,
   syllable,
@@ -40,16 +68,11 @@ export function AnnotationPopover({
   const ref = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const [pos, setPos] = useState<{ left: number; top: number; arrow: number }>({ left: 0, top: 0, arrow: WIDTH / 2 });
+  const [pos, setPos] = useState<PopoverPlacement>({ left: 0, top: 0, arrow: WIDTH / 2, side: "top" });
 
   useLayoutEffect(() => {
-    const r = anchor.getBoundingClientRect();
     const height = ref.current?.offsetHeight ?? 0;
-    const center = r.left + r.width / 2;
-    const left = Math.max(MARGIN, Math.min(window.innerWidth - WIDTH - MARGIN, center - WIDTH / 2));
-    const below = r.bottom + GAP;
-    const top = below + height > window.innerHeight && r.top - GAP - height > 0 ? r.top - GAP - height : below;
-    setPos({ left, top, arrow: Math.max(16, Math.min(WIDTH - 16, center - left)) });
+    setPos(placePopover(anchor.getBoundingClientRect(), height, { width: window.innerWidth, height: window.innerHeight }));
   }, [anchor]);
 
   useEffect(() => {
@@ -82,11 +105,17 @@ export function AnnotationPopover({
       className="fixed z-[120] flex flex-col gap-3 rounded-lg border border-rule bg-surface-high p-3 text-ink shadow-elev-3"
       style={{ width: WIDTH, left: pos.left, top: pos.top }}
     >
-      <span
-        aria-hidden="true"
-        className="absolute -top-1 size-2 -translate-x-1/2 rotate-45 border-t border-l border-rule bg-surface-high"
-        style={{ left: pos.arrow }}
-      />
+      {pos.side && (
+        <span
+          aria-hidden="true"
+          data-popover-arrow={pos.side}
+          className={[
+            "absolute size-2 -translate-x-1/2 rotate-45 border-rule bg-surface-high",
+            pos.side === "top" ? "-top-1 border-t border-l" : "-bottom-1 border-r border-b",
+          ].join(" ")}
+          style={{ left: pos.arrow }}
+        />
+      )}
       <div className="flex items-center gap-2">
         <span className="font-serif text-body italic">{syllableLabel}</span>
         <span className="min-w-0 flex-1 truncate font-serif text-ink-muted">{sourceName}</span>

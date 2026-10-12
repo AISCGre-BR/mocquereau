@@ -2,7 +2,7 @@
 import "../../i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { AnnotationPopover } from "./AnnotationPopover";
+import { AnnotationPopover, placePopover } from "./AnnotationPopover";
 import { ProjectContext, createNewProject, useProjectReducer } from "../../hooks/useProject";
 
 afterEach(cleanup);
@@ -54,5 +54,32 @@ describe("AnnotationPopover", () => {
     const { onClose } = mount();
     fireEvent.pointerDown(document.body);
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("placePopover", () => {
+  const viewport = { width: 1280, height: 720 };
+  const cell = (top: number) => ({ left: 400, top, bottom: top + 80, width: 64 });
+
+  it("goes below the cell when it fits, arrow on top pointing at the cell", () => {
+    const p = placePopover(cell(100), 300, viewport);
+    expect(p).toMatchObject({ top: 188, side: "top" });
+    expect(p.left + p.arrow).toBe(432);
+  });
+
+  it("goes above the cell when only that fits, arrow at the bottom", () => {
+    expect(placePopover(cell(500), 300, viewport)).toMatchObject({ top: 192, side: "bottom" });
+  });
+
+  it("stays inside the window, without arrow, when it fits neither below nor above", () => {
+    const p = placePopover(cell(260), 430, viewport);
+    expect(p).toMatchObject({ top: 720 - 8 - 430, side: null });
+    expect(p.top + 430).toBeLessThanOrEqual(720);
+  });
+
+  it("keeps the left edge inside the window near the right border", () => {
+    const p = placePopover({ left: 1250, top: 100, bottom: 180, width: 30 }, 300, viewport);
+    expect(p.left).toBe(1280 - 320 - 8);
+    expect(p.arrow).toBeLessThanOrEqual(320 - 16);
   });
 });
