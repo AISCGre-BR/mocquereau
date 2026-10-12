@@ -62,6 +62,8 @@ describe("AnnotationPopover", () => {
     const { onClose } = mount();
     const input = screen.getByRole("combobox", { name: "Neumas" });
     fireEvent.focus(input);
+    expect(screen.queryByRole("listbox")).toBeNull(); // focus alone does not open it
+    fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(screen.getByRole("listbox")).toBeTruthy();
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("listbox")).toBeNull();

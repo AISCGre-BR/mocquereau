@@ -42,7 +42,7 @@ export function AnnotationPanel({ target, syllableText, sourceName, onClose, onN
         {target && <CopyFromMenu target={target} />}
         <IconButton label={t("annotation.closePanel")} icon={<X className="h-4 w-4" aria-hidden="true" />} onClick={onClose} />
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-parchment p-3">
         {target ? (
           <AnnotationEditor
             key={`${target.sourceId}:${target.syllable}`}

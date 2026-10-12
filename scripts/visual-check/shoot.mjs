@@ -237,14 +237,11 @@ const SCREENS = {
     await settle(page, 600);
   },
   // Painel Anotação (Ctrl+Shift+A) na sílaba "est" (liquescência, episema, letra), com o
-  // primeiro neuma selecionado: o bloco de detalhe aparece.
+  // primeiro neuma selecionado: o bloco de detalhe aparece (o clique não abre a lista).
   "recortes-anotacao": async (page) => {
     await openAnnotationPanel(page, 4);
     await page.locator("[data-annotation-panel] [data-neume-index]").first().click();
-    await settle(page, 300);
-    // O clique no neuma foca o campo e abre a lista; Esc a fecha e mantém a seleção.
-    await page.keyboard.press("Escape");
-    await settle(page, 400);
+    await settle(page, 600);
   },
   // Neuma que não existe no vocabulário: opção "Criar «…»" e o formulário em linha.
   "recortes-anotacao-criar": async (page) => {
@@ -290,11 +287,9 @@ const SCREENS = {
     await openFixtureProject(page);
     await page.keyboard.press("Control+3");
     await settle(page, 3000);
+    // O foco vai para o campo Neumas, sem abrir a lista.
     await page.locator("[data-annotated]").nth(1).click();
-    await settle(page, 300);
-    // O foco no campo Neumas abre a lista; Esc a fecha e mostra o editor compacto.
-    await page.keyboard.press("Escape");
-    await settle(page, 400);
+    await settle(page, 600);
   },
   etiquetas: async (page) => { await openFileMenuItem(page, "Etiquetas…"); },
   vocabulario: async (page) => { await openFileMenuItem(page, "Vocabulário de neumas…"); },

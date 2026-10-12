@@ -163,6 +163,44 @@ describe("AnnotationEditor", () => {
     expect(ref.state!.project!.sources[0].annotations![0].comment).toBe("ver #raspagem");
   });
 
+  it("shows separate blocks; the neume block only while a word is selected", () => {
+    mount();
+    const blocks = () => [...document.querySelectorAll("[data-annotation-block]")].map((b) => b.getAttribute("data-annotation-block"));
+    expect(blocks()).toEqual(["neumes", "syllable"]);
+    addNeume("pes");
+    expect(blocks()).toEqual(["neumes", "syllable"]); // nothing selected after adding
+    fireEvent.click(document.querySelector('[data-neume-index="0"]')!);
+    expect(blocks()).toEqual(["neumes", "neume", "syllable"]);
+  });
+
+  it("clicking a word does not open the list; its detail is visible and editable at once", () => {
+    const { ann } = mount();
+    addNeume("pes");
+    addNeume("clivis");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.click(document.querySelector('[data-neume-index="1"]')!);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    const detail = document.querySelector('[data-annotation-block="neume"]') as HTMLElement;
+    expect(detail.textContent).toContain("clivis");
+    fireEvent.click(screen.getByRole("button", { name: "Aument." }));
+    fireEvent.change(screen.getByLabelText("Notas"), { target: { value: "3" } });
+    expect(ann()!.neumes[1]).toMatchObject({ liquescence: "augmentative", notes: 3 });
+    expect(ann()!.neumes[0]).toEqual({ kind: "pes" });
+  });
+
+  it("typing in Neumas opens the list; ArrowDown opens it too", () => {
+    mount();
+    const box = screen.getByRole("combobox", { name: "Neumas" });
+    fireEvent.focus(box);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.change(box, { target: { value: "p" } });
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.change(box, { target: { value: "" } });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    expect(screen.getByRole("listbox")).toBeTruthy();
+  });
+
   it("compact variant hides the per-neume detail", () => {
     mount("compact");
     addNeume("pes");
@@ -172,6 +210,7 @@ describe("AnnotationEditor", () => {
     expect(screen.queryByRole("toolbar", { name: "Episema" })).toBeNull();
     expect(screen.queryByLabelText("Letras")).toBeNull();
     expect(screen.getByRole("toolbar", { name: "Certeza da leitura" })).toBeTruthy();
+    expect(document.querySelector('[data-annotation-block="neume"]')).toBeNull();
   });
 
   it("Ctrl+Enter calls onNext", () => {

@@ -52,22 +52,69 @@ function setup({ initial = [], onSelect = () => {}, onCreateKind = () => "kind.n
 }
 
 describe("NeumeSequenceField", () => {
-  it("opens the grouped list on focus, filters and adds the first option with Enter", () => {
+  it("does not open the list on focus; typing opens it, Enter adds the first option and closes it", () => {
     const { input, kinds } = setup();
     expect(screen.queryByRole("listbox")).toBeNull();
     fireEvent.focus(input);
-    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.click(input);
+    expect(screen.queryByRole("listbox")).toBeNull();
     fireEvent.change(input, { target: { value: "cl" } });
+    expect(screen.getByRole("listbox")).toBeTruthy();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(kinds()).toEqual(["clivis"]);
     expect((input as HTMLInputElement).value).toBe("");
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("clearing the typed text closes the list again", () => {
+    const { input } = setup();
+    fireEvent.change(input, { target: { value: "p" } });
     expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("ArrowDown and Alt+ArrowDown open the list; ArrowUp does not", () => {
+    const { input } = setup();
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(input, { key: "ArrowDown", altKey: true });
+    expect(screen.getByRole("listbox")).toBeTruthy();
+  });
+
+  it("clicking a word selects it without opening the list, and closes an open one", () => {
+    const onSelect = vi.fn();
+    const { input } = setup({ initial: [{ kind: "virga" }, { kind: "pes" }], onSelect });
+    fireEvent.mouseDown(screen.getByText("pes"));
+    fireEvent.click(screen.getByText("pes"));
+    expect(onSelect).toHaveBeenLastCalledWith(1);
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.click(screen.getByText("virga", { selector: "[data-neume-index]" }));
+    expect(onSelect).toHaveBeenLastCalledWith(0);
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("a press on the empty area of the box focuses the input without opening the list", () => {
+    const { input } = setup({ initial: [{ kind: "virga" }] });
+    const box = input.parentElement!;
+    expect(fireEvent.mouseDown(box)).toBe(false);
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole("listbox")).toBeNull();
   });
 
   it("allows repetitions by clicking the same option twice", () => {
     const { input, kinds } = setup();
-    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "virga" } });
     fireEvent.click(screen.getByRole("option", { name: "virga" }));
+    fireEvent.change(input, { target: { value: "virga" } });
     fireEvent.click(screen.getByRole("option", { name: "virga" }));
     expect(kinds()).toEqual(["virga", "virga"]);
   });
@@ -75,6 +122,7 @@ describe("NeumeSequenceField", () => {
   it("moves the active option with the arrows", () => {
     const { input, kinds } = setup();
     fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "ArrowDown" }); // opens
     fireEvent.keyDown(input, { key: "ArrowDown" });
     const active = input.getAttribute("aria-activedescendant");
     expect(active).toBeTruthy();
@@ -124,7 +172,7 @@ describe("NeumeSequenceField", () => {
 
   it("does not list hidden kinds", () => {
     const { input } = setup();
-    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(screen.queryByRole("option", { name: "punctum" })).toBeNull();
     expect(screen.getByRole("option", { name: "virga" })).toBeTruthy();
   });
@@ -148,7 +196,8 @@ describe("NeumeSequenceField", () => {
 
   it("Esc closes the list", () => {
     const { input } = setup();
-    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.getByRole("listbox")).toBeTruthy();
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("listbox")).toBeNull();
   });
@@ -221,8 +270,9 @@ describe("NeumeSequenceField", () => {
     const { input } = setup();
     expect(input.getAttribute("aria-controls")).toBeNull();
     fireEvent.focus(input);
-    expect(input.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
+    expect(input.getAttribute("aria-controls")).toBeNull();
     fireEvent.change(input, { target: { value: "c" } });
+    expect(input.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
     const listbox = screen.getByRole("listbox");
     expect(listbox.querySelector('[role="separator"]')).toBeNull();
     fireEvent.change(input, { target: { value: "zzz" } });
@@ -296,7 +346,7 @@ describe("NeumeSequenceField", () => {
     expect(kinds()).toEqual(["kind.new"]);
   });
 
-  it("a comma commits the text typed so far and keeps the list open", () => {
+  it("a comma commits the text typed so far and closes the list", () => {
     const onCreateKind = vi.fn(() => "kind.new");
     const { input, kinds } = setup({ onCreateKind });
     fireEvent.focus(input);
@@ -304,7 +354,7 @@ describe("NeumeSequenceField", () => {
     fireEvent.keyDown(input, { key: "," });
     expect(kinds()).toEqual(["pes"]);
     expect((input as HTMLInputElement).value).toBe("");
-    expect(screen.getByRole("listbox")).toBeTruthy();
+    expect(screen.queryByRole("listbox")).toBeNull();
     fireEvent.keyDown(input, { key: "," });
     expect(kinds()).toEqual(["pes"]);
     expect(onCreateKind).not.toHaveBeenCalled();
@@ -371,6 +421,17 @@ describe("NeumeSequenceField: leaving vs. not leaving", () => {
     expect((input as HTMLInputElement).value).toBe("cl");
     fireEvent.blur(input);
     expect(onCreateKind).toHaveBeenCalledWith({ name: "cl" });
+  });
+
+  it("Enter with the list closed (after Esc) commits the typed text", () => {
+    const { input, kinds } = setup();
+    fireEvent.change(input, { target: { value: "clivis" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(kinds()).toEqual(["clivis"]);
+    expect((input as HTMLInputElement).value).toBe("");
+    expect(screen.queryByRole("listbox")).toBeNull();
   });
 
   it("Esc with the list closed cancels the pending text (no commit)", () => {

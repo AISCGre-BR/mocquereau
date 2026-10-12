@@ -106,7 +106,7 @@ export function NeumeDetail({ item, vocabulary, tags, onChange, onTagNames }: Ne
   const episema: YesNo | undefined = item.episema === undefined ? undefined : item.episema ? "yes" : "no";
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-rule-soft bg-parchment p-3">
+    <div className="flex flex-col gap-3">
       <div className={kind ? "font-serif text-ink italic" : "font-serif text-ink-muted italic"}>
         {kind ? kind.name : item.kind}
       </div>

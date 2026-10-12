@@ -26,9 +26,13 @@ const TRAILING_TAG = /(?:^|[\s(])#([\p{L}\p{N}_-]+)$/u;
 
 const labelClass = "font-sans text-caption text-ink-muted";
 
+/** Each part of the editor is its own block, so the neume list never hides another part. */
+const blockClass = "flex flex-col rounded-md border border-rule bg-surface p-3";
+
 /**
- * Syllable annotation fields (spec §3). `full` (Recortes panel) adds the per-neume detail;
- * `compact` (Tabela) leaves it out. Every edit is written at once; nothing is presumed (D12).
+ * Syllable annotation fields (spec §3), in separate blocks: the neume sequence, the selected
+ * neume (only `full`, the Recortes panel, and only while a word is selected) and the syllable.
+ * `compact` (Tabela) has the first and last. Every edit is written at once; nothing is presumed (D12).
  */
 export function AnnotationEditor({ target, variant, onNext, autoFocus }: AnnotationEditorProps) {
   const { t } = useTranslation();
@@ -99,8 +103,8 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
   }
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-4" onKeyDown={onKeyDown}>
-      <div className="flex flex-col gap-1">
+    <div ref={rootRef} className="flex flex-col gap-3" onKeyDown={onKeyDown}>
+      <div data-annotation-block="neumes" className={`${blockClass} gap-1`}>
         <label htmlFor={neumesId} className={labelClass}>
           {t("annotation.neumes")}
         </label>
@@ -117,72 +121,76 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
       </div>
 
       {variant === "full" && selected !== null && (
-        <NeumeDetail
-          key={`${targetKey}:${selected}`}
-          item={annotation.neumes[selected]}
-          vocabulary={vocabulary}
-          tags={tags}
-          onChange={(item, field) => changeNeume(selected, item, field)}
-          onTagNames={(names) => setTagNames(names, selected)}
-        />
+        <div data-annotation-block="neume" className={`${blockClass} gap-3`}>
+          <NeumeDetail
+            key={`${targetKey}:${selected}`}
+            item={annotation.neumes[selected]}
+            vocabulary={vocabulary}
+            tags={tags}
+            onChange={(item, field) => changeNeume(selected, item, field)}
+            onTagNames={(names) => setTagNames(names, selected)}
+          />
+        </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <label htmlFor={`${baseId}-total`} className={labelClass}>
-          {t("annotation.totalNotes")}
-        </label>
-        {annotation.neumes.length === 0 ? (
-          <NotesInput
-            id={`${baseId}-total`}
-            value={annotation.notes}
-            placeholder="—"
-            onChange={(n) => patch({ notes: n }, "notes")}
-          />
-        ) : (
-          <output
-            id={`${baseId}-total`}
-            className={total === undefined ? "font-sans text-ink-muted" : "font-sans text-ink tabular-nums"}
-          >
-            {total ?? "—"}
-          </output>
-        )}
-      </div>
+      <div data-annotation-block="syllable" className={`${blockClass} gap-4`}>
+        <div className="flex items-center justify-between gap-3">
+          <label htmlFor={`${baseId}-total`} className={labelClass}>
+            {t("annotation.totalNotes")}
+          </label>
+          {annotation.neumes.length === 0 ? (
+            <NotesInput
+              id={`${baseId}-total`}
+              value={annotation.notes}
+              placeholder="—"
+              onChange={(n) => patch({ notes: n }, "notes")}
+            />
+          ) : (
+            <output
+              id={`${baseId}-total`}
+              className={total === undefined ? "font-sans text-ink-muted" : "font-sans text-ink tabular-nums"}
+            >
+              {total ?? "—"}
+            </output>
+          )}
+        </div>
 
-      <div className="flex flex-col gap-1">
-        <span className={labelClass}>{t("annotation.certainty")}</span>
-        <ChoiceGroup<Certainty>
-          size="sm"
-          label={t("annotation.certainty")}
-          options={[
-            { value: "secure", label: t("annotation.certainty.secure") },
-            { value: "probable", label: t("annotation.certainty.probable") },
-            { value: "illegible", label: t("annotation.certainty.illegible") },
-          ]}
-          value={annotation.certainty}
-          onChange={(v) => patch({ certainty: v }, "certainty")}
+        <div className="flex flex-col gap-1">
+          <span className={labelClass}>{t("annotation.certainty")}</span>
+          <ChoiceGroup<Certainty>
+            size="sm"
+            label={t("annotation.certainty")}
+            options={[
+              { value: "secure", label: t("annotation.certainty.secure") },
+              { value: "probable", label: t("annotation.certainty.probable") },
+              { value: "illegible", label: t("annotation.certainty.illegible") },
+            ]}
+            value={annotation.certainty}
+            onChange={(v) => patch({ certainty: v }, "certainty")}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`${baseId}-tags`} className={labelClass}>
+            {t("annotation.tags")}
+          </label>
+          <TagsField id={`${baseId}-tags`} value={annotation.tags} tags={tags} onCommit={(names) => setTagNames(names)} />
+        </div>
+
+        <Textarea
+          label={t("annotation.comment")}
+          // Same label as the editor's other fields (the .sc-field label is heavier and darker).
+          className="gap-1 [&>span]:font-normal [&>span]:text-ink-muted"
+          rows={3}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          onBlur={(e) => finishComment(e.target.value)}
+          onKeyDown={(e) => {
+            if (isCtrlEnter(e)) finishComment(e.currentTarget.value);
+            else stopOwnedKeys(e);
+          }}
         />
       </div>
-
-      <div className="flex flex-col gap-1">
-        <label htmlFor={`${baseId}-tags`} className={labelClass}>
-          {t("annotation.tags")}
-        </label>
-        <TagsField id={`${baseId}-tags`} value={annotation.tags} tags={tags} onCommit={(names) => setTagNames(names)} />
-      </div>
-
-      <Textarea
-        label={t("annotation.comment")}
-        // Same label as the editor's other fields (the .sc-field label is heavier and darker).
-        className="gap-1 [&>span]:font-normal [&>span]:text-ink-muted"
-        rows={3}
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        onBlur={(e) => finishComment(e.target.value)}
-        onKeyDown={(e) => {
-          if (isCtrlEnter(e)) finishComment(e.currentTarget.value);
-          else stopOwnedKeys(e);
-        }}
-      />
     </div>
   );
 }

@@ -36,8 +36,10 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
 const NOTES = /^\s*\d+\s*$/;
 
 /**
- * Neume sequence as serif words in a box (D13): no chips. Focus opens the vocabulary list
- * grouped by category; Enter or click appends, repetitions allowed. A filter that names no
+ * Neume sequence as serif words in a box (D13): no chips. The vocabulary list, grouped by
+ * category, opens only while typing (non-empty filter) or on ArrowDown, never on focus or on a
+ * click, so it does not cover the detail below; Enter or click appends (and closes it),
+ * repetitions allowed. A filter that names no
  * kind offers "Create «filter»" with an inline form (category and notes both optional).
  * Leaving the field or typing a comma commits the typed text: the kind with that (folded)
  * name, or a new kind with only that name.
@@ -94,6 +96,7 @@ export function NeumeSequenceField({
     setQuery("");
     setActive(0);
     setForm(null);
+    setOpen(false);
   }
 
   /**
@@ -125,6 +128,7 @@ export function NeumeSequenceField({
     setQuery("");
     setActive(0);
     setForm(null);
+    setOpen(false);
     commitNames([pending]);
   }
 
@@ -169,7 +173,8 @@ export function NeumeSequenceField({
       case "ArrowUp": {
         e.preventDefault();
         if (!open) {
-          setOpen(true);
+          // ArrowDown (or Alt+ArrowDown) opens the list; ArrowUp does not.
+          if (e.key === "ArrowDown") setOpen(true);
           return;
         }
         if (options.length === 0) return;
@@ -187,7 +192,8 @@ export function NeumeSequenceField({
       case "Enter":
         if (e.ctrlKey || e.metaKey) return;
         e.preventDefault();
-        if (!open) setOpen(true);
+        // Closed list (after Esc): Enter commits the typed text, as a comma does.
+        if (!open) commitPending();
         else if (activeIndex >= 0) choose(activeIndex);
         return;
       case "Backspace":
@@ -307,7 +313,10 @@ export function NeumeSequenceField({
                     .join(" ")}
                   onMouseDown={keepFocus}
                   onClick={() => {
+                    // Selecting a word shows its detail; the list stays out of the way.
                     onSelect(i);
+                    setOpen(false);
+                    setForm(null);
                     inputRef.current?.focus();
                   }}
                 >
@@ -332,16 +341,16 @@ export function NeumeSequenceField({
           aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
           className="min-w-[6ch] flex-1 border-none bg-transparent p-0 font-serif text-ink outline-none"
           value={query}
-          onFocus={() => setOpen(true)}
           onChange={(e) => {
             // Pasted (or IME) commas: every complete name is committed, the rest stays.
             const parts = e.target.value.split(",");
             const rest = parts.pop()!;
             if (parts.length > 0) commitNames(parts);
-            setQuery(parts.length > 0 ? rest.trimStart() : rest);
+            const next = parts.length > 0 ? rest.trimStart() : rest;
+            setQuery(next);
             setActive(0);
             setForm(null);
-            setOpen(true);
+            setOpen(next !== "");
           }}
           onKeyDown={onInputKeyDown}
         />
