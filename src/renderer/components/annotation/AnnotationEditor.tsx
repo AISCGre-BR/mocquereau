@@ -152,6 +152,8 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
 
       <Textarea
         label={t("annotation.comment")}
+        // Same label as the editor's other fields (the .sc-field label is heavier and darker).
+        className="gap-1 [&>span]:font-normal [&>span]:text-ink-muted"
         rows={3}
         value={comment}
         onChange={(e) => setComment(e.target.value)}
