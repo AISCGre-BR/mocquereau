@@ -131,6 +131,12 @@ describe('replaceWordSyllables annotations', () => {
     const p = replaceWordSyllables(b, 1, ['dixit']);
     expect(p.sources[0].annotations).toEqual({ 3: { neumes: [{ kind: 'pes' }], tags: [] } });
   });
+  it('merging keeps the second syllable annotation when the first has none', () => {
+    const b = base();
+    b.sources[0].annotations = { 4: { neumes: [], tags: [], comment: 'x' } };
+    const p = replaceWordSyllables(b, 1, ['dixit']);
+    expect(p.sources[0].annotations).toEqual({ 3: { neumes: [], tags: [], comment: 'x' } });
+  });
   it('omits annotations when the source had none', () => {
     expect('annotations' in replaceWordSyllables(base(), 0, ['Do', 'm', 'i', 'nus']).sources[0]).toBe(false);
   });

@@ -143,7 +143,7 @@ export function replaceWordSyllables(
   }
 
   const remapAnnotations = (rec: Annotations): Annotations | undefined => {
-    const r = remapRecord<SyllableAnnotation>(rec, false);
+    const r = remapRecord<SyllableAnnotation>(rec, true);
     const out: Annotations = {};
     for (const [k, a] of Object.entries(r)) if (a) out[Number(k)] = a;
     return Object.keys(out).length ? out : undefined;
