@@ -337,6 +337,7 @@
   "annotation.category.simple": "Semplici",
   "annotation.category.compound": "Composti",
   "annotation.category.ornamental": "Ornamentali e ripercussivi",
+  "annotation.category.liquescent": "Liquescenti",
   "annotation.neumes": "Neumi",
   "annotation.neumes.empty": "Nessun neuma trovato",
   "annotation.create": "Crea «{{name}}»",

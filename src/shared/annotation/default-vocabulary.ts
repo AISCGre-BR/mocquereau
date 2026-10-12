@@ -1,14 +1,41 @@
 // src/shared/annotation/default-vocabulary.ts
 //
 // Default Mocquereau neume vocabulary. Latin names and the Latin meaning of the
-// significant letters are vocabulary data (not i18n keys); only category names are translated.
+// significant letters are vocabulary data (not i18n keys); default category names are translated at display time (categoryLabel).
 import type { NeumeVocabulary, NeumeKind, SignificantLetter } from "./types";
 
+/** Default category ids and their i18n keys (`cat.liquescent` is legacy: no longer created). */
 export const DEFAULT_CATEGORY_KEYS: Record<string, string> = {
   "cat.simple": "annotation.category.simple",
   "cat.compound": "annotation.category.compound",
   "cat.ornamental": "annotation.category.ornamental",
+  "cat.liquescent": "annotation.category.liquescent",
 };
+const CURRENT_CATEGORY_IDS = ["cat.simple", "cat.compound", "cat.ornamental"];
+
+/**
+ * Translations of the default category names in every locale (pt-BR, en, es, de, it, pl, ja).
+ * Used at load time to recognise a name baked into a project by older versions. A test keeps
+ * this in sync with the locale files.
+ */
+export const DEFAULT_CATEGORY_NAMES: Record<string, string[]> = {
+  "cat.simple": ["Simples", "Simple", "Einfache", "Semplici", "Proste", "単純ネウマ"],
+  "cat.compound": ["Compostos", "Compound", "Compuestos", "Zusammengesetzte", "Composti", "Złożone", "複合ネウマ"],
+  "cat.ornamental": [
+    "Ornamentais e repercussivos", "Ornamental and repercussive", "Ornamentales y repercusivos",
+    "Ornamentale und repetierende", "Ornamentali e ripercussivi", "Ozdobne i repetycyjne", "装飾・反復ネウマ",
+  ],
+  "cat.liquescent": [
+    "Liquescentes", "Liquescent", "Licuescentes", "Liqueszierende", "Liquescenti", "Likwescencyjne", "リクエッセンス・ネウマ",
+  ],
+};
+
+/** Label of a category: its custom name, or the translation of a default one, or its id. */
+export function categoryLabel(c: { id: string; name?: string }, t: (key: string) => string): string {
+  if (c.name !== undefined) return c.name;
+  const key = DEFAULT_CATEGORY_KEYS[c.id];
+  return key ? t(key) : c.id;
+}
 
 const K = (categoryId: string, name: string, defaultNotes: number, equivalentTo?: string): NeumeKind => ({
   id: name.replace(/\s+/g, "-"),
@@ -40,9 +67,9 @@ export const DEFAULT_LETTERS: SignificantLetter[] = ([
   ["s", "sursum"], ["m", "mediocriter"], ["l", "levate"], ["i", "iusum"], ["st", "statim"], ["nl", "non levare"],
 ] as const).map(([abbr, meaning]) => ({ id: `letter.${abbr}`, abbr, meaning }));
 
-export function createDefaultVocabulary(t: (key: string) => string): NeumeVocabulary {
+export function createDefaultVocabulary(_t?: (key: string) => string): NeumeVocabulary {
   return {
-    categories: Object.entries(DEFAULT_CATEGORY_KEYS).map(([id, key]) => ({ id, name: t(key) })),
+    categories: CURRENT_CATEGORY_IDS.map((id) => ({ id })),
     kinds: DEFAULT_KINDS.map((k) => ({ ...k })),
     letters: DEFAULT_LETTERS.map((l) => ({ ...l })),
   };

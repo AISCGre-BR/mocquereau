@@ -337,6 +337,7 @@
   "annotation.category.simple": "Proste",
   "annotation.category.compound": "Złożone",
   "annotation.category.ornamental": "Ozdobne i repetycyjne",
+  "annotation.category.liquescent": "Likwescencyjne",
   "annotation.neumes": "Neumy",
   "annotation.neumes.empty": "Nie znaleziono neumy",
   "annotation.create": "Utwórz „{{name}}”",

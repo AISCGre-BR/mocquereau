@@ -337,6 +337,7 @@
   "annotation.category.simple": "Simple",
   "annotation.category.compound": "Compound",
   "annotation.category.ornamental": "Ornamental and repercussive",
+  "annotation.category.liquescent": "Liquescent",
   "annotation.neumes": "Neumes",
   "annotation.neumes.empty": "No neume found",
   "annotation.create": "Create “{{name}}”",

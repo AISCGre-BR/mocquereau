@@ -1,6 +1,7 @@
 // src/shared/analysis/content.ts
 //
 // Neume content (kind x source) and marks (liquescence, episema, letters, certainty).
+import { categoryLabel } from "../annotation/default-vocabulary";
 import type { ProjectBody } from "../project-schema";
 import type { NeumeItem, NeumeVocabulary, SyllableAnnotation } from "../annotation/types";
 import { effectiveNotes } from "../annotation/annotation";
@@ -82,11 +83,11 @@ export type ContentGroup =
  * category (or whose category no longer exists), then kinds missing from the vocabulary.
  * Empty groups are left out.
  */
-export function groupContentRows(rows: KindRow[], v: NeumeVocabulary): ContentGroup[] {
+export function groupContentRows(rows: KindRow[], v: NeumeVocabulary, t: (key: string) => string): ContentGroup[] {
   const ids = new Set(v.categories.map((c) => c.id));
   const groups: ContentGroup[] = [
     ...v.categories.map((c) => ({
-      type: "category" as const, id: c.id, name: c.name,
+      type: "category" as const, id: c.id, name: categoryLabel(c, t),
       rows: rows.filter((r) => !r.unknown && r.categoryId === c.id),
     })),
     { type: "noCategory", rows: rows.filter((r) => !r.unknown && !ids.has(r.categoryId ?? "")) },

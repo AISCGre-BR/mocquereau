@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { Button } from "../../ui/Button";
 import { filterKinds, fold, kindMap } from "@shared/annotation/vocabulary";
+import { categoryLabel } from "@shared/annotation/default-vocabulary";
 import { ownsKey } from "./keys";
 import type { NeumeCategory, NeumeItem, NeumeKind, NeumeVocabulary } from "@shared/annotation/types";
 
@@ -269,7 +270,7 @@ export function NeumeSequenceField({
   const notesOk = !form || form.notes.trim() === "" || (NOTES.test(form.notes) && Number(form.notes) >= 1);
   const formValid = name !== "" && notesOk;
   const isNewCategory =
-    categoryName !== "" && !vocabulary.categories.some((c) => fold(c.name.trim()) === fold(categoryName));
+    categoryName !== "" && !vocabulary.categories.some((c) => fold(categoryLabel(c, t).trim()) === fold(categoryName));
   const visibleCategories = vocabulary.categories.filter((c) => !c.hidden);
 
   const groupLabelId = (c: NeumeCategory | null) => (c ? `${baseId}-cat-${c.id}` : `${baseId}-nocat`);
@@ -383,7 +384,7 @@ export function NeumeSequenceField({
                   id={groupLabelId(g.category)}
                   className="px-3 pt-2 pb-0.5 font-sans text-caption font-semibold text-ink-muted"
                 >
-                  {g.category ? g.category.name : t("annotation.noCategory")}
+                  {g.category ? categoryLabel(g.category, t) : t("annotation.noCategory")}
                 </div>
                 {g.kinds.map((kind) => {
                   const i = ++flat;
@@ -465,7 +466,7 @@ export function NeumeSequenceField({
                 />
                 <datalist id={`${baseId}-categories`}>
                   {visibleCategories.map((c) => (
-                    <option key={c.id} value={c.name} />
+                    <option key={c.id} value={categoryLabel(c, t)} />
                   ))}
                 </datalist>
                 {isNewCategory && <span className="text-caption text-ink-muted">{t("annotation.create.newCategory")}</span>}

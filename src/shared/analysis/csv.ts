@@ -2,6 +2,7 @@
 //
 // CSV serialization of the annotation data: raw rows (one per neume) and totals (long format).
 // UTF-8 BOM, comma separator, CRLF lines, RFC 4180 quoting. Pure: no Electron, no DOM.
+import { categoryLabel } from "../annotation/default-vocabulary";
 import type { ProjectBody, SourceOf } from "../project-schema";
 import type { NeumeVocabulary } from "../annotation/types";
 import { kindMap, resolveEquivalent } from "../annotation/vocabulary";
@@ -48,11 +49,16 @@ function classNames(p: ProjectBody<unknown>, s: SourceOf<unknown>): [string, str
   return [nameAt(familyLevel), nameAt(others[0]), nameAt(others[1])];
 }
 
-export function rawRows(p: ProjectBody<unknown>, f: AnalysisFilters, v: NeumeVocabulary): string[][] {
+export function rawRows(
+  p: ProjectBody<unknown>,
+  f: AnalysisFilters,
+  v: NeumeVocabulary,
+  t: (key: string) => string,
+): string[][] {
   const { sources, cells } = selectCells(p, f);
   const sourceById = new Map(sources.map((s) => [s.id, s]));
   const kinds = kindMap(v);
-  const categories = new Map(v.categories.map((c) => [c.id, c.name]));
+  const categories = new Map(v.categories.map((c) => [c.id, categoryLabel(c, t)]));
   const letters = new Map(v.letters.map((l) => [l.id, l.abbr]));
   const tagNames = new Map((p.tags ?? []).map((t) => [t.id, t.name]));
   const tagName = (id: string) => tagNames.get(id) ?? id;

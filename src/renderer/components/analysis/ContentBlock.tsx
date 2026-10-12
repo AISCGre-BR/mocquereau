@@ -25,7 +25,7 @@ export function ContentBlock({ project, filters, vocabulary, onDrill, className 
 
   const groups = useMemo(
     () =>
-      groupContentRows(content.rows, vocabulary).map((g) => ({
+      groupContentRows(content.rows, vocabulary, t).map((g) => ({
         id: g.type === "category" ? g.id : `:${g.type}`,
         name: g.type === "category" ? g.name : t(`indicators.${g.type}`),
         rows: g.rows,

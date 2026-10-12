@@ -337,6 +337,7 @@
   "annotation.category.simple": "単純ネウマ",
   "annotation.category.compound": "複合ネウマ",
   "annotation.category.ornamental": "装飾・反復ネウマ",
+  "annotation.category.liquescent": "リクエッセンス・ネウマ",
   "annotation.neumes": "ネウマ",
   "annotation.neumes.empty": "該当するネウマがありません",
   "annotation.create": "「{{name}}」を作成",

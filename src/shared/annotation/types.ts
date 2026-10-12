@@ -24,7 +24,8 @@ export interface SyllableAnnotation {
   comment?: string;
 }
 
-export interface NeumeCategory { id: string; name: string; hidden?: boolean }
+/** `name` absent on a default category (see DEFAULT_CATEGORY_KEYS): the label follows the app language. */
+export interface NeumeCategory { id: string; name?: string; hidden?: boolean }
 export interface NeumeKind {
   id: string;
   /** Absent: the kind has no category. */

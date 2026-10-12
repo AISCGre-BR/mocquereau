@@ -17,7 +17,7 @@ describe("toCsv", () => {
 });
 
 describe("rawRows", () => {
-  const rows = rawRows(makeAnalysisProject(), {}, vocabulary);
+  const rows = rawRows(makeAnalysisProject(), {}, vocabulary, t);
   const find = (source: string, index: number, position?: string) =>
     rows.find((r) => r[0] === source && r[col("syllable_index")] === String(index)
       && (position === undefined || r[col("position")] === position))!;
@@ -57,7 +57,7 @@ describe("rawRows", () => {
     const w = { ...vocabulary, kinds: [...vocabulary.kinds, { id: "solto", name: "solto" }] };
     const q = makeAnalysisProject();
     q.sources[3].annotations![1] = { neumes: [{ kind: "solto" }], tags: [] };
-    const r = rawRows(q, {}, w).find((x) => x[0] === "X" && x[col("neume")] === "solto")!;
+    const r = rawRows(q, {}, w, t).find((x) => x[0] === "X" && x[col("neume")] === "solto")!;
     expect(r[col("category")]).toBe("");
     expect(r[col("notes")]).toBe("");
   });

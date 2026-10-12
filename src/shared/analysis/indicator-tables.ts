@@ -50,7 +50,7 @@ export function buildIndicatorTables(
   // 2. Neume content: count (% of annotated syllables), grouped by category.
   const content = neumeContent(p, EMPTY, v);
   const contentRows: IndicatorTable["rows"] = [];
-  for (const g of groupContentRows(content.rows, v)) {
+  for (const g of groupContentRows(content.rows, v, t)) {
     contentRows.push(group(g.type === "category" ? g.name : t(`indicators.${g.type}`)));
     for (const r of g.rows) {
       contentRows.push({

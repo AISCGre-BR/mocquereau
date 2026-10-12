@@ -4,6 +4,7 @@
 // Structural problems are errors (the file is refused); recoverable problems
 // in optional fields become defaults plus a warning. Never mutates its input.
 import { isAnnotationEmpty } from "./annotation/annotation";
+import { DEFAULT_CATEGORY_NAMES } from "./annotation/default-vocabulary";
 import type {
   Annotations, Certainty, ExportPrefs, Liquescence, NeumeCategory, NeumeItem, NeumeKind,
   NeumeVocabulary, SignificantLetter, SyllableAnnotation, Tag,
@@ -335,6 +336,10 @@ function readEntries<T extends { id: string }>(
 const withHidden = <T extends object>(e: Obj, base: T): T =>
   (typeof e.hidden === "boolean" ? { ...base, hidden: e.hidden } : base);
 
+/** A default category carrying a default name of any locale (baked by older versions) is language-following. */
+const isBakedDefaultName = (id: string, name: string): boolean =>
+  (DEFAULT_CATEGORY_NAMES[id] ?? []).includes(name);
+
 export function readVocabulary(v: unknown, ctx: Ctx): NeumeVocabulary | undefined {
   if (v === undefined) return undefined;
   if (!isObj(v) || !Array.isArray(v.categories) || !Array.isArray(v.kinds) || !Array.isArray(v.letters)) {
@@ -342,7 +347,11 @@ export function readVocabulary(v: unknown, ctx: Ctx): NeumeVocabulary | undefine
     return undefined;
   }
   const categories = readEntries<NeumeCategory>(v.categories, "neumeVocabulary.categories", ctx, (e) =>
-    isStr(e.name) ? withHidden(e, { id: e.id as string, name: e.name }) : null);
+    isStr(e.name) || e.name === undefined
+      ? withHidden(e, isStr(e.name) && !isBakedDefaultName(e.id as string, e.name)
+        ? { id: e.id as string, name: e.name }
+        : { id: e.id as string })
+      : null);
   // categoryId and defaultNotes are optional (absent stays absent), but validated when present.
   const kinds = readEntries<NeumeKind>(v.kinds, "neumeVocabulary.kinds", ctx, (e) => {
     if (!isStr(e.name)) return null;

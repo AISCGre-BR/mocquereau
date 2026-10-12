@@ -164,7 +164,7 @@ describe("useAnnotation", () => {
     const compound = r.state.project!.neumeVocabulary!.categories.find((c) => c.id === "cat.compound")!;
     let id = "";
     act(() => {
-      id = r.api.createKind({ name: "x", categoryName: ` ${compound.name.toUpperCase()} `, defaultNotes: 2 });
+      id = r.api.createKind({ name: "x", categoryName: ` ${(compound.name ?? "Compostos").toUpperCase()} `, defaultNotes: 2 });
     });
     const voc = r.state.project!.neumeVocabulary!;
     expect(voc.kinds.find((k) => k.id === id)!.categoryId).toBe("cat.compound");

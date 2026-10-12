@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useProject } from "../../hooks/useProject";
 import { emptyAnnotation, normalizeAnnotation } from "@shared/annotation/annotation";
-import { createDefaultVocabulary } from "@shared/annotation/default-vocabulary";
+import { categoryLabel, createDefaultVocabulary } from "@shared/annotation/default-vocabulary";
 import { fold, getVocabulary } from "@shared/annotation/vocabulary";
 import { findTagByName, parseHashTags, resolveTagNames } from "@shared/annotation/tags";
 import type { NeumeKind, NeumeVocabulary, SyllableAnnotation, Tag } from "@shared/annotation/types";
@@ -78,7 +78,7 @@ export function useAnnotation(target: AnnotationTarget | null) {
       const pending = vocabularyWritten.current;
       const base = pending?.for === project ? pending.vocabulary : getVocabulary(project, t);
       const categoryName = draft.categoryName?.trim() ?? "";
-      const existing = categoryName === "" ? undefined : base.categories.find((c) => fold(c.name.trim()) === fold(categoryName));
+      const existing = categoryName === "" ? undefined : base.categories.find((c) => fold(categoryLabel(c, t).trim()) === fold(categoryName));
       const category = existing ?? (categoryName === "" ? undefined : { id: `cat.${crypto.randomUUID()}`, name: categoryName });
       const kind: NeumeKind = { id: kindId, name: draft.name.trim() };
       if (category) kind.categoryId = category.id;

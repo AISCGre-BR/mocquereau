@@ -16,7 +16,7 @@ export function exportAnalysisCsv(
   const vocabulary = getVocabulary(project, t);
   return window.mocquereau.exportCsv({
     title: project.meta.title,
-    raw: toCsv(rawRows(project, filters, vocabulary)),
+    raw: toCsv(rawRows(project, filters, vocabulary, t)),
     totals: toCsv(totalsRows(project, filters, vocabulary, t)),
   });
 }

@@ -64,7 +64,7 @@ describe("neumeContent", () => {
     const w = { ...v, kinds: [...v.kinds, { id: "solto", name: "solto" }] };
     const q = makeAnalysisProject();
     q.sources[3].annotations![1] = { neumes: [{ kind: "solto" }], tags: [] };
-    const groups = groupContentRows(neumeContent(q, {}, w).rows, w);
+    const groups = groupContentRows(neumeContent(q, {}, w).rows, w, (k) => k);
     expect(groups.map((g) => g.type)).toEqual(["category", "category", "noCategory", "unknown"]);
     expect(groups[2].rows.map((r) => r.kindId)).toEqual(["solto"]);
     expect(groups[3].rows.map((r) => r.kindId)).toEqual(["sumido"]);

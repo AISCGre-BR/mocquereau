@@ -15,6 +15,7 @@ import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
 import { MenuItem, MenuSubmenu, MenuSurface } from "../../ui/Menu";
 import { SegmentedControl } from "../../ui/SegmentedControl";
+import { categoryLabel } from "@shared/annotation/default-vocabulary";
 import { belowElement } from "../texto/SyllableText";
 import {
   fold as foldName,
@@ -64,9 +65,9 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
   const { state, dispatch } = useProject();
   const { t } = useTranslation();
   const project = state.project;
-  const listId = useId();
   const [tab, setTab] = useState<Tab>("neumes");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const listId = useId();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [name, setName] = useState("");
@@ -135,7 +136,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     const kind = next.target === "kind" ? vocab.kinds.find((k) => k.id === next.id) : undefined;
     const letter = next.target === "letter" ? vocab.letters.find((l) => l.id === next.id) : undefined;
     const category = next.target === "category" ? vocab.categories.find((c) => c.id === next.id) : undefined;
-    setName(kind?.name ?? category?.name ?? "");
+    setName(kind?.name ?? (category ? categoryLabel(category, t) : ""));
     setNotes(kind?.defaultNotes !== undefined ? String(kind.defaultNotes) : "");
     setEquivalent(kind?.equivalentTo ? (vocab.kinds.find((k) => k.id === kind.equivalentTo)?.name ?? "") : "");
     setAbbr(letter?.abbr ?? "");
@@ -163,7 +164,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
         const added: NeumeCategory = { id: `cat.${crypto.randomUUID()}`, name: next };
         commit({ ...vocab, categories: [...vocab.categories, added] });
         setSelectedId(added.id);
-      } else if (next !== vocab.categories.find((c) => c.id === current.id)?.name) {
+      } else if (next !== categoryLabel(vocab.categories.find((c) => c.id === current.id) ?? { id: "" }, t)) {
         patchCategory(current.id, { name: next }, `VOCAB:${current.id}:name`);
       }
       return true;
@@ -442,7 +443,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
                           c.hidden ? "italic text-ink-muted" : "",
                         ].join(" ")}
                       >
-                        {c.name}
+                        {categoryLabel(c, t)}
                         {hiddenSuffix(c.hidden)}
                       </button>
                       {menuButton("category", c.id)}
@@ -626,7 +627,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
                   {vocab.categories
                     .filter((c) => c.id !== groupOf(menuKind))
                     .map((c) => (
-                      <MenuItem key={c.id} label={c.name} onSelect={() => patchKind(menuKind.id, { categoryId: c.id })} />
+                      <MenuItem key={c.id} label={categoryLabel(c, t)} onSelect={() => patchKind(menuKind.id, { categoryId: c.id })} />
                     ))}
                   {groupOf(menuKind) !== NO_CATEGORY && (
                     <MenuItem
