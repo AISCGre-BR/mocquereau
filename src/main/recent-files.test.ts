@@ -38,7 +38,7 @@ describe("recent entries", () => {
   });
   it("sanitizes meta", () => {
     expect(sanitizeRecentMeta({ ...META, thumb: "data:text/html;base64,xx" })?.thumb).toBeUndefined();
-    expect(sanitizeRecentMeta({ ...META, thumb: "data:image/jpeg;base64," + "A".repeat(300_001) })?.thumb).toBeUndefined();
+    expect(sanitizeRecentMeta({ ...META, thumb: "data:image/jpeg;base64," + "A".repeat(800_001) })?.thumb).toBeUndefined();
     expect(sanitizeRecentMeta({ ...META, title: "x".repeat(600) })?.title).toHaveLength(500);
     expect(sanitizeRecentMeta({ ...META, sources: [{ siglum: "S", progress: 7 }] })?.sources[0].progress).toBe(1);
     expect(sanitizeRecentMeta({ ...META, sources: Array(60).fill({ siglum: "S", progress: 0 }) })?.sources).toHaveLength(50);

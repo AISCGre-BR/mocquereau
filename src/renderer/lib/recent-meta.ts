@@ -18,6 +18,23 @@ export function firstPageLine(project: MocquereauProject): ManuscriptLine | unde
   return undefined;
 }
 
+/** Página com maior área em pixels (todas as fontes); empate fica com a primeira; ignora imagens vazias. */
+export function bestPageLine(project: MocquereauProject): ManuscriptLine | undefined {
+  let best: ManuscriptLine | undefined;
+  let bestArea = -1;
+  for (const s of project.sources) {
+    for (const l of s.lines ?? []) {
+      if (!l.image?.dataUrl) continue;
+      const area = (l.image.width || 0) * (l.image.height || 0);
+      if (area > bestArea) {
+        best = l;
+        bestArea = area;
+      }
+    }
+  }
+  return best;
+}
+
 /** Imagem da primeira página que tenha imagem, percorrendo as fontes na ordem. */
 export function firstPageImage(project: MocquereauProject): string {
   return firstPageLine(project)?.image?.dataUrl ?? "";
