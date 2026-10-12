@@ -63,6 +63,7 @@
   "texto.migration.changedWordsHeader": "\n分割が変わる語:\n",
   "texto.migration.changedWordsMore": "  …ほか {{count}}",
   "texto.migration.dropped": "  • 破棄された枠（文字数が異なる語）: {{count}}\n",
+  "texto.migration.droppedAnnotations": "  • 破棄された注釈（音節数が異なる語）: {{count}}\n",
   "texto.migration.footContinue": "\n\n続行しますか?",
   "texto.migration.footDropped": "\n\n破棄された枠は切り抜きエディタでやり直す必要があります。続行しますか?",
   "texto.migration.head": "「{{mode}}」モードに切り替えると音節分割が変わります。アプリは切り抜き枠を自動で再割り当てできます:\n",

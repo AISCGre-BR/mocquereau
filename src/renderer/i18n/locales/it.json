@@ -63,6 +63,7 @@
   "texto.migration.changedWordsHeader": "\nParole che cambiano divisione:\n",
   "texto.migration.changedWordsMore": "  … e altre {{count}}",
   "texto.migration.dropped": "  • Riquadri scartati (parole con conteggio diverso): {{count}}\n",
+  "texto.migration.droppedAnnotations": "  • Annotazioni scartate (parole con conteggio diverso): {{count}}\n",
   "texto.migration.footContinue": "\n\nContinuare?",
   "texto.migration.footDropped": "\n\nI riquadri scartati devono essere rifatti nell'editor di ritaglio. Continuare?",
   "texto.migration.head": "Passare alla modalità \"{{mode}}\" modifica la divisione sillabica. L'app può rimappare automaticamente i riquadri di ritaglio:\n",

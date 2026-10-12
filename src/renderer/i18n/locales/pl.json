@@ -63,6 +63,7 @@
   "texto.migration.changedWordsHeader": "\nSłowa, których podział się zmienia:\n",
   "texto.migration.changedWordsMore": "  … i jeszcze {{count}}",
   "texto.migration.dropped": "  • Odrzucone ramki (słowa o innej liczbie): {{count}}\n",
+  "texto.migration.droppedAnnotations": "  • Odrzucone adnotacje (słowa o innej liczbie sylab): {{count}}\n",
   "texto.migration.footContinue": "\n\nKontynuować?",
   "texto.migration.footDropped": "\n\nOdrzucone ramki trzeba będzie odtworzyć w edytorze przycinania. Kontynuować?",
   "texto.migration.head": "Przełączenie na tryb „{{mode}}” zmienia podział sylabowy. Aplikacja może automatycznie przemapować ramki przycięcia:\n",

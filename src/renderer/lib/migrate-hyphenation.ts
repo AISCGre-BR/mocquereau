@@ -56,6 +56,9 @@ export interface MigrationStats {
   preservedBoxes: number;
   /** Boxes dropped because the owning word changed syllable count */
   droppedBoxes: number;
+  /** Syllable annotations preserved / dropped (same rule as the boxes) */
+  preservedAnnotations: number;
+  droppedAnnotations: number;
   /** Words whose syllable split changed (shown to the user) */
   changedWords: Array<{
     word: string;
@@ -100,7 +103,14 @@ export function previewMigration(
 
   let preservedBoxes = 0;
   let droppedBoxes = 0;
+  let preservedAnnotations = 0;
+  let droppedAnnotations = 0;
   for (const source of project.sources) {
+    for (const [key, a] of Object.entries(source.annotations ?? {})) {
+      if (!a) continue;
+      if (remapIdx(Number(key), oldBounds, newBounds) !== null) preservedAnnotations++;
+      else droppedAnnotations++;
+    }
     for (const line of source.lines) {
       if (!line.syllableBoxes) continue;
       for (const [key, box] of Object.entries(line.syllableBoxes)) {
@@ -121,7 +131,10 @@ export function previewMigration(
   const oldSyllableCount = oldBounds.reduce((a, b) => a + b.count, 0);
   const newSyllableCount = newBounds.reduce((a, b) => a + b.count, 0);
 
-  return { preservedBoxes, droppedBoxes, changedWords, oldSyllableCount, newSyllableCount };
+  return {
+    preservedBoxes, droppedBoxes, preservedAnnotations, droppedAnnotations,
+    changedWords, oldSyllableCount, newSyllableCount,
+  };
 }
 
 /**

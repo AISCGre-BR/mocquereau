@@ -177,4 +177,16 @@ describe('migrateHyphenation annotations', () => {
       6: { neumes: [], tags: [], comment: 'moved' },
     });
   });
+
+  it('previewMigration counts preserved and dropped annotations', () => {
+    const p = makeProject();
+    p.sources[0].annotations = {
+      0: { neumes: [{ kind: 'pes' }], tags: [] },
+      4: { neumes: [], tags: [] },
+      7: { neumes: [], tags: [] },
+    };
+    const stats = previewMigration(p, 'sung');
+    expect(stats.preservedAnnotations).toBe(2);
+    expect(stats.droppedAnnotations).toBe(1);
+  });
 });

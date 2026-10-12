@@ -63,6 +63,7 @@
   "texto.migration.changedWordsHeader": "\nWords with changed division:\n",
   "texto.migration.changedWordsMore": "  … and {{count}} more",
   "texto.migration.dropped": "  • Dropped boxes (words with a different count): {{count}}\n",
+  "texto.migration.droppedAnnotations": "  • Dropped annotations (words with a different count): {{count}}\n",
   "texto.migration.footContinue": "\n\nContinue?",
   "texto.migration.footDropped": "\n\nThe dropped boxes must be redrawn in the crop editor. Continue?",
   "texto.migration.head": "Switching to \"{{mode}}\" mode changes the syllable division. The app can remap the crop boxes automatically:\n",

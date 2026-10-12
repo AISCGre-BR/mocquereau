@@ -63,6 +63,7 @@
   "texto.migration.changedWordsHeader": "\nWörter mit geänderter Trennung:\n",
   "texto.migration.changedWordsMore": "  … und {{count}} weitere",
   "texto.migration.dropped": "  • Entfernte Kästen (Wörter mit abweichender Anzahl): {{count}}\n",
+  "texto.migration.droppedAnnotations": "  • Entfernte Annotationen (Wörter mit abweichender Anzahl): {{count}}\n",
   "texto.migration.footContinue": "\n\nFortfahren?",
   "texto.migration.footDropped": "\n\nDie entfernten Kästen müssen im Ausschnitt-Editor neu erstellt werden. Fortfahren?",
   "texto.migration.head": "Der Wechsel in den Modus \"{{mode}}\" verändert die Silbentrennung. Die App kann die Ausschnittkästen automatisch neu zuordnen:\n",

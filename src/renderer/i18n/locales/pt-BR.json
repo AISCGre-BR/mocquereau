@@ -63,6 +63,7 @@
   "texto.migration.changedWordsHeader": "\nPalavras que mudam de divisão:\n",
   "texto.migration.changedWordsMore": "  … e mais {{count}}",
   "texto.migration.dropped": "  • Caixas descartadas (palavras com contagem diferente): {{count}}\n",
+  "texto.migration.droppedAnnotations": "  • Anotações descartadas (palavras com contagem diferente): {{count}}\n",
   "texto.migration.footContinue": "\n\nContinuar?",
   "texto.migration.footDropped": "\n\nAs caixas descartadas precisam ser refeitas no editor de recorte. Continuar?",
   "texto.migration.head": "Trocar para o modo \"{{mode}}\" altera a divisão silábica. O app pode remapear as caixas de recorte automaticamente:\n",
