@@ -27,7 +27,7 @@ type ExportState =
 
 export function ExportDialog({ open, onClose }: ExportDialogProps) {
   const ctx = useContext(ProjectContext)!;
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const project = ctx.state.project;
   const [exportState, setExportState] = useState<ExportState>({ phase: 'idle' });
 
@@ -56,7 +56,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
       if (includeIndicators) {
         payload.indicators = {
           title: t('indicators.title'),
-          tables: buildIndicatorTables(project, getVocabulary(project, (k) => t(k)), (k) => t(k)),
+          tables: buildIndicatorTables(project, getVocabulary(project, (k) => t(k)), (k) => t(k), i18n.language),
         };
       }
       setExportState({ phase: 'saving' });

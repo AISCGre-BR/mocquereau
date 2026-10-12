@@ -18,11 +18,19 @@ export interface IndicatorTable {
 
 type T = (key: string, opts?: object) => string;
 
-const percent = (x: number) => `${(x * 100).toFixed(1)}%`;
 const EMPTY: Record<string, never> = {};
 const DASH = "—";
 
-export function buildIndicatorTables(p: ProjectBody<unknown>, v: NeumeVocabulary, t: T): IndicatorTable[] {
+/** `locale` is the app language (the same as the titles): percents and decimals follow it. */
+export function buildIndicatorTables(
+  p: ProjectBody<unknown>,
+  v: NeumeVocabulary,
+  t: T,
+  locale = "en",
+): IndicatorTable[] {
+  const percentFmt = new Intl.NumberFormat(locale, { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const decimalFmt = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const percent = (x: number) => percentFmt.format(x);
   const { sources } = selectCells(p, EMPTY);
   const columns = sources.map((s) => s.metadata.siglum);
   const ids = sources.map((s) => s.id);
@@ -63,7 +71,7 @@ export function buildIndicatorTables(p: ProjectBody<unknown>, v: NeumeVocabulary
     label: t("indicators.meanNotes"),
     values: ids.map((id) => {
       const m = content.meanNotes[id];
-      return m === null ? "" : m.toFixed(2);
+      return m === null ? "" : decimalFmt.format(m);
     }),
   });
   const contentTable: IndicatorTable = { title: t("indicators.content"), columns, rows: contentRows };

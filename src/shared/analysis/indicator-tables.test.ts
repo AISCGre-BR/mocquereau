@@ -35,4 +35,12 @@ describe("buildIndicatorTables", () => {
     expect(tables[4].rows.find((r) => r.label === "raspagem")!.values).toEqual(["1", "1", "0", "0"]);
     expect(tables[4].rows[0].group).toBe(true);
   });
+
+  it("percentuais e decimais no formato do idioma (pt-BR)", () => {
+    const pt = buildIndicatorTables(makeAnalysisProject(), vocabulary, t, "pt-BR");
+    expect(pt[3].rows[0].values[1]).toBe("66,7%");
+    expect(pt[1].rows.find((r) => r.label === "uncinus")!.values[2]).toMatch(/^1 \(\d+,\d%\)$/);
+    const mean = pt[1].rows.find((r) => r.label === "indicators.meanNotes")!;
+    expect(mean.values.filter(Boolean).every((v) => /^\d+,\d\d$/.test(v))).toBe(true);
+  });
 });
