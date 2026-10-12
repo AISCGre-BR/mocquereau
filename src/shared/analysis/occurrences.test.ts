@@ -32,7 +32,7 @@ describe("occurrences", () => {
 
   it("marks", () => {
     expect(occurrences(p, {}, v, { kind: "mark", key: "liq.augmentative" })).toEqual(at([["E", 3]]));
-    expect(occurrences(p, {}, v, { kind: "mark", key: "letter.letter.c" })).toEqual(at([["E", 3]]));
+    expect(occurrences(p, {}, v, { kind: "mark", key: "letter.c" })).toEqual(at([["E", 3]]));
     expect(occurrences(p, {}, v, { kind: "mark", key: "certainty.unset", sourceId: "SG" }))
       .toEqual(at([["SG", 0], ["SG", 1], ["SG", 2], ["SG", 3]]));
   });

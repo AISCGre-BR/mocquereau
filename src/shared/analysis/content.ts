@@ -19,14 +19,19 @@ export function neumeContent(
   const kinds = kindMap(v);
   const annotated = cells.filter((c) => c.annotation);
 
-  // kindId -> sourceId -> number of annotated syllables containing that (real) kind
+  // kindId -> sourceId -> number of neumes of that (real) kind
   const counts = new Map<string, Map<string, number>>();
+  // kindId -> sourceId -> number of annotated syllables containing that kind (for percent)
+  const syllables = new Map<string, Map<string, number>>();
+  const bump = (m: Map<string, Map<string, number>>, kindId: string, sourceId: string) => {
+    const bySource = m.get(kindId) ?? new Map<string, number>();
+    bySource.set(sourceId, (bySource.get(sourceId) ?? 0) + 1);
+    m.set(kindId, bySource);
+  };
   for (const c of annotated) {
-    for (const kindId of new Set(c.annotation!.neumes.map((n) => n.kind))) {
-      const bySource = counts.get(kindId) ?? new Map<string, number>();
-      bySource.set(c.sourceId, (bySource.get(c.sourceId) ?? 0) + 1);
-      counts.set(kindId, bySource);
-    }
+    const neumes = c.annotation!.neumes;
+    for (const n of neumes) bump(counts, n.kind, c.sourceId);
+    for (const kindId of new Set(neumes.map((n) => n.kind))) bump(syllables, kindId, c.sourceId);
   }
 
   const annotatedBySource = new Map(sources.map((s) => [s.id, annotated.filter((c) => c.sourceId === s.id).length]));
@@ -36,12 +41,13 @@ export function neumeContent(
   const rows: KindRow[] = [...known, ...unknown].map((kindId) => {
     const kind = kinds.get(kindId);
     const bySourceCounts = counts.get(kindId)!;
+    const bySourceSyllables = syllables.get(kindId)!;
     const bySource: KindRow["bySource"] = {};
     let total = 0;
     for (const s of sources) {
       const count = bySourceCounts.get(s.id) ?? 0;
       total += count;
-      bySource[s.id] = { count, percent: ratio(count, annotatedBySource.get(s.id)!) };
+      bySource[s.id] = { count, percent: ratio(bySourceSyllables.get(s.id) ?? 0, annotatedBySource.get(s.id)!) };
     }
     const equivalent = kind?.equivalentTo ? kinds.get(kind.equivalentTo) : undefined;
     return {
@@ -75,8 +81,13 @@ export function neumeMarkKeys(n: NeumeItem): string[] {
   return [
     `liq.${n.liquescence ?? "unset"}`,
     `episema.${n.episema === undefined ? "unset" : n.episema ? "yes" : "no"}`,
-    ...[...new Set(n.letters ?? [])].map((id) => `letter.${id}`),
+    ...[...new Set(n.letters ?? [])].map(letterKey),
   ];
+}
+
+/** Mark key of a letter: its id (default ids already start with "letter."). */
+export function letterKey(id: string): string {
+  return id.startsWith("letter.") ? id : `letter.${id}`;
 }
 
 export function certaintyKey(a: SyllableAnnotation): string {
@@ -105,7 +116,7 @@ export function marks(p: ProjectBody<unknown>, f: AnalysisFilters, v: NeumeVocab
   }
 
   const usedLetters = [...counts.keys()].filter((k) => k.startsWith("letter."));
-  const letterOrder = v.letters.map((l) => `letter.${l.id}`);
+  const letterOrder = v.letters.map((l) => letterKey(l.id));
   const letterKeys = [
     ...letterOrder.filter((k) => usedLetters.includes(k)),
     ...usedLetters.filter((k) => !letterOrder.includes(k)).sort(),

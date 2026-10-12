@@ -23,6 +23,22 @@ describe("neumeContent", () => {
     expect(row("pes").bySource.X).toEqual({ count: 1, percent: 1 });
   });
 
+  it("counts every neume of a repeated kind while percent stays per syllable", () => {
+    const q = makeAnalysisProject();
+    q.sources[2].annotations![0].neumes = [{ kind: "virga" }, { kind: "virga" }];
+    const virga = neumeContent(q, {}, v).rows.find((r) => r.kindId === "virga")!;
+    // L: syllable 0 [virga, virga] + syllable 2 [clivis, virga] -> 3 neumes in 2 of 3 annotated syllables
+    expect(virga.bySource.L).toEqual({ count: 3, percent: 2 / 3 });
+    expect(virga.total).toBe(5);
+  });
+
+  it("counts a single repeated-kind syllable as count 2, percent 1/annotated", () => {
+    const q = makeAnalysisProject();
+    q.sources[3].annotations![0].neumes = [{ kind: "virga" }, { kind: "virga" }];
+    const virga = neumeContent(q, {}, v).rows.find((r) => r.kindId === "virga")!;
+    expect(virga.bySource.X).toEqual({ count: 2, percent: 1 / 1 });
+  });
+
   it("keeps the real kind and names its equivalent", () => {
     expect(row("uncinus")).toMatchObject({
       name: "uncinus", categoryId: "cat.simple", equivalentName: "tractulus", total: 1,
@@ -57,7 +73,7 @@ describe("marks", () => {
     expect(rows.map((r) => r.key)).toEqual([
       "liq.augmentative", "liq.diminutive", "liq.none", "liq.unset",
       "episema.yes", "episema.no", "episema.unset",
-      "letter.letter.c",
+      "letter.c",
       "certainty.secure", "certainty.probable", "certainty.illegible", "certainty.unset",
     ]);
   });
@@ -68,7 +84,14 @@ describe("marks", () => {
     expect(row("liq.none")).toEqual({ E: 0, SG: 0, L: 0, X: 0 });
     expect(row("episema.yes")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
     expect(row("episema.unset")).toEqual({ E: 4, SG: 3, L: 4, X: 1 });
-    expect(row("letter.letter.c")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
+    expect(row("letter.c")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
+  });
+
+  it("keys unknown letters by id, adding the prefix only when missing", () => {
+    const q = makeAnalysisProject();
+    q.sources[3].annotations![0].neumes[0].letters = ["letter.zz", "qq"];
+    const keys = marks(q, {}, v).map((r) => r.key).filter((k) => k.startsWith("letter."));
+    expect(keys).toEqual(["letter.c", "letter.qq", "letter.zz"]);
   });
 
   it("counts certainty per annotated syllable and never presumes secure", () => {

@@ -95,7 +95,7 @@ export function concordanceByFamily(p: ProjectBody<unknown>, f: AnalysisFilters,
   return { ids, matrix };
 }
 
-/** Syllables read by >= 2 sources, by number of distinct readings desc, then sources desc, then index. */
+/** Syllables with >= 2 distinct readings (so >= 2 sources), by number of distinct readings desc, then sources desc, then index. */
 export function divergentSyllables(
   p: ProjectBody<unknown>,
   f: AnalysisFilters,
@@ -110,6 +110,7 @@ export function divergentSyllables(
   return [...bySyllable]
     .filter(([, rs]) => rs.length >= 2)
     .map(([syllable, rs]) => ({ syllable, readings: new Set(rs).size, sources: rs.length }))
+    .filter((d) => d.readings >= 2)
     .sort((a, b) => b.readings - a.readings || b.sources - a.sources || a.syllable - b.syllable)
     .slice(0, limit);
 }

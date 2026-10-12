@@ -54,8 +54,11 @@ describe("divergentSyllables", () => {
     expect(divergentSyllables(p, {}, v)).toEqual([
       { syllable: 2, readings: 3, sources: 3 },
       { syllable: 0, readings: 2, sources: 4 },
-      { syllable: 1, readings: 1, sources: 3 },
     ]);
+  });
+
+  it("leaves out syllables where every source agrees", () => {
+    expect(divergentSyllables(p, {}, v).map((d) => d.syllable)).not.toContain(1);
   });
 
   it("honours the limit", () => {
