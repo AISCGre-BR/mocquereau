@@ -118,11 +118,67 @@ describe("VocabularyDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Neuma" }));
     const name = screen.getByRole("textbox", { name: "Nome" });
     fireEvent.change(name, { target: { value: "quilisma novo" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Notas" }), { target: { value: "3" } });
     fireEvent.keyDown(name, { key: "Enter" });
     const added = vocab().kinds.find((k) => k.name === "quilisma novo")!;
     expect(added.id).toMatch(/^kind\./);
     expect(added.categoryId).toBe("cat.ornamental");
-    expect(added.defaultNotes).toBe(1);
+    expect(added.defaultNotes).toBe(3);
+  });
+
+  it("a new kind starts with empty notes and cannot be saved until a valid integer >= 1 is typed", () => {
+    const { vocab } = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Neuma" }));
+    const name = screen.getByRole("textbox", { name: "Nome" });
+    const notes = screen.getByRole("spinbutton", { name: "Notas" }) as HTMLInputElement;
+    expect(notes.value).toBe("");
+    fireEvent.change(name, { target: { value: "novo" } });
+    expect(notes.getAttribute("aria-invalid")).toBe("true");
+    const count = vocab().kinds.length;
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(vocab().kinds).toHaveLength(count);
+    expect(screen.getByRole("textbox", { name: "Nome" })).toBeTruthy();
+    fireEvent.change(notes, { target: { value: "0" } });
+    expect(notes.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(vocab().kinds).toHaveLength(count);
+    fireEvent.change(notes, { target: { value: "2" } });
+    expect(notes.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(vocab().kinds.find((k) => k.name === "novo")!.defaultNotes).toBe(2);
+  });
+
+  it("clearing the notes of an existing kind is invalid and is not coerced", () => {
+    const { saved } = mount();
+    fireEvent.doubleClick(kindRow("virga"));
+    const notes = screen.getByRole("spinbutton", { name: "Notas" });
+    fireEvent.change(notes, { target: { value: "" } });
+    expect(notes.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.keyDown(notes, { key: "Enter" });
+    expect(saved()).toBeUndefined();
+  });
+
+  it("kind names are unique (accent and case insensitive) when adding or renaming", () => {
+    const { vocab, saved } = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Neuma" }));
+    const name = screen.getByRole("textbox", { name: "Nome" });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Notas" }), { target: { value: "1" } });
+    fireEvent.change(name, { target: { value: "VIRGA" } });
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(saved()).toBeUndefined();
+    fireEvent.keyDown(name, { key: "Escape" });
+
+    fireEvent.doubleClick(kindRow("gravis"));
+    const rename = screen.getByRole("textbox", { name: "Nome" });
+    fireEvent.change(rename, { target: { value: "Punctum" } });
+    expect(rename.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.keyDown(rename, { key: "Enter" });
+    expect(saved()).toBeUndefined();
+    fireEvent.change(rename, { target: { value: "Gravis" } });
+    expect(rename.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.keyDown(rename, { key: "Enter" });
+    expect(vocab().kinds.find((k) => k.id === "gravis")!.name).toBe("Gravis");
   });
 
   it("moves a kind to another category and up/down within the category", () => {

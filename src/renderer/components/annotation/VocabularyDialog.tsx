@@ -102,6 +102,17 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     return { ok: true, id: target.id };
   }
 
+  /** Nothing is presumed: name must be unique and notes an explicit integer >= 1. */
+  function kindProblems(kindId: string | null) {
+    const typed = fold(name);
+    const notesOk = /^\d+$/.test(notes.trim()) && Number.parseInt(notes, 10) >= 1;
+    return {
+      name: typed === "" || vocab.kinds.some((k) => k.id !== kindId && fold(k.name) === typed),
+      notes: !notesOk,
+      equivalent: !checkEquivalent(kindId, equivalent).ok,
+    };
+  }
+
   // ── Edição em linha ───────────────────────────────────────────────────────
 
   function start(next: Editing) {
@@ -112,7 +123,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     const letter = next.target === "letter" ? vocab.letters.find((l) => l.id === next.id) : undefined;
     const category = next.target === "category" ? vocab.categories.find((c) => c.id === next.id) : undefined;
     setName(kind?.name ?? category?.name ?? "");
-    setNotes(kind ? String(kind.defaultNotes) : "1");
+    setNotes(kind ? String(kind.defaultNotes) : "");
     setEquivalent(kind?.equivalentTo ? (vocab.kinds.find((k) => k.id === kind.equivalentTo)?.name ?? "") : "");
     setAbbr(letter?.abbr ?? "");
     setMeaning(letter?.meaning ?? "");
@@ -166,22 +177,23 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
       return true;
     }
     // kind
-    const check = checkEquivalent(current.id, equivalent);
-    if (!check.ok) {
+    const problems = kindProblems(current.id);
+    if (problems.name || problems.notes || problems.equivalent) {
       if (!byBlur) return false;
       stop();
       return true;
     }
+    const check = checkEquivalent(current.id, equivalent);
     stop();
     const typedName = name.trim();
     const parsed = Number.parseInt(notes, 10);
     if (current.id === null) {
-      if (!typedName || !selected) return true;
+      if (!selected) return true;
       const added: NeumeKind = {
         id: `kind.${crypto.randomUUID()}`,
         categoryId: selected.id,
         name: typedName,
-        defaultNotes: parsed >= 1 ? parsed : 1,
+        defaultNotes: parsed,
         ...(check.id ? { equivalentTo: check.id } : {}),
       };
       commit({ ...vocab, kinds: [...vocab.kinds, added] });
@@ -194,8 +206,8 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
       next = { ...next, kinds: next.kinds.map((k) => (k.id === kind.id ? patched(k, patch) : k)) };
       commit(next, `VOCAB:${kind.id}:${field}`);
     };
-    if (typedName && typedName !== kind.name) apply({ name: typedName }, "name");
-    if (parsed >= 1 && parsed !== kind.defaultNotes) apply({ defaultNotes: parsed }, "notes");
+    if (typedName !== kind.name) apply({ name: typedName }, "name");
+    if (parsed !== kind.defaultNotes) apply({ defaultNotes: parsed }, "notes");
     if (check.id !== kind.equivalentTo) apply({ equivalentTo: check.id }, "equivalent");
     return true;
   }
@@ -278,13 +290,14 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
   );
 
   function kindEditRow(id: string | null) {
-    const invalid = !checkEquivalent(id, equivalent).ok;
+    const problems = kindProblems(id);
     return (
       <tr key={id ?? "new"} onBlur={onRowBlur} className="align-middle">
         <td className="px-2 py-1">
           <input
             autoFocus
             aria-label={t("vocabularyDialog.name")}
+            aria-invalid={problems.name || undefined}
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={onEditKeyDown}
@@ -296,6 +309,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
             type="number"
             min={1}
             aria-label={t("vocabularyDialog.notes")}
+            aria-invalid={problems.notes || undefined}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             onKeyDown={onEditKeyDown}
@@ -306,7 +320,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
           <input
             list={listId}
             aria-label={t("vocabularyDialog.equivalentTo")}
-            aria-invalid={invalid || undefined}
+            aria-invalid={problems.equivalent || undefined}
             value={equivalent}
             onChange={(e) => setEquivalent(e.target.value)}
             onKeyDown={onEditKeyDown}
