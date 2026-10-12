@@ -114,17 +114,23 @@ export function concordanceByFamily(p: ProjectBody<unknown>, f: AnalysisFilters,
 }
 
 /**
- * Number of distinct readings among a syllable's readings. Agreement is not transitive, so the
- * readings are grouped greedily in source order: each joins the first group whose representative
- * (the group's first reading) agrees with it, or starts a new group. With E uncinus, SG tractulus
- * and L virga (in that order) SG and L both join E's group: one reading, although SG and L
- * disagree with each other; in the order SG, L, E there are two groups.
+ * Number of distinct readings among a syllable's readings. Agreement is not transitive, so a
+ * reading joins a group only if it agrees with every member of that group (the first such
+ * group), or starts a new one. Readings are taken in a fixed order (by their kind sequence),
+ * so the count does not depend on the order of the sources. With uncinus, tractulus and virga
+ * there are two readings: uncinus agrees with both, but tractulus and virga disagree.
  */
 export function countReadings(v: NeumeVocabulary, rs: Reading[]): number {
   const kinds = kindMap(v);
-  const reps: Reading[] = [];
-  for (const r of rs) if (!reps.some((rep) => readingsAgree(v, rep, r, kinds))) reps.push(r);
-  return reps.length;
+  const key = (r: Reading) => JSON.stringify(r);
+  const ordered = [...rs].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  const groups: Reading[][] = [];
+  for (const r of ordered) {
+    const group = groups.find((g) => g.every((m) => readingsAgree(v, m, r, kinds)));
+    if (group) group.push(r);
+    else groups.push([r]);
+  }
+  return groups.length;
 }
 
 /** Syllables with >= 2 distinct readings (so >= 2 sources), by number of distinct readings desc, then sources desc, then index. */

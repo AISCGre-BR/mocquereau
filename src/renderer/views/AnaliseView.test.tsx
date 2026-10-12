@@ -44,7 +44,9 @@ describe("AnaliseView", () => {
 
   it("mostra os blocos; Concordância dá 67% entre E e SG (2 de 3) e — na diagonal", () => {
     mount(fixture());
-    for (const title of ["Progresso", "Conteúdo neumático", "Concordância entre fontes", "Liquescências, episemas e letras", "Etiquetas por fonte"]) {
+    expect(screen.getByRole("columnheader", { name: "Alargadas" })).toBeTruthy();
+    expect(screen.getByRole("rowheader", { name: "Notas alargadas" })).toBeTruthy();
+    for (const title of ["Progresso", "Conteúdo neumático", "Concordância entre fontes", "Liquescências, episemas, letras e alargadas", "Etiquetas por fonte"]) {
       expect(screen.getByRole("heading", { name: title })).toBeTruthy();
     }
     expect(pair("E", "SG").textContent).toBe("67%");

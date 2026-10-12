@@ -1,6 +1,6 @@
 // src/renderer/components/analysis/MarksBlock.tsx
 //
-// Liquescence, episema, lengthened notes (a single row), significant letters (one row per letter) and certainty,
+// Liquescence, episema, lengthened notes, significant letters (one row per letter) and certainty,
 // each with "not informed"; counts per source.
 import { Fragment, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -56,11 +56,9 @@ export function MarksBlock({ project, filters, vocabulary, onDrill, className }:
           <tbody>
             {groups.map((g) => (
               <Fragment key={g.group}>
-                {g.rows.length === 1 && g.rows[0].key === g.group ? null : (
-                  <tr className={GROUP_ROW}>
-                    <th colSpan={sources.length + 1} scope="colgroup" className={TH_ROW}>{t(`indicators.group.${g.group}`)}</th>
-                  </tr>
-                )}
+                <tr className={GROUP_ROW}>
+                  <th colSpan={sources.length + 1} scope="colgroup" className={TH_ROW}>{t(`indicators.group.${g.group}`)}</th>
+                </tr>
                 {g.rows.map((r) => (
                   <tr key={r.key} className="border-b border-rule-soft">
                     <th scope="row" className={TH_ROW}>{label(r.key)}</th>

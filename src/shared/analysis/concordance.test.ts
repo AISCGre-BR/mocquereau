@@ -49,13 +49,18 @@ describe("equivalências diretas e não transitivas", () => {
     expect(concordanceBySource(r, {}, v).matrix.E.SG).toEqual(ag(1, 0));
   });
 
-  it("leituras: cada uma entra no primeiro grupo cujo representante concorda (SG e L entram no de E)", () => {
-    expect(countReadings(v, [["uncinus"], ["tractulus"], ["virga"]])).toBe(1);
+  it("leituras: uma sequência só entra num grupo se concorda com todos os membros; a ordem não importa", () => {
+    expect(countReadings(v, [["uncinus"], ["tractulus"], ["virga"]])).toBe(2);
     expect(countReadings(v, [["tractulus"], ["virga"], ["uncinus"]])).toBe(2);
-    expect(divergentSyllables(q, {}, v)).toEqual([]);
+    expect(countReadings(v, [["virga"], ["uncinus"], ["tractulus"]])).toBe(2);
+    expect(countReadings(v, [["uncinus"], ["tractulus"], ["uncinus"]])).toBe(1);
+    expect(divergentSyllables(q, {}, v)).toEqual([{ syllable: 0, readings: 2, sources: 3 }]);
+  });
+
+  it("a ordem das fontes não muda as leituras divergentes", () => {
     const r = structuredClone(q);
-    r.sources[0].annotations = {};
-    expect(divergentSyllables(r, {}, v)).toEqual([{ syllable: 0, readings: 2, sources: 2 }]);
+    r.sources = [r.sources[2], r.sources[1], r.sources[0], r.sources[3]].map((s, i) => ({ ...s, order: i + 1 }));
+    expect(divergentSyllables(r, {}, v)).toEqual([{ syllable: 0, readings: 2, sources: 3 }]);
   });
 });
 
