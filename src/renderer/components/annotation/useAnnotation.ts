@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useProject } from "../../hooks/useProject";
-import { emptyAnnotation } from "@shared/annotation/annotation";
+import { emptyAnnotation, normalizeAnnotation } from "@shared/annotation/annotation";
 import { createDefaultVocabulary } from "@shared/annotation/default-vocabulary";
 import { fold, getVocabulary } from "@shared/annotation/vocabulary";
-import { parseHashTags, resolveTagNames } from "@shared/annotation/tags";
+import { findTagByName, parseHashTags, resolveTagNames } from "@shared/annotation/tags";
 import type { NeumeVocabulary, SyllableAnnotation, Tag } from "@shared/annotation/types";
 
 export interface AnnotationTarget {
@@ -47,6 +47,8 @@ export function useAnnotation(target: AnnotationTarget | null) {
   const update = useCallback(
     (next: SyllableAnnotation, field: string) => {
       if (!project || sourceId === undefined || syllable === undefined) return;
+      // Nothing changed (e.g. a blur after no edit): no dispatch, so the project stays clean.
+      if (JSON.stringify(normalizeAnnotation(next)) === JSON.stringify(normalizeAnnotation(annotation))) return;
       const coalesceKey = `ANNOTATION:${sourceId}:${syllable}:${field}`;
       const vocabularyPending = vocabularyWrittenFor.current === project;
       vocabularyWrittenFor.current = null;
@@ -59,7 +61,7 @@ export function useAnnotation(target: AnnotationTarget | null) {
         field,
       });
     },
-    [project, sourceId, syllable, dispatch, t],
+    [project, sourceId, syllable, annotation, dispatch, t],
   );
 
   /**
@@ -94,15 +96,15 @@ export function useAnnotation(target: AnnotationTarget | null) {
     [project, sourceId, syllable, dispatch, t],
   );
 
-  /** Creates missing tags (same undo step as the annotation) and returns the ids for the names. */
+  /** Creates missing tags (same undo step as the annotation); returns the ids and the resulting tag list. */
   const ensureTags = useCallback(
-    (names: string[], key: string): string[] => {
+    (names: string[], key: string): { ids: string[]; tags: Tag[] } => {
       const current = project?.tags ?? [];
       const res = resolveTagNames(current, names);
       if (res.tags.length !== current.length) {
         dispatch({ type: "SET_TAGS", payload: res.tags, meta: { coalesceKey: key } });
       }
-      return res.ids;
+      return res;
     },
     [project, dispatch],
   );
@@ -111,7 +113,20 @@ export function useAnnotation(target: AnnotationTarget | null) {
     (names: string[], neumeIndex?: number) => {
       if (sourceId === undefined || syllable === undefined) return;
       const field = neumeIndex === undefined ? "tags" : `neume.${neumeIndex}.tags`;
-      const ids = ensureTags(names, `ANNOTATION:${sourceId}:${syllable}:${field}`);
+      const current = neumeIndex === undefined ? annotation.tags : (annotation.neumes[neumeIndex]?.tags ?? []);
+      // A referenced tag that no longer exists is shown by its id; that id is kept as is.
+      const orphans = new Set(current.filter((id) => !tags.some((tag) => tag.id === id)));
+      const isOrphan = (name: string) => orphans.has(name.trim());
+      const res = ensureTags(names.filter((n) => !isOrphan(n)), `ANNOTATION:${sourceId}:${syllable}:${field}`);
+      const ids = [
+        ...new Set(
+          names.flatMap((n) => {
+            if (isOrphan(n)) return [n.trim()];
+            const tag = n.trim() === "" ? undefined : findTagByName(res.tags, n);
+            return tag ? [tag.id] : [];
+          }),
+        ),
+      ];
       if (neumeIndex === undefined) {
         update({ ...annotation, tags: ids }, field);
       } else {
@@ -119,7 +134,7 @@ export function useAnnotation(target: AnnotationTarget | null) {
         update({ ...annotation, neumes }, field);
       }
     },
-    [sourceId, syllable, annotation, ensureTags, update],
+    [sourceId, syllable, annotation, tags, ensureTags, update],
   );
 
   const setComment = useCallback(
@@ -127,7 +142,7 @@ export function useAnnotation(target: AnnotationTarget | null) {
       if (sourceId === undefined || syllable === undefined) return;
       const scanned = opts?.final ? text : text.replace(OPEN_TAG, "");
       const names = parseHashTags(scanned);
-      const ids = names.length > 0 ? ensureTags(names, `ANNOTATION:${sourceId}:${syllable}:comment`) : [];
+      const ids = names.length > 0 ? ensureTags(names, `ANNOTATION:${sourceId}:${syllable}:comment`).ids : [];
       const merged = [...new Set([...annotation.tags, ...ids])];
       update({ ...annotation, tags: merged, comment: text }, "comment");
     },

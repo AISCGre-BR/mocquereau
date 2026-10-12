@@ -34,6 +34,12 @@ const SAME_AS_EN: Record<string, "*" | readonly Translated[]> = {
   "newProject.step.text": ["de"],
   "newProject.mode.modern.name": ["de"],
   "newProject.mode.manual.name": ["es"],
+  "annotation.panel": ["de"],
+  "annotation.certainty.probable": ["es"],
+  "annotation.liquescence.augmentative": ["de", "pl"],
+  "annotation.liquescence.diminutive": ["it", "de", "pl"],
+  "annotation.episema": ["it", "es"],
+  "annotation.no": ["it", "es"],
 };
 
 function allowed(key: string, lng: Translated): boolean {
