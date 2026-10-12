@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { occurrences as findOccurrences, type Occurrence } from "@shared/analysis";
 import { getVocabulary } from "@shared/annotation/vocabulary";
 import { useProject } from "../hooks/useProject";
-import { useAnalysisFilters } from "../components/analysis/AnalysisContext";
+import { projectHasAnnotations, useEffectiveAnalysisFilters } from "../components/analysis/AnalysisContext";
 import { ProgressBlock } from "../components/analysis/ProgressBlock";
 import { ContentBlock } from "../components/analysis/ContentBlock";
 import { MarksBlock } from "../components/analysis/MarksBlock";
@@ -24,24 +24,17 @@ export interface AnaliseViewProps {
 export function AnaliseView({ onOpenOccurrence }: AnaliseViewProps) {
   const { t } = useTranslation();
   const { state } = useProject();
-  const [filters] = useAnalysisFilters();
   const [query, setQuery] = useState<DrillQuery | null>(null);
   const project = state.project!;
+  const filters = useEffectiveAnalysisFilters(project);
   const vocabulary = useMemo(() => getVocabulary(project, (k) => t(k)), [project, t]);
 
-  const list = useMemo((): Occurrence[] => {
-    if (!query) return [];
-    if (query.kind !== "compared") return findOccurrences(project, filters, vocabulary, query);
-    // Every compared syllable (agreeing and not), source-major like the other queries.
-    const both = [true, false].flatMap((agree) =>
-      findOccurrences(project, filters, vocabulary, { kind: "pair", a: query.a, b: query.b, agree }),
-    );
-    const order = [query.a, query.b];
-    return both.sort((x, y) => order.indexOf(x.sourceId) - order.indexOf(y.sourceId) || x.syllable - y.syllable);
-  }, [query, project, filters, vocabulary]);
+  const list = useMemo(
+    (): Occurrence[] => (query ? findOccurrences(project, filters, vocabulary, query) : []),
+    [query, project, filters, vocabulary],
+  );
 
-  const hasAnnotations = project.sources.some((s) => s.annotations && Object.keys(s.annotations).length > 0);
-  if (!hasAnnotations) {
+  if (!projectHasAnnotations(project)) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
         <p className="sc-empty">{t("analysis.empty")}</p>
@@ -62,6 +55,7 @@ export function AnaliseView({ onOpenOccurrence }: AnaliseViewProps) {
       {query && (
         <OccurrencesDialog
           project={project}
+          title={query.kind === "pair" ? t("analysis.divergentSyllables") : t("analysis.occurrences")}
           occurrences={list}
           onClose={() => setQuery(null)}
           onOpen={onOpenOccurrence}

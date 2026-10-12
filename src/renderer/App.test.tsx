@@ -433,6 +433,15 @@ describe("App", () => {
     expect(exportCsv.mock.calls[2][0].raw).not.toContain("virga");
   });
 
+  it("Análise: sem anotações, Exportar CSV… fica desabilitado", async () => {
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("4");
+    expect((screen.getByRole("button", { name: "Exportar CSV…" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("Análise: falha ao exportar o CSV mostra um erro", async () => {
     window.mocquereau.exportCsv = vi.fn().mockRejectedValue(new Error("disco cheio"));
     const project = projectWithBox();

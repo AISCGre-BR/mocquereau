@@ -29,7 +29,7 @@ function mount(p: MocquereauProject) {
   }
   render(<Harness />);
   act(() => ref.dispatch!({ type: "SET_PROJECT", payload: p }));
-  return { onOpenOccurrence };
+  return { onOpenOccurrence, dispatch: (a: DocumentAction) => act(() => ref.dispatch!(a)) };
 }
 
 const fixture = () => makeAnalysisProject() as unknown as MocquereauProject;
@@ -80,14 +80,47 @@ describe("AnaliseView", () => {
     expect(screen.getByRole("row", { name: /Média de notas por sílaba/ })).toBeTruthy();
   });
 
-  it("clicar num número abre as ocorrências; clicar numa fecha e navega", () => {
+  it("par de fontes: o diálogo lista só as sílabas divergentes; clicar numa fecha e navega", () => {
     const { onOpenOccurrence } = mount(fixture());
     fireEvent.click(pair("E", "SG").querySelector("button")!);
-    const dialog = screen.getByRole("dialog", { name: "Ocorrências" });
+    const dialog = screen.getByRole("dialog", { name: "Sílabas divergentes" });
     const items = within(dialog).getAllByRole("button", { name: /^(E|SG) / });
-    expect(items.map((b) => b.getAttribute("aria-label"))).toEqual(["E Ad", "E te", "E le", "SG Ad", "SG te", "SG le"]);
-    fireEvent.click(items[2]);
+    expect(items.map((b) => b.getAttribute("aria-label"))).toEqual(["E le", "SG le"]);
+    expect(items[0].querySelector("[title='E']")).not.toBeNull();
+    fireEvent.click(items[0]);
     expect(onOpenOccurrence).toHaveBeenCalledWith("E", 2);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("outros números abrem \"Ocorrências\"", () => {
+    mount(fixture());
+    fireEvent.click(within(screen.getByRole("row", { name: /^pes/ })).getAllByRole("button")[0]);
+    expect(screen.getByRole("dialog", { name: "Ocorrências" })).toBeTruthy();
+  });
+
+  it("filtro numa fonte apagada deixa de valer: a vista volta a mostrar os dados e o botão fica inativo", () => {
+    const { dispatch } = mount(fixture());
+    fireEvent.click(screen.getByRole("button", { name: "Fontes" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "X" }));
+    expect(screen.getByRole("button", { name: "Fontes: X" })).toBeTruthy();
+    expect(pair("E", "SG")).toBeNull();
+    dispatch({ type: "REMOVE_SOURCE", payload: "X" });
+    expect(pair("E", "SG").textContent).toBe("67%");
+    expect(screen.getByRole("button", { name: "Fontes" })).toBeTruthy();
+  });
+
+  it("% das sílabas: porcentagem indefinida aparece como —", () => {
+    mount(fixture());
+    fireEvent.click(screen.getByRole("button", { name: "Certeza" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Ilegível" }));
+    fireEvent.click(screen.getByRole("tab", { name: "% das sílabas" }));
+    // Só E tem uma sílaba ilegível anotada: nas outras fontes não há sílaba anotada.
+    const clivis = screen.getByRole("row", { name: /^clivis/ });
+    expect(within(clivis).getAllByRole("cell").map((c) => c.textContent).slice(1, 4)).toEqual(["—", "—", "—"]);
+  });
+
+  it("nomes dos neumas em serifa", () => {
+    mount(fixture());
+    expect(screen.getByText("pes").className).toContain("font-serif");
   });
 });

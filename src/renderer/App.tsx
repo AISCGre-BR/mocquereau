@@ -21,7 +21,7 @@ import { TabelaView } from "./views/TabelaView";
 import { AnaliseView } from "./views/AnaliseView";
 import { ExportDialog } from "./components/ExportDialog";
 import { exportAnalysisCsv } from "./components/analysis/exportCsv";
-import { AnalysisFiltersProvider, useAnalysisFilters } from "./components/analysis/AnalysisContext";
+import { AnalysisFiltersProvider, projectHasAnnotations, pruneFilters, useAnalysisFilters } from "./components/analysis/AnalysisContext";
 import { FilterBar } from "./components/analysis/FilterBar";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
 import { TagsDialog } from "./components/annotation/TagsDialog";
@@ -161,7 +161,7 @@ function Workbench() {
   // Exportar CSV… (barra da Análise e menu Arquivo): na Análise, com os filtros ativos (D9).
   function exportCsv() {
     if (!project) return;
-    exportAnalysisCsv(project, view === "analise" ? analysisFilters : {}, (key) => t(key))
+    exportAnalysisCsv(project, view === "analise" ? pruneFilters(project, analysisFilters) : {}, (key) => t(key))
       .then((result) => {
         if (result) toast.show({ kind: "ok", message: t("analysis.csvExported") });
       })
@@ -263,7 +263,12 @@ function Workbench() {
               ) : view === "recortes" ? (
                 <SuggestActions />
               ) : view === "analise" ? (
-                <Button variant="filled" icon={<FileSpreadsheet aria-hidden="true" />} onClick={exportCsv}>
+                <Button
+                  variant="filled"
+                  icon={<FileSpreadsheet aria-hidden="true" />}
+                  disabled={!projectHasAnnotations(project)}
+                  onClick={exportCsv}
+                >
                   {t("shell.file.exportCsv")}
                 </Button>
               ) : undefined

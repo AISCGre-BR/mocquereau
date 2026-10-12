@@ -5,7 +5,7 @@ import type { CellState } from '../../lib/tableUtils';
 import type { ImageAdjustments } from '../../lib/models';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
-import { CellCrop } from './CellCrop';
+import { CellCrop, cropDrawable } from './CellCrop';
 
 /** Where a menu opened from the cell goes, and the cell to refocus when it closes. */
 export interface CellAnchor {
@@ -71,13 +71,7 @@ export function TableCell({
   const cellRef = useRef<HTMLDivElement>(null);
 
   // Sanity check for filled state: reject invalid boxes and missing image
-  const filledOk =
-    state.kind === 'filled' &&
-    !!state.image &&
-    !!state.image.dataUrl &&
-    state.image.dataUrl.startsWith('data:') &&
-    state.box.w > 0 &&
-    state.box.h > 0;
+  const filledOk = state.kind === 'filled' && cropDrawable(state.image, state.box);
 
   const pending = state.kind === 'unfilled';
 

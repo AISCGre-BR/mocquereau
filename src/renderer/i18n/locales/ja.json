@@ -432,5 +432,6 @@
   "analysis.legend.illegible": "判読不能",
   "analysis.legend.missing": "未注釈",
   "analysis.csvExported": "CSVを書き出しました。",
-  "analysis.csvError": "CSVを書き出せませんでした。"
+  "analysis.csvError": "CSVを書き出せませんでした。",
+  "analysis.divergentSyllables": "相違のある音節"
 }

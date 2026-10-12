@@ -3,29 +3,43 @@
 // Drill-down: the cells behind a number, each with its crop, siglum and syllable.
 // Choosing one closes the dialog and opens it in Recortes.
 import { useMemo } from "react";
-import { useTranslation } from "react-i18next";
 import type { Occurrence } from "@shared/analysis";
 import { Dialog } from "../../ui/Dialog";
-import { CellCrop, cropDrawable } from "../table-preview/CellCrop";
+import { CellCrop, cropAspect, cropDrawable } from "../table-preview/CellCrop";
 import { resolveCellLine, resolveCellState } from "../../lib/tableUtils";
 import type { ManuscriptSource, MocquereauProject } from "../../lib/models";
 import { syllableTexts } from "./format";
 
 export interface OccurrencesDialogProps {
   project: MocquereauProject;
+  title: string;
   occurrences: Occurrence[];
   onClose: () => void;
   onOpen: (sourceId: string, syllable: number) => void;
 }
 
+const THUMB_W = 80;
+const THUMB_H = 48;
+
+/** The crop fitted inside the thumbnail box, keeping its aspect ratio (like object-fit: contain). */
 function Thumb({ source, syllable }: { source: ManuscriptSource; syllable: number }) {
   const state = resolveCellState(source, syllable);
   const hit = resolveCellLine(source, syllable);
   const adjustments = hit?.kind === "filled" ? hit.line.imageAdjustments : undefined;
+  const aspect = state.kind === "filled" && cropDrawable(state.image, state.box) ? cropAspect(state.image, state.box, adjustments) : null;
+  const wide = aspect !== null && aspect >= THUMB_W / THUMB_H;
   return (
-    <span className="flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-rule-soft bg-parchment">
-      {state.kind === "filled" && cropDrawable(state.image, state.box) ? (
-        <CellCrop image={state.image} box={state.box} adjustments={adjustments} />
+    <span
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-sm border border-rule-soft bg-parchment"
+      style={{ width: THUMB_W, height: THUMB_H }}
+    >
+      {state.kind === "filled" && aspect !== null && Number.isFinite(aspect) ? (
+        <span
+          className="block"
+          style={{ aspectRatio: aspect, width: wide ? "100%" : "auto", height: wide ? "auto" : "100%" }}
+        >
+          <CellCrop image={state.image} box={state.box} adjustments={adjustments} />
+        </span>
       ) : state.kind === "gap" ? (
         <span className="text-sm text-ink-muted">—</span>
       ) : null}
@@ -33,12 +47,11 @@ function Thumb({ source, syllable }: { source: ManuscriptSource; syllable: numbe
   );
 }
 
-export function OccurrencesDialog({ project, occurrences, onClose, onOpen }: OccurrencesDialogProps) {
-  const { t } = useTranslation();
+export function OccurrencesDialog({ project, title, occurrences, onClose, onOpen }: OccurrencesDialogProps) {
   const sources = useMemo(() => new Map(project.sources.map((s) => [s.id, s])), [project.sources]);
   const texts = useMemo(() => syllableTexts(project.text.words), [project.text.words]);
   return (
-    <Dialog open title={t("analysis.occurrences")} onClose={onClose} className="w-[560px] max-w-[calc(100vw-32px)]">
+    <Dialog open title={title} onClose={onClose} className="w-[560px] max-w-[calc(100vw-32px)]">
       <ul className="-mx-2 grid max-h-[60vh] grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-1 overflow-y-auto">
         {occurrences.map((o) => {
           const source = sources.get(o.sourceId);
@@ -58,8 +71,8 @@ export function OccurrencesDialog({ project, occurrences, onClose, onOpen }: Occ
               >
                 <Thumb source={source} syllable={o.syllable} />
                 <span className="min-w-0">
-                  <span className="block truncate font-serif text-sm text-ink-soft">{siglum}</span>
-                  <span className="block truncate font-serif text-body italic text-ink">{text}</span>
+                  <span title={siglum} className="block truncate font-serif text-sm text-ink-soft">{siglum}</span>
+                  <span title={text} className="block truncate font-serif text-body italic text-ink">{text}</span>
                 </span>
               </button>
             </li>

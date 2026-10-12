@@ -10,7 +10,7 @@ import { FAMILY_LEVEL_ID, NO_SECTION } from "@shared/analysis/cells";
 import { useProject } from "../../hooks/useProject";
 import { Button } from "../../ui/Button";
 import { MenuItem, MenuSurface, type MenuCloseReason } from "../../ui/Menu";
-import { useAnalysisFilters } from "./AnalysisContext";
+import { useAnalysisFilters, useEffectiveAnalysisFilters } from "./AnalysisContext";
 
 type FilterKey = "sourceIds" | "classValueIds" | "sectionIds" | "tagIds" | "certainty";
 interface Option { value: string; label: string }
@@ -62,8 +62,9 @@ function FilterMenu({
 export function FilterBar() {
   const { t } = useTranslation();
   const { state } = useProject();
-  const [filters, setFilters] = useAnalysisFilters();
+  const [, setFilters] = useAnalysisFilters();
   const project = state.project;
+  const filters = useEffectiveAnalysisFilters(project);
   if (!project) return null;
 
   const familyLevel = project.classification.find((l) => l.id === FAMILY_LEVEL_ID);

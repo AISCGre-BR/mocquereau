@@ -432,5 +432,6 @@
   "analysis.legend.illegible": "Ilegibles",
   "analysis.legend.missing": "Faltan",
   "analysis.csvExported": "CSV exportado.",
-  "analysis.csvError": "No se pudo exportar el CSV."
+  "analysis.csvError": "No se pudo exportar el CSV.",
+  "analysis.divergentSyllables": "Sílabas divergentes"
 }

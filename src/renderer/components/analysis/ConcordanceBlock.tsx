@@ -88,7 +88,7 @@ export function ConcordanceBlock({ project, filters, vocabulary, onDrill, classN
                       {diagonal ? (
                         "—"
                       ) : cell.percent === null ? null : mode === "source" ? (
-                        <DrillNumber onClick={() => onDrill({ kind: "compared", a, b })}>{fmt.percent(cell.percent)}</DrillNumber>
+                        <DrillNumber onClick={() => onDrill({ kind: "pair", a, b, agree: false })}>{fmt.percent(cell.percent)}</DrillNumber>
                       ) : (
                         fmt.percent(cell.percent)
                       )}

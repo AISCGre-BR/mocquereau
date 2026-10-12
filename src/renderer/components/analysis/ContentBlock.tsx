@@ -74,7 +74,7 @@ export function ContentBlock({ project, filters, vocabulary, onDrill, className 
                 {g.rows.map((r) => (
                   <tr key={r.kindId} className="border-b border-rule-soft">
                     <th scope="row" className={TH_ROW}>
-                      <span className={r.unknown ? "italic" : undefined}>{r.name}</span>
+                      <span className={r.unknown ? "font-serif italic" : "font-serif"}>{r.name}</span>
                       {r.equivalentName && (
                         <span className="ml-2 text-caption text-ink-muted">= {r.equivalentName}</span>
                       )}
@@ -84,9 +84,13 @@ export function ContentBlock({ project, filters, vocabulary, onDrill, className 
                       const drill = cell.count > 0 ? () => onDrill({ kind: "neume", kindId: r.kindId, sourceId: s.id }) : undefined;
                       return (
                         <td key={s.id} className={TD}>
-                          <DrillNumber onClick={drill}>
-                            {mode === "count" ? cell.count : fmt.percent(cell.percent)}
-                          </DrillNumber>
+                          {mode === "percent" && cell.percent === null ? (
+                            <span className="text-ink-muted">—</span>
+                          ) : (
+                            <DrillNumber onClick={drill}>
+                              {mode === "count" ? cell.count : fmt.percent(cell.percent)}
+                            </DrillNumber>
+                          )}
                         </td>
                       );
                     })}

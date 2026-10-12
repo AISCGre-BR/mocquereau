@@ -61,6 +61,16 @@ export function CellCrop({ image, box, adjustments }: CellCropProps) {
   );
 }
 
+/** Width / height of the crop in image pixels (the box is a fraction of the rotated image's AABB). */
+export function cropAspect(image: StoredImage, box: SyllableBox, adjustments?: ImageAdjustments): number {
+  const θ = (normalizeRotation(adjustments?.rotation ?? 0) * Math.PI) / 180;
+  const c = Math.abs(Math.cos(θ));
+  const s = Math.abs(Math.sin(θ));
+  const w = image.width * c + image.height * s;
+  const h = image.width * s + image.height * c;
+  return (box.w * w) / (box.h * h);
+}
+
 /** Whether a filled cell can be drawn: a data URL image and a non-empty box. */
 export function cropDrawable(image: StoredImage | undefined, box: SyllableBox): image is StoredImage {
   return !!image && !!image.dataUrl && image.dataUrl.startsWith('data:') && box.w > 0 && box.h > 0;

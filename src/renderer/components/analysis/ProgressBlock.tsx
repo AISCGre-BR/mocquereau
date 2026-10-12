@@ -1,7 +1,7 @@
 // src/renderer/components/analysis/ProgressBlock.tsx
 //
 // Progress: per source (or section), a stacked bar of the syllables: annotated (lapis),
-// illegible (orpiment, part of the annotated) and the rest on the track; percent annotated.
+// illegible (orpiment, part of the annotated) and the rest on the track (rule: legible in both themes); percent annotated.
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { progressBySection, progressBySource, type ProgressRow } from "@shared/analysis";
@@ -83,7 +83,7 @@ export function ProgressBlock({ project, filters, vocabulary, onDrill, className
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-ink-muted">
           <span className="inline-flex items-center gap-1.5"><Swatch className="fill-lapis" />{t("analysis.legend.annotated")}</span>
           <span className="inline-flex items-center gap-1.5"><Swatch className="fill-orpiment" />{t("analysis.legend.illegible")}</span>
-          <span className="inline-flex items-center gap-1.5"><Swatch className="fill-parchment-deep" />{t("analysis.legend.missing")}</span>
+          <span className="inline-flex items-center gap-1.5"><Swatch className="fill-rule" />{t("analysis.legend.missing")}</span>
         </div>
       </div>
     </Panel>

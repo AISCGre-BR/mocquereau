@@ -3,8 +3,8 @@ import type { AnalysisFilters, OccurrenceQuery } from "@shared/analysis";
 import type { NeumeVocabulary } from "@shared/annotation/types";
 import type { MocquereauProject } from "../../lib/models";
 
-/** What a number of the view drills into; "compared" = every syllable compared between two sources. */
-export type DrillQuery = OccurrenceQuery | { kind: "compared"; a: string; b: string };
+/** What a number of the view drills into (a source pair drills into its divergent syllables). */
+export type DrillQuery = OccurrenceQuery;
 
 export interface BlockProps {
   project: MocquereauProject;

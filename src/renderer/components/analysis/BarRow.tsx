@@ -20,7 +20,7 @@ export function StackedBar({
   max,
   title,
   height = 8,
-  trackClassName = "fill-parchment-deep",
+  trackClassName = "fill-rule",
 }: {
   segments: BarSegment[];
   max: number;
