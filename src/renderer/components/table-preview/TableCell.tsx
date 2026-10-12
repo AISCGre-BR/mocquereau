@@ -3,9 +3,9 @@
 import { useState, useRef } from 'react';
 import type { CellState } from '../../lib/tableUtils';
 import type { ImageAdjustments } from '../../lib/models';
-import { buildImageFilter, buildImageTransform, normalizeRotation } from '../../lib/image-adjustments';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
+import { CellCrop, cropDrawable } from './CellCrop';
 
 /** Where a menu opened from the cell goes, and the cell to refocus when it closes. */
 export interface CellAnchor {
@@ -32,7 +32,9 @@ export interface TableCellProps {
   rowHeightPx: number;
   /** Accessible name: "Recortar <sílaba> em <sigla>" (pending) or the cell actions. */
   ariaLabel?: string;
-  /** Click, Enter or Space: pending goes to Recortes, otherwise opens the menu (D-06). */
+  /** The syllable has an annotation: a small corner mark, top right. */
+  annotated?: boolean;
+  /** Click, Enter or Space: pending goes to Recortes, a filled cell opens the annotation popover. */
   onActivate: (anchor: CellAnchor) => void;
   /** Right click, the ContextMenu key or Shift+F10: opens the menu. */
   onOpenMenu: (anchor: CellAnchor) => void;
@@ -59,40 +61,17 @@ export function TableCell({
   colWidthPx,
   rowHeightPx,
   ariaLabel,
+  annotated,
   onActivate,
   onOpenMenu,
   adjustments,
 }: TableCellProps) {
   const { t } = useTranslation();
-  const imgFilter = buildImageFilter(adjustments);
-  const imgTransform = buildImageTransform(adjustments);
   const [showTooltip, setShowTooltip] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
 
-  // Phase 12 (UX revisão): box vive em fração do AABB do retângulo da imagem
-  // ROTACIONADA. Para mostrar a região do box ocupando toda a célula:
-  //  1. Um div interno (AABB-div) com tamanho = 100/box.w × 100/box.h da célula,
-  //     deslocado por -box.x, -box.y.
-  //  2. Dentro dele, a `<img>` é centralizada e escalada para que seu AABB
-  //     rotacionado coincida com o AABB-div. Rotation/flip via CSS transform.
-  const rot = adjustments?.rotation ?? 0;
-  const θ = (normalizeRotation(rot) * Math.PI) / 180;
-  const absCos = Math.abs(Math.cos(θ));
-  const absSin = Math.abs(Math.sin(θ));
-  const imgRatio = state.kind === 'filled' && state.image
-    ? state.image.height / state.image.width
-    : 1;
-  const imgWidthPct = 100 / (absCos + imgRatio * absSin);
-  const imgHeightPct = (100 * imgRatio) / (absSin + imgRatio * absCos);
-
   // Sanity check for filled state: reject invalid boxes and missing image
-  const filledOk =
-    state.kind === 'filled' &&
-    !!state.image &&
-    !!state.image.dataUrl &&
-    state.image.dataUrl.startsWith('data:') &&
-    state.box.w > 0 &&
-    state.box.h > 0;
+  const filledOk = state.kind === 'filled' && cropDrawable(state.image, state.box);
 
   const pending = state.kind === 'unfilled';
 
@@ -105,7 +84,9 @@ export function TableCell({
         // Fronteira de palavra: borda esquerda rule-strong; dentro da palavra, rule-soft.
         startsWord ? 'border-l-rule-strong' : '',
         pending ? 'bg-parchment hover:bg-rubric-wash' : '',
+        annotated ? 'after:pointer-events-none after:absolute after:top-0 after:right-0 after:border-t-8 after:border-l-8 after:border-t-ink-muted after:border-l-transparent' : '',
       ].join(' ')}
+      data-annotated={annotated ? '' : undefined}
       style={{
         width: colWidthPx,
         height: rowHeightPx,
@@ -113,7 +94,7 @@ export function TableCell({
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}
-      aria-haspopup={state.kind === 'unfilled' ? undefined : 'menu'}
+      aria-haspopup={state.kind === 'filled' ? 'dialog' : state.kind === 'unfilled' ? undefined : 'menu'}
       onClick={(e) => {
         e.stopPropagation();
         onActivate({ x: e.clientX, y: e.clientY, cell: e.currentTarget });
@@ -141,34 +122,7 @@ export function TableCell({
     >
       {/* ── Filled: AABB-div escalado contendo `<img>` rotacionada ── */}
       {state.kind === 'filled' && filledOk && (
-        <div className="w-full h-full overflow-hidden relative">
-          <div
-            className="absolute"
-            style={{
-              width: `${100 / state.box.w}%`,
-              height: `${100 / state.box.h}%`,
-              left: `${(-state.box.x / state.box.w) * 100}%`,
-              top: `${(-state.box.y / state.box.h) * 100}%`,
-            }}
-          >
-            <img
-              src={state.image.dataUrl}
-              alt=""
-              draggable={false}
-              className="absolute pointer-events-none"
-              style={{
-                left: '50%',
-                top: '50%',
-                width: `${imgWidthPct}%`,
-                height: `${imgHeightPct}%`,
-                maxWidth: 'none',
-                transform: `translate(-50%, -50%) ${imgTransform ?? ''}`.trim(),
-                transformOrigin: 'center center',
-                filter: imgFilter || undefined,
-              }}
-            />
-          </div>
-        </div>
+        <CellCrop image={state.image} box={state.box} adjustments={adjustments} />
       )}
       {/* Fallback when filled state is malformed — show error indicator */}
       {state.kind === 'filled' && !filledOk && (
@@ -208,33 +162,7 @@ export function TableCell({
             className="fixed z-50 rounded shadow-lg border border-rule-soft bg-surface p-1 pointer-events-none"
             style={{ width: TW, height: TH, left, top }}
           >
-            <div className="w-full h-full overflow-hidden relative">
-              <div
-                className="absolute"
-                style={{
-                  width: `${100 / state.box.w}%`,
-                  height: `${100 / state.box.h}%`,
-                  left: `${(-state.box.x / state.box.w) * 100}%`,
-                  top: `${(-state.box.y / state.box.h) * 100}%`,
-                }}
-              >
-                <img
-                  src={state.image.dataUrl}
-                  alt=""
-                  className="absolute"
-                  style={{
-                    left: '50%',
-                    top: '50%',
-                    width: `${imgWidthPct}%`,
-                    height: `${imgHeightPct}%`,
-                    maxWidth: 'none',
-                    transform: `translate(-50%, -50%) ${imgTransform ?? ''}`.trim(),
-                    transformOrigin: 'center center',
-                    filter: imgFilter || undefined,
-                  }}
-                />
-              </div>
-            </div>
+            <CellCrop image={state.image} box={state.box} adjustments={adjustments} />
           </div>
         );
       })()}

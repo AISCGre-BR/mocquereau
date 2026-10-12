@@ -1,6 +1,9 @@
 // src/renderer/lib/models.ts
 
 import type { RecentEntry, RecentMeta } from "@shared/recent";
+import type { Annotations, ExportPrefs, NeumeVocabulary, Tag } from "@shared/annotation/types";
+import type { CsvExportPayload } from "@shared/analysis/csv";
+import type { IndicatorTable } from "@shared/analysis/indicator-tables";
 import type { BoxFrame, Classification, ImageBytesPayload, PageNotation, ImageRef, SourceMetadata } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
@@ -164,6 +167,9 @@ export interface ManuscriptSource {
    * Valor: imagem recortada ou null (gap explícito).
    */
   syllableCuts: Record<number, StoredImage | null>;
+
+  /** Anotações paleográficas por sílaba global; ausente = nada anotado. */
+  annotations?: Annotations;
 }
 
 /** Projeto completo de tabela neumática */
@@ -191,6 +197,12 @@ export interface MocquereauProject {
 
   /** Lista de fontes/manuscritos (linhas da tabela) */
   sources: ManuscriptSource[];
+
+  /** Vocabulário de neumas do projeto; ausente = padrão. */
+  neumeVocabulary?: NeumeVocabulary;
+  /** Etiquetas livres do projeto. */
+  tags?: Tag[];
+  exportPrefs?: ExportPrefs;
 }
 
 // ── Gueranger import format ─────────────────────────────────────────────────
@@ -264,7 +276,9 @@ export interface MocquereauAPI {
   importGueranger: () => Promise<GuerangerExport | null>;
 
   // Exportação
-  exportDocx: (project: MocquereauProject) => Promise<{ filePath: string } | null>;
+  exportDocx: (payload: DocxExportPayload) => Promise<{ filePath: string } | null>;
+  /** Saves the two CSV files (neumes + totals) beside the chosen name; null when cancelled. */
+  exportCsv: (payload: CsvExportPayload) => Promise<{ files: string[] } | null>;
 
   // Imagens
   /** Stores bytes in the main-process session (wave A2: no UI consumer yet). */
@@ -287,6 +301,9 @@ export interface MocquereauAPI {
   getSuggestionsEnabled: () => Promise<boolean>;
   /** Grava a preferência; devolve o valor gravado (não booleano é ignorado). */
   setSuggestionsEnabled: (on: boolean) => Promise<boolean>;
+  /** Painel Anotação da vista Recortes; padrão false (fechado). */
+  getAnnotationPanelOpen: () => Promise<boolean>;
+  setAnnotationPanelOpen: (open: boolean) => Promise<void>;
   platform: string;
 }
 
@@ -359,4 +376,6 @@ export interface DocxExportPayload {
    * Duplicated from DocxCellData.isWordBoundary for convenience when building header rows.
    */
   wordBoundaries: boolean[];
+  /** Optional appendix with the project-wide indicators, as ready-made text tables. */
+  indicators?: { title: string; tables: IndicatorTable[] };
 }

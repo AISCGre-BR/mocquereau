@@ -11,6 +11,7 @@
 // only per-word syllable counts vary (mostly via R11 ae/oe digraph).
 
 import type { MocquereauProject, SyllabifiedWord, SyllableBox, StoredImage } from './models';
+import type { Annotations, SyllableAnnotation } from '@shared/annotation/types';
 import { syllabifyText, type HyphenationMode } from './syllabify';
 
 // ── Word-boundary table ──────────────────────────────────────────────────────
@@ -55,6 +56,9 @@ export interface MigrationStats {
   preservedBoxes: number;
   /** Boxes dropped because the owning word changed syllable count */
   droppedBoxes: number;
+  /** Syllable annotations preserved / dropped (same rule as the boxes) */
+  preservedAnnotations: number;
+  droppedAnnotations: number;
   /** Words whose syllable split changed (shown to the user) */
   changedWords: Array<{
     word: string;
@@ -99,7 +103,14 @@ export function previewMigration(
 
   let preservedBoxes = 0;
   let droppedBoxes = 0;
+  let preservedAnnotations = 0;
+  let droppedAnnotations = 0;
   for (const source of project.sources) {
+    for (const [key, a] of Object.entries(source.annotations ?? {})) {
+      if (!a) continue;
+      if (remapIdx(Number(key), oldBounds, newBounds) !== null) preservedAnnotations++;
+      else droppedAnnotations++;
+    }
     for (const line of source.lines) {
       if (!line.syllableBoxes) continue;
       for (const [key, box] of Object.entries(line.syllableBoxes)) {
@@ -120,7 +131,10 @@ export function previewMigration(
   const oldSyllableCount = oldBounds.reduce((a, b) => a + b.count, 0);
   const newSyllableCount = newBounds.reduce((a, b) => a + b.count, 0);
 
-  return { preservedBoxes, droppedBoxes, changedWords, oldSyllableCount, newSyllableCount };
+  return {
+    preservedBoxes, droppedBoxes, preservedAnnotations, droppedAnnotations,
+    changedWords, oldSyllableCount, newSyllableCount,
+  };
 }
 
 /**
@@ -171,6 +185,12 @@ export function migrateHyphenation(
     };
   }
 
+  function remapAnnotations(rec: Annotations): Annotations | undefined {
+    const out: Annotations = {};
+    for (const [k, a] of Object.entries(remapRecord<SyllableAnnotation>(rec))) if (a) out[Number(k)] = a;
+    return Object.keys(out).length ? out : undefined;
+  }
+
   const newSources = project.sources.map((source) => ({
     ...source,
     lines: source.lines.map((line) => ({
@@ -184,6 +204,7 @@ export function migrateHyphenation(
         : line.syllableBoxes,
     })),
     syllableCuts: remapRecord<StoredImage>(source.syllableCuts),
+    ...(source.annotations ? { annotations: remapAnnotations(source.annotations) } : {}),
   }));
 
   return {

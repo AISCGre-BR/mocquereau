@@ -15,6 +15,13 @@ import { sameNeumeBands, sortNeumeBands } from "../lib/neume-bands";
 import { frameOf, framesEqual, hasAnyBox, remapBox } from "@shared/box-frame";
 import type { BoxFrame, Classification, PageNotation } from "@shared/project-schema";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "@shared/classification";
+import { normalizeAnnotation, withAnnotation } from "@shared/annotation/annotation";
+import type {
+  ExportPrefs,
+  NeumeVocabulary,
+  SyllableAnnotation,
+  Tag,
+} from "@shared/annotation/types";
 import type { PendingEdits } from "./pendingEdits";
 import {
   canRedo,
@@ -37,6 +44,10 @@ export type ProjectAction =
   | { type: "RESET" }
   | { type: "SET_META"; payload: Partial<MocquereauProject["meta"]> }
   | { type: "SET_CLASSIFICATION"; payload: Classification }
+  | { type: "SET_ANNOTATION"; payload: { sourceId: string; syllable: number; annotation: SyllableAnnotation | null }; field?: string }
+  | { type: "SET_NEUME_VOCABULARY"; payload: NeumeVocabulary }
+  | { type: "SET_TAGS"; payload: Tag[] }
+  | { type: "SET_EXPORT_PREFS"; payload: ExportPrefs }
   | {
       type: "SET_TEXT";
       payload: { raw: string; words: SyllabifiedWord[]; hyphenationMode: HyphenationMode };
@@ -289,6 +300,34 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         isDirty: true,
       };
     }
+
+    case "SET_ANNOTATION": {
+      if (!state.project) return state;
+      const { sourceId, syllable, annotation } = action.payload;
+      const normalized = annotation ? normalizeAnnotation(annotation) : null;
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          sources: state.project.sources.map((src) =>
+            src.id === sourceId ? withAnnotation(src, syllable, normalized) : src,
+          ),
+        },
+        isDirty: true,
+      };
+    }
+
+    case "SET_NEUME_VOCABULARY":
+      if (!state.project) return state;
+      return { ...state, project: { ...state.project, neumeVocabulary: action.payload }, isDirty: true };
+
+    case "SET_TAGS":
+      if (!state.project) return state;
+      return { ...state, project: { ...state.project, tags: action.payload }, isDirty: true };
+
+    case "SET_EXPORT_PREFS":
+      if (!state.project) return state;
+      return { ...state, project: { ...state.project, exportPrefs: action.payload }, isDirty: true };
 
     case "SET_TEXT": {
       if (!state.project) return state;
@@ -634,6 +673,12 @@ export function historyMetaFor(action: ProjectAction): HistoryMeta | undefined {
       return { coalesceKey: `SET_META:${sortedKeys(action.payload)}` };
     case "SET_CLASSIFICATION":
       return { coalesceKey: "classification" };
+    case "SET_ANNOTATION":
+      return action.field
+        ? { coalesceKey: `ANNOTATION:${action.payload.sourceId}:${action.payload.syllable}:${action.field}` }
+        : undefined;
+    case "SET_EXPORT_PREFS":
+      return { undoable: false };
     case "UPDATE_SOURCE":
       return action.field ? { coalesceKey: `UPDATE_SOURCE:${action.payload.id}:${action.field}` } : undefined;
     case "UPDATE_SYLLABLE_TEXT":

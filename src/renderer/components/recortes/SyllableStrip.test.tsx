@@ -269,3 +269,20 @@ describe("SyllableStrip: sugestões (S3)", () => {
     expect(v.underline(1)).toBeNull();
   });
 });
+
+describe("SyllableStrip: sílabas anotadas", () => {
+  it("ponto discreto só sob a sílaba anotada; em rubric quando ativa", () => {
+    const v = mount({ annotated: new Set([2]), activeSyllable: null });
+    const dots = v.container.querySelectorAll("[data-annotated]");
+    expect(dots).toHaveLength(1);
+    expect(v.syl(2).querySelector("[data-annotated]")).toBe(dots[0]);
+    expect(dots[0].className).toContain("bg-ink-muted");
+    v.rerender(<SyllableStrip {...v.props} annotated={new Set([2])} activeSyllable={2} />);
+    expect(v.syl(2).querySelector("[data-annotated]")!.className).toContain("bg-rubric");
+  });
+
+  it("sem anotações, nenhum ponto", () => {
+    const v = mount();
+    expect(v.container.querySelector("[data-annotated]")).toBeNull();
+  });
+});

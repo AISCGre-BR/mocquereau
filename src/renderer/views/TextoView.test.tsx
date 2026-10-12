@@ -245,6 +245,50 @@ describe("TextoView: sílabas, texto e modo", () => {
   });
 });
 
+describe("TextoView: anotações sem recorte seguem a sílaba", () => {
+  // "Puer natus est" (sung): Pu-er na-tus est. Anotações em "na" (2) e "est" (4), sem caixas.
+  function annotated(): MocquereauProject {
+    const p = withSource(projectWith("Puer natus est"));
+    const s = p.sources[0];
+    return {
+      ...p,
+      sources: [{
+        ...s,
+        lines: [],
+        annotations: {
+          2: { neumes: [{ kind: "virga" }], tags: [] },
+          4: { neumes: [{ kind: "pes" }], tags: [] },
+        },
+      }],
+    };
+  }
+
+  it("texto que insere uma sílaba antes: a anotação de \"est\" passa ao novo índice", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<Harness project={annotated()} show />);
+    fireEvent.doubleClick(screen.getByTestId("texto-body"));
+    const editor = screen.getByPlaceholderText(textPlaceholder);
+    fireEvent.change(editor, { target: { value: "Puer renatus est" } });
+    fireEvent.blur(editor);
+    // Pu-er re-na-tus est: "natus" muda de contagem (anotação descartada), "est" vai de 4 a 5.
+    expect(latest.project?.text.raw).toBe("Puer renatus est");
+    expect(confirm.mock.calls[0][0]).toContain("Anotações descartadas (palavras com contagem diferente): 1");
+    expect(latest.project?.sources[0].annotations).toEqual({ 5: { neumes: [{ kind: "pes" }], tags: [] } });
+  });
+
+  it("troca de modo: as anotações seguem as sílabas", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<Harness project={annotated()} show />);
+    fireEvent.change(screen.getByLabelText(ptBR["texto.syllabification"]), { target: { value: "classical" } });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    // classical: Puer na-tus est.
+    expect(latest.project?.sources[0].annotations).toEqual({
+      1: { neumes: [{ kind: "virga" }], tags: [] },
+      3: { neumes: [{ kind: "pes" }], tags: [] },
+    });
+  });
+});
+
 describe("TextoView: próximos passos", () => {
   it("shows next-step actions only without sources", () => {
     const { unmount } = render(<Harness project={projectWith("Puer natus est")} show />);

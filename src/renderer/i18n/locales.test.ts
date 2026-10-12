@@ -34,6 +34,13 @@ const SAME_AS_EN: Record<string, "*" | readonly Translated[]> = {
   "newProject.step.text": ["de"],
   "newProject.mode.modern.name": ["de"],
   "newProject.mode.manual.name": ["es"],
+  "annotation.panel": ["de"],
+  "annotation.certainty.probable": ["es"],
+  "annotation.liquescence.augmentative": ["de", "pl"],
+  "annotation.liquescence.diminutive": ["it", "de", "pl"],
+  "annotation.episema": ["it", "es"],
+  "annotation.no": ["it", "es"],
+  "analysis.total": ["es"],
 };
 
 function allowed(key: string, lng: Translated): boolean {
@@ -74,5 +81,14 @@ describe("catálogos i18n", () => {
 
   it("a lista de exceções não tem chaves inexistentes", () => {
     expect(Object.keys(SAME_AS_EN).filter((key) => !(key in en))).toEqual([]);
+  });
+});
+
+describe("terminologia japonesa", () => {
+  const values = Object.values(ja as Catalog);
+  it("uma só grafia para liquescência, episema e número de notas", () => {
+    expect(values.filter((v) => v.includes("リクエスケンス"))).toEqual([]);
+    expect(values.filter((v) => v.includes("エピセマ"))).toEqual([]);
+    expect(values.filter((v) => /(?<!符)音数/.test(v))).toEqual([]);
   });
 });

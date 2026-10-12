@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { FileDown } from "lucide-react";
+import { FileDown, FileSpreadsheet } from "lucide-react";
 import { ProjectContext, useProject, useProjectReducer } from "./hooks/useProject";
 import { useProjectFile } from "./hooks/useProjectFile";
 import { createPendingEdits } from "./hooks/pendingEdits";
-import { Toaster } from "./ui/Toast";
+import { Toaster, useToast } from "./ui/Toast";
 import { Button } from "./ui/Button";
 import { AppShell } from "./shell/AppShell";
 import { MenuBar } from "./shell/MenuBar";
@@ -18,8 +18,14 @@ import { NewProjectGuide } from "./views/NewProjectGuide";
 import { TextoView } from "./views/TextoView";
 import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
+import { AnaliseView } from "./views/AnaliseView";
 import { ExportDialog } from "./components/ExportDialog";
+import { exportAnalysisCsv } from "./components/analysis/exportCsv";
+import { AnalysisFiltersProvider, projectHasAnnotations, pruneFilters, useAnalysisFilters } from "./components/analysis/AnalysisContext";
+import { FilterBar } from "./components/analysis/FilterBar";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
+import { TagsDialog } from "./components/annotation/TagsDialog";
+import { VocabularyDialog } from "./components/annotation/VocabularyDialog";
 import { RecortesTools } from "./components/recortes/RecortesTools";
 import { SuggestActions } from "./components/recortes/SuggestActions";
 import { TabelaTools } from "./components/table-preview/TabelaTools";
@@ -41,9 +47,11 @@ export function App() {
       <RecortesProvider>
         <TableZoomProvider>
           <SuggestionsProvider>
-            <Toaster dismissLabel={t("toast.dismiss")}>
-              <Workbench />
-            </Toaster>
+            <AnalysisFiltersProvider>
+              <Toaster dismissLabel={t("toast.dismiss")}>
+                <Workbench />
+              </Toaster>
+            </AnalysisFiltersProvider>
           </SuggestionsProvider>
         </TableZoomProvider>
       </RecortesProvider>
@@ -58,6 +66,26 @@ function Workbench() {
   const [view, setView] = useState<ViewId>("texto");
   const [exportOpen, setExportOpen] = useState(false);
   const [classificationOpen, setClassificationOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [vocabularyOpen, setVocabularyOpen] = useState(false);
+  const [analysisFilters, setAnalysisFilters] = useAnalysisFilters();
+  const toast = useToast();
+  // Painel Anotação da Recortes: preferência de interface, lembrada entre sessões.
+  const [annotationPanelOpen, setAnnotationPanelOpenState] = useState(false);
+  useEffect(() => {
+    let live = true;
+    window.mocquereau
+      .getAnnotationPanelOpen?.()
+      .then((open) => live && setAnnotationPanelOpenState(open === true))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  function setAnnotationPanelOpen(open: boolean) {
+    setAnnotationPanelOpenState(open);
+    void window.mocquereau.setAnnotationPanelOpen?.(open)?.catch(() => {});
+  }
   // Desfazer/Refazer troca o projeto por baixo das vistas. As que ainda guardam
   // cópias locais (campos do Texto) remontam para reler o projeto; Recortes lê o
   // projeto a cada render (D6) e fica montada, com a seleção e o zoom.
@@ -70,7 +98,7 @@ function Workbench() {
     });
     if (direction === "undo") history.undo();
     else history.redo();
-    pending?.bump();
+    pending?.bump("history");
     setHistoryEpoch((n) => n + 1);
   }
   const file = useProjectFile({ onOpened: () => setView("texto") });
@@ -80,9 +108,12 @@ function Workbench() {
   const setRecortesDialog = recortesCtx.setDialog;
   useEffect(() => {
     setClassificationOpen(false);
+    setTagsOpen(false);
+    setVocabularyOpen(false);
     setRecortesDialog(null);
     resetSourceTreeSession();
-  }, [file.projectEpoch, setRecortesDialog]);
+    setAnalysisFilters({});
+  }, [file.projectEpoch, setRecortesDialog, setAnalysisFilters]);
 
   // Fonte nova pedida pela Texto: Recortes abre o diálogo Fonte dela ao montar.
   const [newSourceId, setNewSourceId] = useState<string | null>(null);
@@ -97,9 +128,10 @@ function Workbench() {
 
   // Seleção e sílaba ativa vivem no provider; trocar de vista antes de apontar
   // deixa a Recortes já montada na página certa.
-  function openInRecortes(sourceId: string, syllable: number) {
+  function openInRecortes(sourceId: string, syllable: number, opts?: { annotate?: boolean }) {
     setView("recortes");
     recortesCtx.goTo({ sourceId, syllable });
+    if (opts?.annotate && !annotationPanelOpen) setAnnotationPanelOpen(true);
   }
 
   // "Salvar" no diálogo de fechar a janela: o main pede, o renderer salva (gravando
@@ -126,16 +158,27 @@ function Workbench() {
   const edited = !creating && project !== null && state.isDirty;
   const platform = window.mocquereau.platform;
 
+  // Exportar CSV… (barra da Análise e menu Arquivo): na Análise, com os filtros ativos (D9).
+  function exportCsv() {
+    if (!project) return;
+    exportAnalysisCsv(project, view === "analise" ? pruneFilters(project, analysisFilters) : {}, (key) => t(key))
+      .then((result) => {
+        if (result) toast.show({ kind: "ok", message: t("analysis.csvExported") });
+      })
+      .catch(() => toast.show({ kind: "error", message: t("analysis.csvError") }));
+  }
+
   const menus = buildMenus(
     {
       hasProject: !creating && project !== null,
       canExport,
+      hasAnnotations: project !== null && projectHasAnnotations(project),
       view,
       theme,
       language,
       canUndo: history?.canUndo ?? false,
       canRedo: history?.canRedo ?? false,
-      recortes: recortes.state,
+      recortes: recortes.state && { ...recortes.state, annotationPanelOpen },
     },
     {
       newProject: file.newProject,
@@ -144,7 +187,10 @@ function Workbench() {
       saveAs: () => void file.saveAs(),
       importGueranger: () => void file.importGueranger(),
       editClassification: () => setClassificationOpen(true),
+      editTags: () => setTagsOpen(true),
+      editVocabulary: () => setVocabularyOpen(true),
       exportDocx: () => setExportOpen(true),
+      exportCsv,
       closeProject: file.close,
       undo: () => stepHistory("undo"),
       redo: () => stepHistory("redo"),
@@ -163,6 +209,7 @@ function Workbench() {
       acceptAllSuggestions: recortes.acceptAllSuggestions,
       discardSuggestions: recortes.discardSuggestions,
       toggleSuggestions: recortes.toggleSuggestions,
+      toggleAnnotationPanel: () => setAnnotationPanelOpen(!annotationPanelOpen),
       clearRecent: () => {
         if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
         void window.mocquereau
@@ -192,7 +239,18 @@ function Workbench() {
             view={view}
             onViewChange={setView}
             platform={platform}
-            tools={view === "recortes" ? <RecortesTools /> : view === "tabela" ? <TabelaTools /> : undefined}
+            tools={
+              view === "recortes" ? (
+                <RecortesTools
+                  annotationPanelOpen={annotationPanelOpen}
+                  onToggleAnnotationPanel={() => setAnnotationPanelOpen(!annotationPanelOpen)}
+                />
+              ) : view === "tabela" ? (
+                <TabelaTools />
+              ) : view === "analise" ? (
+                <FilterBar />
+              ) : undefined
+            }
             primaryAction={
               view === "tabela" ? (
                 <Button
@@ -205,6 +263,15 @@ function Workbench() {
                 </Button>
               ) : view === "recortes" ? (
                 <SuggestActions />
+              ) : view === "analise" ? (
+                <Button
+                  variant="filled"
+                  icon={<FileSpreadsheet aria-hidden="true" />}
+                  disabled={!projectHasAnnotations(project)}
+                  onClick={exportCsv}
+                >
+                  {t("shell.file.exportCsv")}
+                </Button>
               ) : undefined
             }
           />
@@ -229,12 +296,24 @@ function Workbench() {
           {view === "texto" && (
             <TextoView onAddSource={addSourceInRecortes} onImportGueranger={() => void file.importGueranger()} />
           )}
-          {view === "recortes" && <RecortesView openSourceId={newSourceId} onOpenSourceHandled={() => setNewSourceId(null)} />}
+          {view === "recortes" && (
+            <RecortesView
+              openSourceId={newSourceId}
+              onOpenSourceHandled={() => setNewSourceId(null)}
+              annotationPanelOpen={annotationPanelOpen}
+              onCloseAnnotationPanel={() => setAnnotationPanelOpen(false)}
+            />
+          )}
           {view === "tabela" && <TabelaView onNavigateToEditor={openInRecortes} />}
+          {view === "analise" && (
+            <AnaliseView onOpenOccurrence={(sourceId, syllable) => openInRecortes(sourceId, syllable, { annotate: true })} />
+          )}
         </div>
       )}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
       {classificationOpen && project && !creating && <ClassificationDialog onClose={() => setClassificationOpen(false)} />}
+      {tagsOpen && project && !creating && <TagsDialog onClose={() => setTagsOpen(false)} />}
+      {vocabularyOpen && project && !creating && <VocabularyDialog onClose={() => setVocabularyOpen(false)} />}
     </AppShell>
   );
 }

@@ -1,0 +1,91 @@
+import { describe, it, expect } from "vitest";
+import { createDefaultVocabulary } from "./default-vocabulary";
+import { areEquivalent, filterKinds, restoreDefaults, getVocabulary, fold } from "./vocabulary";
+
+const t = (k: string) => k;
+
+describe("vocabulário padrão", () => {
+  const v = createDefaultVocabulary(t);
+  it("tem as três categorias e os itens da spec, com notas padrão", () => {
+    expect(v.categories.map((c) => c.id)).toEqual(["cat.simple", "cat.compound", "cat.ornamental"]);
+    const notes = Object.fromEntries(v.kinds.map((k) => [k.name, k.defaultNotes]));
+    expect(notes).toMatchObject({ virga: 1, uncinus: 1, pes: 2, "porrectus flexus": 4, ancus: 3, "pes quilismaticus": 3, trivirga: 3 });
+    expect(v.kinds).toHaveLength(32);
+    // Sem categoria de liquescentes (a liquescência tem campo próprio): os tipos ficam nos compostos,
+    // sem liquescência implícita.
+    for (const name of ["epiphonus", "cephalicus", "ancus", "torculus liquescens", "porrectus liquescens"]) {
+      const kind = v.kinds.find((k) => k.name === name)!;
+      expect(kind.categoryId).toBe("cat.compound");
+      expect(Object.keys(kind).sort()).toEqual(["categoryId", "defaultNotes", "id", "name"]);
+    }
+    expect(v.letters.map((l) => l.abbr)).toEqual(["c", "t", "a", "x", "e", "s", "m", "l", "i", "st", "nl"]);
+  });
+  it("uncinus equivale a tractulus e a virga", () => {
+    expect(v.kinds.find((k) => k.id === "uncinus")!.equivalentTo).toEqual(["tractulus", "virga"]);
+  });
+  it("equivalência é direta, nos dois sentidos, e não transitiva", () => {
+    expect(areEquivalent(v, "uncinus", "tractulus")).toBe(true);
+    expect(areEquivalent(v, "tractulus", "uncinus")).toBe(true);
+    expect(areEquivalent(v, "virga", "uncinus")).toBe(true);
+    expect(areEquivalent(v, "tractulus", "virga")).toBe(false);
+    expect(areEquivalent(v, "virga", "virga")).toBe(true);
+    expect(areEquivalent(v, "sumido", "sumido")).toBe(true);
+    expect(areEquivalent(v, "sumido", "virga")).toBe(false);
+  });
+  it("filtra por prefixo de palavra, sem acento nem caixa, ignorando ocultos", () => {
+    const w = structuredClone(v);
+    w.kinds.find((k) => k.id === "climacus")!.hidden = true;
+    const groups = filterKinds(w, "CL");
+    const names = groups.flatMap((g) => g.kinds.map((k) => k.name));
+    expect(names).toContain("clivis");
+    expect(names).not.toContain("climacus");
+    expect(names).toContain("climacus resupinus");
+    expect(filterKinds(w, "flex").flatMap((g) => g.kinds.map((k) => k.name))).toEqual(["porrectus flexus", "scandicus flexus"]);
+  });
+  it("nome exato de um tipo oculto (ou de categoria oculta) aparece mesmo assim", () => {
+    const w = structuredClone(v);
+    w.kinds.find((k) => k.id === "climacus")!.hidden = true;
+    expect(filterKinds(w, "Clímacus").flatMap((g) => g.kinds.map((k) => k.id))).toContain("climacus");
+    const cat = w.kinds.find((k) => k.id === "virga")!.categoryId;
+    w.categories.find((c) => c.id === cat)!.hidden = true;
+    const ids = filterKinds(w, "virga").flatMap((g) => g.kinds.map((k) => k.id));
+    expect(ids).toContain("virga");
+    expect(ids).not.toContain("tractulus");
+    expect(filterKinds(w, "vir").flatMap((g) => g.kinds.map((k) => k.id))).not.toContain("virga");
+  });
+  it("tipos sem categoria (ou de categoria inexistente) vêm num grupo final com category null", () => {
+    const w = structuredClone(v);
+    w.kinds.push({ id: "solto", name: "pes solto" }, { id: "orfao", categoryId: "cat.nada", name: "pes orfao", defaultNotes: 2 });
+    w.kinds.push({ id: "escondido", name: "pes escondido", hidden: true });
+    const groups = filterKinds(w, "pes");
+    const last = groups[groups.length - 1];
+    expect(last.category).toBeNull();
+    expect(last.kinds.map((k) => k.id)).toEqual(["solto", "orfao"]);
+    expect(groups.slice(0, -1).every((g) => g.category !== null)).toBe(true);
+    expect(filterKinds(w, "pes escondido").at(-1)!.kinds.map((k) => k.id)).toEqual(["escondido"]);
+    expect(filterKinds(v, "").every((g) => g.category !== null)).toBe(true);
+  });
+  it("restaurar padrão acrescenta o que falta e mantém o que o usuário criou", () => {
+    const w = structuredClone(v);
+    w.kinds = w.kinds.filter((k) => k.id !== "pes");
+    w.kinds.push({ id: "meu", categoryId: "cat.simple", name: "meu", defaultNotes: 1 });
+    const r = restoreDefaults(w, t);
+    expect(r.kinds.some((k) => k.id === "pes")).toBe(true);
+    expect(r.kinds.some((k) => k.id === "meu")).toBe(true);
+  });
+  it("getVocabulary devolve o do projeto ou o padrão", () => {
+    expect(getVocabulary({}, t).kinds).toHaveLength(32);
+    expect(getVocabulary({ neumeVocabulary: { categories: [], kinds: [], letters: [] } }, t).kinds).toHaveLength(0);
+  });
+});
+
+describe("fold", () => {
+  it("ignora acentos latinos e maiúsculas", () => {
+    expect(fold("Épisème")).toBe("episeme");
+  });
+
+  it("mantém distintos ハ e バ (o dakuten não é diacrítico latino)", () => {
+    expect(fold("バ")).not.toBe(fold("ハ"));
+    expect(fold("バ")).toBe("バ");
+  });
+});

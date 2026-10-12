@@ -16,12 +16,15 @@ export function hasManualEdits(project: MocquereauProject): boolean {
   return JSON.stringify(words) !== JSON.stringify(syllabifyText(raw, hyphenationMode));
 }
 
-/** Dados indexados por sílaba (caixas, intervalos) que precisam de remapeamento. */
+/** Dados indexados por sílaba (caixas, intervalos, recortes, anotações) que precisam de remapeamento. */
 function hasAnyBoxes(project: MocquereauProject): boolean {
-  return project.sources.some((s) =>
-    s.lines.some(
-      (l) => (l.syllableBoxes && Object.keys(l.syllableBoxes).length > 0) || (l.gaps && l.gaps.length > 0),
-    ),
+  return project.sources.some(
+    (s) =>
+      s.lines.some(
+        (l) => (l.syllableBoxes && Object.keys(l.syllableBoxes).length > 0) || (l.gaps && l.gaps.length > 0),
+      ) ||
+      Object.keys(s.syllableCuts ?? {}).length > 0 ||
+      Object.keys(s.annotations ?? {}).length > 0,
   );
 }
 
@@ -29,6 +32,8 @@ function hasAnyBoxes(project: MocquereauProject): boolean {
 function buildMigrationMessage(t: T, head: string, stats: MigrationStats): string {
   const kept = t("texto.migration.kept", { count: stats.preservedBoxes });
   const dropped = t("texto.migration.dropped", { count: stats.droppedBoxes });
+  const droppedAnnotations =
+    stats.droppedAnnotations > 0 ? t("texto.migration.droppedAnnotations", { count: stats.droppedAnnotations }) : "";
   const total = t("texto.migration.total", {
     oldCount: stats.oldSyllableCount,
     newCount: stats.newSyllableCount,
@@ -45,7 +50,7 @@ function buildMigrationMessage(t: T, head: string, stats: MigrationStats): strin
           : "")
       : t("texto.migration.noChangedWords");
   const foot = stats.droppedBoxes > 0 ? t("texto.migration.footDropped") : t("texto.migration.footContinue");
-  return [head, kept, dropped, total, wordsList, foot].join("");
+  return [head, kept, dropped, droppedAnnotations, total, wordsList, foot].join("");
 }
 
 const syllableCount = (words: { syllables: string[] }[]) => words.reduce((n, w) => n + w.syllables.length, 0);
