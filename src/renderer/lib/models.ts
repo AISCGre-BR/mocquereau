@@ -3,6 +3,7 @@
 import type { RecentEntry, RecentMeta } from "@shared/recent";
 import type { Annotations, ExportPrefs, NeumeVocabulary, Tag } from "@shared/annotation/types";
 import type { CsvExportPayload } from "@shared/analysis/csv";
+import type { IndicatorTable } from "@shared/analysis/indicator-tables";
 import type { BoxFrame, Classification, ImageBytesPayload, PageNotation, ImageRef, SourceMetadata } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
@@ -375,4 +376,6 @@ export interface DocxExportPayload {
    * Duplicated from DocxCellData.isWordBoundary for convenience when building header rows.
    */
   wordBoundaries: boolean[];
+  /** Optional appendix with the project-wide indicators, as ready-made text tables. */
+  indicators?: { title: string; tables: IndicatorTable[] };
 }
