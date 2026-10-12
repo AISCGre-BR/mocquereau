@@ -296,5 +296,9 @@
   "sourceTree.menu.notationAdiastematic": "Adiastematic",
   "sourceTree.menu.notationDiastematic": "Diastematic",
   "recortes.tools.neumeBand": "Mark neume line",
-  "recortes.band.delete": "Delete band"
+  "recortes.band.delete": "Delete band",
+  "annotation.category.simple": "Simple",
+  "annotation.category.compound": "Compound",
+  "annotation.category.liquescent": "Liquescent",
+  "annotation.category.ornamental": "Ornamental and repercussive"
 }

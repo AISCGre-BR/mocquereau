@@ -296,5 +296,9 @@
   "sourceTree.menu.notationAdiastematic": "Adiastemática",
   "sourceTree.menu.notationDiastematic": "Diastemática",
   "recortes.tools.neumeBand": "Marcar línea de neumas",
-  "recortes.band.delete": "Borrar área"
+  "recortes.band.delete": "Borrar área",
+  "annotation.category.simple": "Simples",
+  "annotation.category.compound": "Compuestos",
+  "annotation.category.liquescent": "Licuescentes",
+  "annotation.category.ornamental": "Ornamentales y repercusivos"
 }

@@ -296,5 +296,9 @@
   "sourceTree.menu.notationAdiastematic": "Adiastematyczna",
   "sourceTree.menu.notationDiastematic": "Diastematyczna",
   "recortes.tools.neumeBand": "Zaznacz linię neum",
-  "recortes.band.delete": "Usuń obszar"
+  "recortes.band.delete": "Usuń obszar",
+  "annotation.category.simple": "Proste",
+  "annotation.category.compound": "Złożone",
+  "annotation.category.liquescent": "Likwescencyjne",
+  "annotation.category.ornamental": "Ozdobne i repetycyjne"
 }

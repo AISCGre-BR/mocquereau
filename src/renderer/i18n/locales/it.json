@@ -296,5 +296,9 @@
   "sourceTree.menu.notationAdiastematic": "Adiastematica",
   "sourceTree.menu.notationDiastematic": "Diastematica",
   "recortes.tools.neumeBand": "Segna la riga dei neumi",
-  "recortes.band.delete": "Elimina area"
+  "recortes.band.delete": "Elimina area",
+  "annotation.category.simple": "Semplici",
+  "annotation.category.compound": "Composti",
+  "annotation.category.liquescent": "Liquescenti",
+  "annotation.category.ornamental": "Ornamentali e ripercussivi"
 }

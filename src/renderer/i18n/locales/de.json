@@ -296,5 +296,9 @@
   "sourceTree.menu.notationAdiastematic": "Adiastematisch",
   "sourceTree.menu.notationDiastematic": "Diastematisch",
   "recortes.tools.neumeBand": "Neumenzeile markieren",
-  "recortes.band.delete": "Bereich löschen"
+  "recortes.band.delete": "Bereich löschen",
+  "annotation.category.simple": "Einfache",
+  "annotation.category.compound": "Zusammengesetzte",
+  "annotation.category.liquescent": "Liqueszierende",
+  "annotation.category.ornamental": "Ornamentale und repetierende"
 }

@@ -296,5 +296,9 @@
   "sourceTree.menu.notationAdiastematic": "アディアステマ式",
   "sourceTree.menu.notationDiastematic": "ディアステマ式",
   "recortes.tools.neumeBand": "ネウマの行を指定",
-  "recortes.band.delete": "領域を削除"
+  "recortes.band.delete": "領域を削除",
+  "annotation.category.simple": "単純ネウマ",
+  "annotation.category.compound": "複合ネウマ",
+  "annotation.category.liquescent": "リクエッセンス",
+  "annotation.category.ornamental": "装飾・反復ネウマ"
 }
