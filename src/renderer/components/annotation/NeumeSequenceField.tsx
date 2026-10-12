@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { Button } from "../../ui/Button";
 import { filterKinds, fold, kindMap } from "@shared/annotation/vocabulary";
+import { ownsKey } from "./keys";
 import type { NeumeItem, NeumeKind, NeumeVocabulary } from "@shared/annotation/types";
 
 export interface NeumeKindDraft {
@@ -25,12 +26,6 @@ export interface NeumeSequenceFieldProps {
 type Option = { type: "kind"; kind: NeumeKind } | { type: "create" };
 
 const keepFocus = (e: MouseEvent) => e.preventDefault();
-
-/** Keys a text field consumes; stopped so the Recortes window shortcuts don't also run. */
-function ownsKey(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey) return false;
-  return ["Backspace", "Delete", "Enter", "Escape", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key);
-}
 
 const NOTES = /^\s*\d+\s*$/;
 
@@ -151,8 +146,10 @@ export function NeumeSequenceField({
         }
         return;
       case "Escape":
-        e.preventDefault();
+        // Consumed only when it closes the list; otherwise it reaches the popover (closes it).
         if (open) {
+          e.preventDefault();
+          e.stopPropagation();
           setOpen(false);
           setForm(null);
         } else {
@@ -179,6 +176,7 @@ export function NeumeSequenceField({
     if (ownsKey(e)) e.stopPropagation();
     if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation();
       closeForm();
     }
   }

@@ -97,12 +97,15 @@ export function TagsField({ id, label, value, tags, onCommit }: TagsFieldProps) 
         else commit();
         return;
       case "Escape":
-        e.preventDefault();
+        // Consumed only when it closes the suggestions or discards a draft; otherwise it
+        // reaches the popover (closes it).
         if (open) setDismissed(true);
-        else {
+        else if (draft !== null) {
           setDraft(null);
           setActive(-1);
-        }
+        } else return;
+        e.preventDefault();
+        e.stopPropagation();
         return;
     }
   }

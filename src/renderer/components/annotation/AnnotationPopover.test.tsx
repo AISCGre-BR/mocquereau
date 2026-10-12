@@ -50,6 +50,33 @@ describe("AnnotationPopover", () => {
     expect(document.activeElement).toBe(anchor);
   });
 
+  it("Esc in the comment textarea closes the popover", () => {
+    const { onClose } = mount();
+    const textarea = screen.getByLabelText("Observação");
+    textarea.focus();
+    fireEvent.keyDown(textarea, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Esc in the Neumas input: the 1st closes the list, the 2nd closes the popover", () => {
+    const { onClose } = mount();
+    const input = screen.getByRole("combobox", { name: "Neumas" });
+    fireEvent.focus(input);
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Esc in the Etiquetas input closes the popover", () => {
+    const { onClose } = mount();
+    const input = screen.getByLabelText("Etiquetas");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("pointerdown outside closes", () => {
     const { onClose } = mount();
     fireEvent.pointerDown(document.body);
