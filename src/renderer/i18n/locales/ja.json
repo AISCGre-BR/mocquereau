@@ -283,6 +283,7 @@
   "recortes.menu.acceptAll": "すべての提案を承認",
   "recortes.menu.discard": "提案を破棄",
   "recortes.menu.suggestionsEnabled": "ネウマの提案",
+  "recortes.annotationPanel": "注釈パネル",
   "recortes.notice.needsBand": "ネウマの行の上をドラッグしてください",
   "recortes.notice.none": "ネウマが見つかりません",
   "recortes.notice.error": "提案できませんでした",

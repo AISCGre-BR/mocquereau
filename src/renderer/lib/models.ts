@@ -297,6 +297,9 @@ export interface MocquereauAPI {
   getSuggestionsEnabled: () => Promise<boolean>;
   /** Grava a preferência; devolve o valor gravado (não booleano é ignorado). */
   setSuggestionsEnabled: (on: boolean) => Promise<boolean>;
+  /** Painel Anotação da vista Recortes; padrão false (fechado). */
+  getAnnotationPanelOpen: () => Promise<boolean>;
+  setAnnotationPanelOpen: (open: boolean) => Promise<void>;
   platform: string;
 }
 

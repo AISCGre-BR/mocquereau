@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { IconButton } from "../../ui/IconButton";
@@ -17,6 +18,12 @@ export interface AnnotationPanelProps {
 /** Right-hand "Anotação" panel of the Recortes view. */
 export function AnnotationPanel({ target, syllableText, sourceName, onClose, onNext }: AnnotationPanelProps) {
   const { t } = useTranslation();
+  // After Ctrl+Enter the editor of the next syllable takes the focus back to Neumas.
+  // Only that once: a syllable picked on the strip or the sheet leaves the focus where it is.
+  const [advanced, setAdvanced] = useState(false);
+  useEffect(() => {
+    if (advanced) setAdvanced(false);
+  }, [advanced]);
   return (
     <aside
       aria-label={t("annotation.panel")}
@@ -37,7 +44,16 @@ export function AnnotationPanel({ target, syllableText, sourceName, onClose, onN
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
         {target ? (
-          <AnnotationEditor key={`${target.sourceId}:${target.syllable}`} target={target} variant="full" onNext={onNext} />
+          <AnnotationEditor
+            key={`${target.sourceId}:${target.syllable}`}
+            target={target}
+            variant="full"
+            autoFocus={advanced}
+            onNext={() => {
+              setAdvanced(true);
+              onNext();
+            }}
+          />
         ) : (
           <p className="font-sans text-sm text-ink-muted">{t("annotation.chooseSyllable")}</p>
         )}

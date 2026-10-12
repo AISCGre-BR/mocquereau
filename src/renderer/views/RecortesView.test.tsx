@@ -87,7 +87,11 @@ function MenuShortcuts() {
 }
 
 /** Real document reducer (with history) around the view. */
-function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClient()) {
+function mount(
+  project: MocquereauProject,
+  client: NeumeDetectClient = fakeClient(),
+  viewProps: React.ComponentProps<typeof RecortesView> = {},
+) {
   const ref: {
     state?: ProjectState;
     dispatch?: React.Dispatch<DocumentAction>;
@@ -114,7 +118,7 @@ function mount(project: MocquereauProject, client: NeumeDetectClient = fakeClien
             <div role="toolbar" aria-label="Barra">
               <SuggestActions />
             </div>
-            {viewShown && <RecortesView />}
+            {viewShown && <RecortesView {...viewProps} />}
           </SuggestionsProvider>
         </RecortesProvider>
       </ProjectContext.Provider>
@@ -525,6 +529,51 @@ describe("RecortesView: atalhos", () => {
     expect(v.line().syllableBoxes![1]).toEqual(BOX);
     expect(v.line().syllableBoxes![0]!.x).toBeCloseTo(0.1 + 1 / 200, 9);
     expect(v.ref.history!.canUndo).toBe(true);
+  });
+});
+
+describe("RecortesView: painel Anotação", () => {
+  it("fechado por padrão: nenhum painel", () => {
+    const v = mount(projectWith());
+    expect(v.container.querySelector("[data-annotation-panel]")).toBeNull();
+  });
+
+  it("aberto: mostra a sílaba ativa e a fonte; Ctrl+Enter avança a sílaba e mantém o foco em Neumas", () => {
+    const onClose = vi.fn();
+    const v = mount(projectWith(), fakeClient(), { annotationPanelOpen: true, onCloseAnnotationPanel: onClose });
+    const panel = v.getByRole("complementary", { name: "Anotação" });
+    expect(within(panel).getByText("Pu")).toBeTruthy();
+    expect(within(panel).getByText("A")).toBeTruthy();
+    const neumes = within(panel).getByRole("combobox", { name: "Neumas" });
+    act(() => neumes.focus());
+    act(() => void fireEvent.keyDown(neumes, { key: "Enter", ctrlKey: true }));
+    expect(v.ref.recortes!.activeSyllable).toBe(1);
+    expect(within(panel).getByText("er")).toBeTruthy();
+    expect(document.activeElement).toBe(within(panel).getByRole("combobox", { name: "Neumas" }));
+    // A página não muda (Ctrl+Enter do painel não é Próxima fonte).
+    expect(v.line().syllableRange).toEqual({ start: 0, end: 3 });
+    fireEvent.click(within(panel).getByRole("button", { name: "Fechar painel" }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("Ctrl+Enter para na última sílaba do texto", () => {
+    const v = mount(projectWith(), fakeClient(), { annotationPanelOpen: true });
+    act(() => v.ref.recortes!.setActiveSyllable(4));
+    const neumes = v.getByRole("combobox", { name: "Neumas" });
+    act(() => void fireEvent.keyDown(neumes, { key: "Enter", ctrlKey: true }));
+    expect(v.ref.recortes!.activeSyllable).toBe(4);
+  });
+
+  it("Tab, setas e Delete dentro do painel não disparam os atalhos da vista", () => {
+    const v = mount(projectWith(), fakeClient(), { annotationPanelOpen: true });
+    const panel = v.getByRole("complementary", { name: "Anotação" });
+    const target = within(panel).getAllByRole("button")[0];
+    act(() => void fireEvent.keyDown(target, { key: "Tab" }));
+    expect(v.ref.recortes!.activeSyllable).toBe(0);
+    const before = v.line().syllableBoxes;
+    act(() => void fireEvent.keyDown(panel, { key: "ArrowRight" }));
+    act(() => void fireEvent.keyDown(panel, { key: "Delete" }));
+    expect(v.line().syllableBoxes).toEqual(before);
   });
 });
 

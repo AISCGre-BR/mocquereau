@@ -283,6 +283,7 @@
   "recortes.menu.acceptAll": "Alle Vorschläge übernehmen",
   "recortes.menu.discard": "Vorschläge verwerfen",
   "recortes.menu.suggestionsEnabled": "Neumenvorschläge",
+  "recortes.annotationPanel": "Annotationsbereich",
   "recortes.notice.needsBand": "Über die Neumenzeile ziehen",
   "recortes.notice.none": "Keine Neumen gefunden",
   "recortes.notice.error": "Vorschlag nicht möglich",

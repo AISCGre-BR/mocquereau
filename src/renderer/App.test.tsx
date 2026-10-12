@@ -364,6 +364,23 @@ describe("App", () => {
     expect(container.querySelector("[data-box-overlay]")).toBeNull();
     expect(container.querySelector('[role=treeitem][aria-selected=true][data-line-id="line-2"]')).not.toBeNull();
   });
+  it("Recortes: painel Anotação lembrado da preferência; Ctrl+Shift+A o fecha e grava", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.mocquereau.getAnnotationPanelOpen = vi.fn().mockResolvedValue(true);
+    window.mocquereau.setAnnotationPanelOpen = vi.fn().mockResolvedValue(undefined);
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    expect(container.querySelector("[data-annotation-panel]")).toBeNull();
+    ctrl("2");
+    expect(container.querySelector("[data-annotation-panel]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Painel Anotação" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.keyDown(window, { key: "A", ctrlKey: true, shiftKey: true });
+    expect(container.querySelector("[data-annotation-panel]")).toBeNull();
+    expect(window.mocquereau.setAnnotationPanelOpen).toHaveBeenCalledWith(false);
+  });
+
   it("abrir outro projeto esquece as fontes abertas na árvore do Recortes", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const project = projectWithBox();

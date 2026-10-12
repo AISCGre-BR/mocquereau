@@ -283,6 +283,7 @@
   "recortes.menu.acceptAll": "Accept all suggestions",
   "recortes.menu.discard": "Discard suggestions",
   "recortes.menu.suggestionsEnabled": "Neume suggestions",
+  "recortes.annotationPanel": "Annotation panel",
   "recortes.notice.needsBand": "Drag over the line of neumes",
   "recortes.notice.none": "No neumes found",
   "recortes.notice.error": "Could not suggest",

@@ -13,6 +13,7 @@ import { CloseFlow, SaveThenClose, closeChoiceFromResponse, createQuitGuard } fr
 import { SaveQueue } from './save-queue';
 import { SUGGESTED_CLASSIFICATION, cloneClassification, type Classification } from '../shared/classification';
 import { readClassification } from '../shared/validate';
+import { registerAnnotationPanelPrefHandlers } from './annotation-pref';
 
 interface UserPrefs {
   language: string;
@@ -20,6 +21,8 @@ interface UserPrefs {
   classification?: Classification;
   /** "Sugestões de neumas" (S8). */
   suggestionsEnabled?: boolean;
+  /** Painel Anotação of the Recortes view. */
+  annotationPanelOpen?: boolean;
 }
 
 const userPrefs = new Conf<UserPrefs>({
@@ -235,6 +238,7 @@ function registerSystemHandlers(): void {
     if (typeof value === "boolean") userPrefs.set('suggestionsEnabled', value);
     return userPrefs.get('suggestionsEnabled') !== false;
   });
+  registerAnnotationPanelPrefHandlers(ipcMain, userPrefs);
 }
 
 app.whenReady().then(async () => {

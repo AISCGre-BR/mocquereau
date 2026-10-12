@@ -35,6 +35,7 @@ function actions(): MenuActions {
     acceptAllSuggestions: vi.fn(),
     discardSuggestions: vi.fn(),
     toggleSuggestions: vi.fn(),
+    toggleAnnotationPanel: vi.fn(),
   };
 }
 
@@ -221,6 +222,7 @@ describe("buildMenus", () => {
       ["recortes.clearPage", "recortes.menu.clearPage", undefined, false],
       ["recortes.realign", "recortes.menu.realign", undefined, true],
       ["recortes.suggestionsEnabled", "recortes.menu.suggestionsEnabled", undefined, false],
+      ["recortes.annotationPanel", "recortes.annotationPanel", "Ctrl+Shift+A", false],
       ["recortes.nextSource", "recortes.menu.nextSource", "Ctrl+Enter", false],
     ]);
     for (const id of ["recortes.removeBox", "recortes.clearPage", "recortes.realign", "recortes.nextSource"]) find(menus, id).onSelect();
@@ -231,6 +233,19 @@ describe("buildMenus", () => {
     // Sem estado do Recortes, tudo desabilitado.
     const bare = buildMenus({ ...base, view: "recortes" }, a, t).find((m) => m.id === "recortes")!;
     expect(flat(bare.items).every((i) => i.disabled)).toBe(true);
+  });
+
+  it("menu Recortes: Painel Anotação (Ctrl+Shift+A) alterna o painel e mostra se está aberto", () => {
+    const a = actions();
+    const recortes = { ...NO_SUGGESTIONS, canRemoveBox: false, canClearPage: false, canRealign: false, hasNextSource: false };
+    const closed = buildMenus({ ...base, view: "recortes", recortes }, a, t);
+    const item = find(closed, "recortes.annotationPanel");
+    expect(item.accelerator).toBe("Ctrl+Shift+A");
+    expect(item.checked).toBe(false);
+    item.onSelect();
+    expect(a.toggleAnnotationPanel).toHaveBeenCalledOnce();
+    const open = buildMenus({ ...base, view: "recortes", recortes: { ...recortes, annotationPanelOpen: true } }, a, t);
+    expect(find(open, "recortes.annotationPanel").checked).toBe(true);
   });
 
   it("menu Recortes: sugestões com a preferência ligada (S6, S8, S10)", () => {

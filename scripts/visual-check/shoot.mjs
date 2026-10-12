@@ -122,6 +122,8 @@ const stub = ({ theme, data, emptyRecent }) => {
     setTheme: async () => true,
     getSuggestionsEnabled: async () => true,
     setSuggestionsEnabled: async (on) => on,
+    getAnnotationPanelOpen: async () => false,
+    setAnnotationPanelOpen: async () => {},
   };
 };
 

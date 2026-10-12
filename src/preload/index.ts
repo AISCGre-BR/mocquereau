@@ -102,4 +102,10 @@ contextBridge.exposeInMainWorld("mocquereau", {
 
   setSuggestionsEnabled: (on: boolean) =>
     ipcRenderer.invoke("settings:set-suggestions", on),
+
+  getAnnotationPanelOpen: () =>
+    ipcRenderer.invoke("settings:get-annotation-panel"),
+
+  setAnnotationPanelOpen: (open: boolean) =>
+    ipcRenderer.invoke("settings:set-annotation-panel", open),
 });

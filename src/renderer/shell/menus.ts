@@ -31,6 +31,8 @@ export interface RecortesMenuState {
   canSuggestSource: boolean;
   /** The active page shows suggestions. */
   hasSuggestions: boolean;
+  /** Painel Anotação (a preference kept by the App). */
+  annotationPanelOpen?: boolean;
 }
 
 export interface RecortesMenuActions {
@@ -43,9 +45,12 @@ export interface RecortesMenuActions {
   acceptAllSuggestions: () => void;
   discardSuggestions: () => void;
   toggleSuggestions: () => void;
+  /** Painel Anotação; without it (the sheet's context menu) the item is left out. */
+  toggleAnnotationPanel?: () => void;
 }
 
 export interface MenuActions extends RecortesMenuActions {
+  toggleAnnotationPanel: () => void;
   newProject: () => void;
   open: () => void;
   save: () => void;
@@ -104,6 +109,18 @@ export function recortesMenuItems(
       : []),
     { id: "recortes.suggestionsEnabled", label: t("recortes.menu.suggestionsEnabled"), checked: s.suggestionsEnabled, disabled: state === undefined, onSelect: actions.toggleSuggestions },
     "separator",
+    ...(actions.toggleAnnotationPanel
+      ? ([
+          {
+            id: "recortes.annotationPanel",
+            label: t("recortes.annotationPanel"),
+            accelerator: "Ctrl+Shift+A",
+            checked: !!s.annotationPanelOpen,
+            disabled: state === undefined,
+            onSelect: actions.toggleAnnotationPanel,
+          },
+        ] satisfies MenuCommand[])
+      : []),
     { id: "recortes.nextSource", label: t("recortes.menu.nextSource"), accelerator: "Ctrl+Enter", nativeInTextInput: true, disabled: !s.hasNextSource, onSelect: actions.nextSource },
   ];
 }

@@ -62,6 +62,22 @@ function Workbench() {
   const [classificationOpen, setClassificationOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [vocabularyOpen, setVocabularyOpen] = useState(false);
+  // Painel Anotação da Recortes: preferência de interface, lembrada entre sessões.
+  const [annotationPanelOpen, setAnnotationPanelOpenState] = useState(false);
+  useEffect(() => {
+    let live = true;
+    window.mocquereau
+      .getAnnotationPanelOpen?.()
+      .then((open) => live && setAnnotationPanelOpenState(open === true))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  function setAnnotationPanelOpen(open: boolean) {
+    setAnnotationPanelOpenState(open);
+    void window.mocquereau.setAnnotationPanelOpen?.(open)?.catch(() => {});
+  }
   // Desfazer/Refazer troca o projeto por baixo das vistas. As que ainda guardam
   // cópias locais (campos do Texto) remontam para reler o projeto; Recortes lê o
   // projeto a cada render (D6) e fica montada, com a seleção e o zoom.
@@ -103,9 +119,10 @@ function Workbench() {
 
   // Seleção e sílaba ativa vivem no provider; trocar de vista antes de apontar
   // deixa a Recortes já montada na página certa.
-  function openInRecortes(sourceId: string, syllable: number) {
+  function openInRecortes(sourceId: string, syllable: number, opts?: { annotate?: boolean }) {
     setView("recortes");
     recortesCtx.goTo({ sourceId, syllable });
+    if (opts?.annotate && !annotationPanelOpen) setAnnotationPanelOpen(true);
   }
 
   // "Salvar" no diálogo de fechar a janela: o main pede, o renderer salva (gravando
@@ -141,7 +158,7 @@ function Workbench() {
       language,
       canUndo: history?.canUndo ?? false,
       canRedo: history?.canRedo ?? false,
-      recortes: recortes.state,
+      recortes: recortes.state && { ...recortes.state, annotationPanelOpen },
     },
     {
       newProject: file.newProject,
@@ -171,6 +188,7 @@ function Workbench() {
       acceptAllSuggestions: recortes.acceptAllSuggestions,
       discardSuggestions: recortes.discardSuggestions,
       toggleSuggestions: recortes.toggleSuggestions,
+      toggleAnnotationPanel: () => setAnnotationPanelOpen(!annotationPanelOpen),
       clearRecent: () => {
         if (!window.confirm(t("shell.file.clearRecentConfirm"))) return;
         void window.mocquereau
@@ -200,7 +218,16 @@ function Workbench() {
             view={view}
             onViewChange={setView}
             platform={platform}
-            tools={view === "recortes" ? <RecortesTools /> : view === "tabela" ? <TabelaTools /> : undefined}
+            tools={
+              view === "recortes" ? (
+                <RecortesTools
+                  annotationPanelOpen={annotationPanelOpen}
+                  onToggleAnnotationPanel={() => setAnnotationPanelOpen(!annotationPanelOpen)}
+                />
+              ) : view === "tabela" ? (
+                <TabelaTools />
+              ) : undefined
+            }
             primaryAction={
               view === "tabela" ? (
                 <Button
@@ -237,7 +264,14 @@ function Workbench() {
           {view === "texto" && (
             <TextoView onAddSource={addSourceInRecortes} onImportGueranger={() => void file.importGueranger()} />
           )}
-          {view === "recortes" && <RecortesView openSourceId={newSourceId} onOpenSourceHandled={() => setNewSourceId(null)} />}
+          {view === "recortes" && (
+            <RecortesView
+              openSourceId={newSourceId}
+              onOpenSourceHandled={() => setNewSourceId(null)}
+              annotationPanelOpen={annotationPanelOpen}
+              onCloseAnnotationPanel={() => setAnnotationPanelOpen(false)}
+            />
+          )}
           {view === "tabela" && <TabelaView onNavigateToEditor={openInRecortes} />}
         </div>
       )}

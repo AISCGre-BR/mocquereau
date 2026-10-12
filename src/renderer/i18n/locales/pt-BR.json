@@ -283,6 +283,7 @@
   "recortes.menu.acceptAll": "Aceitar todas as sugestões",
   "recortes.menu.discard": "Descartar sugestões",
   "recortes.menu.suggestionsEnabled": "Sugestões de neumas",
+  "recortes.annotationPanel": "Painel Anotação",
   "recortes.notice.needsBand": "Arraste sobre a linha de neumas",
   "recortes.notice.none": "Nenhum neuma encontrado",
   "recortes.notice.error": "Não foi possível sugerir",

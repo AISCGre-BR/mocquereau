@@ -283,6 +283,7 @@
   "recortes.menu.acceptAll": "Akceptuj wszystkie propozycje",
   "recortes.menu.discard": "Odrzuć propozycje",
   "recortes.menu.suggestionsEnabled": "Propozycje neum",
+  "recortes.annotationPanel": "Panel adnotacji",
   "recortes.notice.needsBand": "Przeciągnij nad linią neum",
   "recortes.notice.none": "Nie znaleziono neum",
   "recortes.notice.error": "Nie udało się zaproponować",
