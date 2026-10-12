@@ -11,6 +11,7 @@ import { NotesInput } from "./NotesInput";
 import { TagsField } from "./TagsField";
 import { isCtrlEnter, stopOwnedKeys } from "./keys";
 import { useAnnotation, type AnnotationTarget } from "./useAnnotation";
+import { usePendingFlush } from "../../hooks/pendingEdits";
 
 export interface AnnotationEditorProps {
   target: AnnotationTarget;
@@ -51,6 +52,13 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
     const el = document.activeElement;
     if (el instanceof HTMLElement && rootRef.current?.contains(el)) el.blur();
   };
+
+  // Text typed in Neumas and not yet committed: flushed before document actions (save, new,
+  // open, close, undo) and on unmount (panel closed, next syllable, popover closed). The unmount
+  // flush is skipped when the document was swapped since mount (pending epoch), so the text
+  // never lands in another project.
+  const neumesFlush = useRef<(() => boolean) | null>(null);
+  usePendingFlush(() => neumesFlush.current?.() ?? false);
 
   const neumesId = `${baseId}-neumes`;
   useEffect(() => {
@@ -104,6 +112,7 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
           selectedIndex={selected}
           onSelect={select}
           onCreateKind={createKind}
+          flushRef={neumesFlush}
         />
       </div>
 

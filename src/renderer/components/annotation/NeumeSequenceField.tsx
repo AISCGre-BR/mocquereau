@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { Button } from "../../ui/Button";
@@ -22,6 +22,11 @@ export interface NeumeSequenceFieldProps {
   /** Adds the kind to the project vocabulary and returns its id. */
   onCreateKind: (draft: NeumeKindDraft) => string;
   id?: string;
+  /**
+   * Receives a function that commits the pending text (as leaving the field does) and returns
+   * whether there was any. The owner calls it on unmount and before document actions.
+   */
+  flushRef?: MutableRefObject<(() => boolean) | null>;
 }
 
 type Option = { type: "kind"; kind: NeumeKind } | { type: "create" };
@@ -45,6 +50,7 @@ export function NeumeSequenceField({
   onSelect,
   onCreateKind,
   id,
+  flushRef,
 }: NeumeSequenceFieldProps) {
   const { t } = useTranslation();
   const baseId = useId();
@@ -122,12 +128,15 @@ export function NeumeSequenceField({
     commitNames([pending]);
   }
 
-  // Unmounting (panel closed, next syllable, popover closed) gives the field no blur, and React
-  // ignores focus events during a commit: commit the pending text directly, to the target the
-  // field was showing. Layout cleanup runs before the nodes go away.
-  const commitOnUnmount = useRef(commitPending);
-  commitOnUnmount.current = commitPending;
-  useLayoutEffect(() => () => commitOnUnmount.current(), []);
+  // Unmounting gives the field no blur (and React ignores focus events during a commit): the
+  // owner flushes the pending text through this, guarded against a swapped document.
+  if (flushRef) {
+    flushRef.current = () => {
+      const had = queryRef.current.trim() !== "";
+      commitPending();
+      return had;
+    };
+  }
 
   function choose(i: number) {
     const opt = options[i];

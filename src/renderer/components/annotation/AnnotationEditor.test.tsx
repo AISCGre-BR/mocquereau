@@ -12,6 +12,7 @@ import {
   type HistoryApi,
   type ProjectState,
 } from "../../hooks/useProject";
+import { createPendingEdits } from "../../hooks/pendingEdits";
 import type { MocquereauProject } from "../../lib/models";
 
 function mkProject(): MocquereauProject {
@@ -234,5 +235,57 @@ describe("AnnotationEditor: pending Neumas text when leaving", () => {
     typePending("punctum");
     act(() => ref.close!());
     expect(ann(0)?.neumes).toEqual([{ kind: "punctum" }]);
+  });
+});
+
+/** As in App: pending edits in the context, views keyed by the document epoch. */
+function mountWithPending() {
+  const pending = createPendingEdits();
+  const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; swap?: (p: MocquereauProject) => void } = {};
+  function Harness() {
+    const [state, dispatch, history] = useProjectReducer();
+    const [epoch, setEpoch] = useState(0);
+    Object.assign(ref, {
+      state,
+      dispatch,
+      // useProjectFile.adopt: load, then bump the epoch; the views remount.
+      swap: (p: MocquereauProject) => {
+        dispatch({ type: "SET_PROJECT", payload: p });
+        pending.bump();
+        setEpoch((n) => n + 1);
+      },
+    });
+    if (!state.project) return null;
+    return (
+      <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
+        <AnnotationEditor key={epoch} target={{ sourceId: "s1", syllable: 0 }} variant="full" />
+      </ProjectContext.Provider>
+    );
+  }
+  render(<Harness />);
+  act(() => ref.dispatch!({ type: "SET_PROJECT", payload: mkProject() }));
+  return { ref, pending };
+}
+
+describe("AnnotationEditor: pending Neumas text and document swaps", () => {
+  it("swapping the project drops the pending text: nothing is written into the new project", () => {
+    const { ref } = mountWithPending();
+    typePending("novo neuma");
+    const other = mkProject();
+    other.meta = { ...other.meta, title: "outro" };
+    act(() => ref.swap!(other));
+    const p = ref.state!.project!;
+    expect(p.meta.title).toBe("outro");
+    expect(p.neumeVocabulary).toBeUndefined();
+    expect(p.sources.every((s) => s.annotations === undefined)).toBe(true);
+  });
+
+  it("flushAll (save, new, open, close) commits the pending text into the current project", () => {
+    const { ref, pending } = mountWithPending();
+    typePending("punctum");
+    act(() => {
+      pending.flushAll();
+    });
+    expect(ref.state!.project!.sources[0].annotations?.[0]?.neumes).toEqual([{ kind: "punctum" }]);
   });
 });
