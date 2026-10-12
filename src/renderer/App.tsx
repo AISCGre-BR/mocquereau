@@ -98,7 +98,7 @@ function Workbench() {
     });
     if (direction === "undo") history.undo();
     else history.redo();
-    pending?.bump();
+    pending?.bump("history");
     setHistoryEpoch((n) => n + 1);
   }
   const file = useProjectFile({ onOpened: () => setView("texto") });

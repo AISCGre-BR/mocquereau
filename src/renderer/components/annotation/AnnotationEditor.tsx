@@ -55,10 +55,10 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
 
   // Text typed in Neumas and not yet committed: flushed before document actions (save, new,
   // open, close, undo) and on unmount (panel closed, next syllable, popover closed). The unmount
-  // flush is skipped when the document was swapped since mount (pending epoch), so the text
-  // never lands in another project.
+  // flush is skipped only when the document was replaced since mount (new, open, close), so the
+  // text never lands in another project; an undo meanwhile (panel kept mounted) does not skip it.
   const neumesFlush = useRef<(() => boolean) | null>(null);
-  usePendingFlush(() => neumesFlush.current?.() ?? false);
+  usePendingFlush(() => neumesFlush.current?.() ?? false, "document");
 
   const neumesId = `${baseId}-neumes`;
   useEffect(() => {

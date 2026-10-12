@@ -241,13 +241,22 @@ describe("AnnotationEditor: pending Neumas text when leaving", () => {
 /** As in App: pending edits in the context, views keyed by the document epoch. */
 function mountWithPending() {
   const pending = createPendingEdits();
-  const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; swap?: (p: MocquereauProject) => void } = {};
+  const ref: {
+    state?: ProjectState;
+    dispatch?: React.Dispatch<DocumentAction>;
+    history?: HistoryApi;
+    swap?: (p: MocquereauProject) => void;
+    close?: () => void;
+  } = {};
   function Harness() {
     const [state, dispatch, history] = useProjectReducer();
     const [epoch, setEpoch] = useState(0);
+    const [open, setOpen] = useState(true);
     Object.assign(ref, {
       state,
       dispatch,
+      history,
+      close: () => setOpen(false),
       // useProjectFile.adopt: load, then bump the epoch; the views remount.
       swap: (p: MocquereauProject) => {
         dispatch({ type: "SET_PROJECT", payload: p });
@@ -258,7 +267,7 @@ function mountWithPending() {
     if (!state.project) return null;
     return (
       <ProjectContext.Provider value={{ state, dispatch, history, pending }}>
-        <AnnotationEditor key={epoch} target={{ sourceId: "s1", syllable: 0 }} variant="full" />
+        {open && <AnnotationEditor key={epoch} target={{ sourceId: "s1", syllable: 0 }} variant="full" />}
       </ProjectContext.Provider>
     );
   }
@@ -278,6 +287,19 @@ describe("AnnotationEditor: pending Neumas text and document swaps", () => {
     expect(p.meta.title).toBe("outro");
     expect(p.neumeVocabulary).toBeUndefined();
     expect(p.sources.every((s) => s.annotations === undefined)).toBe(true);
+  });
+
+  it("after an undo (history bump, editor kept mounted), closing still commits the pending text", () => {
+    const { ref, pending } = mountWithPending();
+    act(() => ref.dispatch!({ type: "SET_META", payload: { title: "editado" } }));
+    // App.applyHistory: undo, then bump the history epoch; the Recortes panel stays mounted.
+    act(() => {
+      ref.history!.undo();
+      pending.bump("history");
+    });
+    typePending("punctum");
+    act(() => ref.close!());
+    expect(ref.state!.project!.sources[0].annotations?.[0]?.neumes).toEqual([{ kind: "punctum" }]);
   });
 
   it("flushAll (save, new, open, close) commits the pending text into the current project", () => {
