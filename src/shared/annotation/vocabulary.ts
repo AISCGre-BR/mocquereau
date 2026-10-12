@@ -2,8 +2,13 @@
 import type { NeumeCategory, NeumeKind, NeumeVocabulary } from "./types";
 import { createDefaultVocabulary } from "./default-vocabulary";
 
-/** Case- and accent-insensitive form used to compare vocabulary names. */
-export const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+/**
+ * Case- and accent-insensitive form used to compare vocabulary names. Only the combining
+ * diacritics block (U+0300–U+036F) is stripped, then the rest is recomposed: kana voicing
+ * marks stay, so ハ and バ remain distinct.
+ */
+export const fold = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").normalize("NFC").toLowerCase();
 
 export function kindMap(v: NeumeVocabulary): Map<string, NeumeKind> {
   return new Map(v.kinds.map((k) => [k.id, k]));

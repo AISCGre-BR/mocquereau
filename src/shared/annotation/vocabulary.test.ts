@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createDefaultVocabulary } from "./default-vocabulary";
-import { resolveEquivalent, filterKinds, restoreDefaults, getVocabulary } from "./vocabulary";
+import { resolveEquivalent, filterKinds, restoreDefaults, getVocabulary, fold } from "./vocabulary";
 
 const t = (k: string) => k;
 
@@ -44,5 +44,16 @@ describe("vocabulário padrão", () => {
   it("getVocabulary devolve o do projeto ou o padrão", () => {
     expect(getVocabulary({}, t).kinds).toHaveLength(32);
     expect(getVocabulary({ neumeVocabulary: { categories: [], kinds: [], letters: [] } }, t).kinds).toHaveLength(0);
+  });
+});
+
+describe("fold", () => {
+  it("ignora acentos latinos e maiúsculas", () => {
+    expect(fold("Épisème")).toBe("episeme");
+  });
+
+  it("mantém distintos ハ e バ (o dakuten não é diacrítico latino)", () => {
+    expect(fold("バ")).not.toBe(fold("ハ"));
+    expect(fold("バ")).toBe("バ");
   });
 });

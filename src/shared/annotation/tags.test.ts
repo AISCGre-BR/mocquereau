@@ -26,3 +26,11 @@ describe("etiquetas", () => {
     expect(p.sources[0].annotations![0]).toEqual({ neumes: [{ kind: "pes", tags: ["b"] }], tags: ["b"] });
   });
 });
+
+describe("findTagByName com kana", () => {
+  it("não confunde ハ com バ", () => {
+    const tags = [{ id: "a", name: "ハ" }, { id: "b", name: "バ" }];
+    expect(findTagByName(tags, "バ")?.id).toBe("b");
+    expect(findTagByName(tags, "ハ")?.id).toBe("a");
+  });
+});

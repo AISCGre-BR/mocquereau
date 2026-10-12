@@ -16,7 +16,7 @@ import { IconButton } from "../../ui/IconButton";
 import { MenuItem, MenuSubmenu, MenuSurface } from "../../ui/Menu";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { belowElement } from "../texto/SyllableText";
-import { getVocabulary, restoreDefaults, resolveEquivalent } from "@shared/annotation/vocabulary";
+import { fold as foldName, getVocabulary, restoreDefaults, resolveEquivalent } from "@shared/annotation/vocabulary";
 import type { NeumeCategory, NeumeKind, NeumeVocabulary, SignificantLetter } from "@shared/annotation/types";
 
 export interface VocabularyDialogProps {
@@ -29,7 +29,7 @@ type Target = "category" | "kind" | "letter";
 type Editing = { target: Target; id: string | null };
 type Menu = { target: Target; id: string; x: number; y: number };
 
-const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+const fold = (s: string) => foldName(s).trim();
 
 const INPUT_CLASS =
   "h-8 min-w-0 rounded-sm bg-surface px-2.5 text-body text-ink shadow-inset outline-none ring-2 ring-rubric aria-invalid:ring-danger";

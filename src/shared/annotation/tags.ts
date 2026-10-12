@@ -1,8 +1,9 @@
 // src/shared/annotation/tags.ts
 import type { Annotations, SyllableAnnotation, Tag } from "./types";
 import { normalizeAnnotation } from "./annotation";
+import { fold as foldName } from "./vocabulary";
 
-const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+const fold = (s: string) => foldName(s).trim();
 
 export interface ProjectLike {
   tags?: Tag[];
