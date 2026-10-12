@@ -138,4 +138,36 @@ describe("useAnnotation", () => {
     act(() => r.api.copyNeumesFrom("s2"));
     expect(ann(r)).toBeUndefined();
   });
+
+  it("createKind adds kind and category and undoes together with the sequence", () => {
+    const r = mount(mkProject());
+    act(() => {
+      const id = r.api.createKind({ name: "climacus sub", categoryName: "Formas raras", defaultNotes: 5 });
+      r.api.update({ neumes: [{ kind: id }], tags: [] }, "neumes");
+    });
+    const voc = r.state.project!.neumeVocabulary!;
+    const kind = voc.kinds.find((k) => k.name === "climacus sub")!;
+    expect(kind.id).toMatch(/^kind\./);
+    expect(kind.defaultNotes).toBe(5);
+    const cat = voc.categories.find((c) => c.id === kind.categoryId)!;
+    expect(cat.name).toBe("Formas raras");
+    expect(cat.id).toMatch(/^cat\./);
+    expect(ann(r)?.neumes).toEqual([{ kind: kind.id }]);
+    act(() => r.history.undo());
+    expect(r.state.project!.neumeVocabulary).toBeUndefined();
+    expect(ann(r)).toBeUndefined();
+  });
+
+  it("createKind reuses an existing category by folded name", () => {
+    const r = mount(mkProject());
+    act(() => r.api.update({ neumes: [{ kind: "virga" }], tags: [] }, "neumes"));
+    const compound = r.state.project!.neumeVocabulary!.categories.find((c) => c.id === "cat.compound")!;
+    let id = "";
+    act(() => {
+      id = r.api.createKind({ name: "x", categoryName: ` ${compound.name.toUpperCase()} `, defaultNotes: 2 });
+    });
+    const voc = r.state.project!.neumeVocabulary!;
+    expect(voc.kinds.find((k) => k.id === id)!.categoryId).toBe("cat.compound");
+    expect(voc.categories).toHaveLength(4);
+  });
 });

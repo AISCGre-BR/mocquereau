@@ -1,9 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useProject } from "../../hooks/useProject";
 import { emptyAnnotation } from "@shared/annotation/annotation";
 import { createDefaultVocabulary } from "@shared/annotation/default-vocabulary";
-import { getVocabulary } from "@shared/annotation/vocabulary";
+import { fold, getVocabulary } from "@shared/annotation/vocabulary";
 import { parseHashTags, resolveTagNames } from "@shared/annotation/tags";
 import type { NeumeVocabulary, SyllableAnnotation, Tag } from "@shared/annotation/types";
 
@@ -34,12 +34,14 @@ export function useAnnotation(target: AnnotationTarget | null) {
     [project, t],
   );
   const tags = project?.tags ?? NO_TAGS;
+  /** Project snapshot for which createKind already dispatched a vocabulary (not yet rendered). */
+  const vocabularyWrittenFor = useRef<unknown>(null);
 
   const update = useCallback(
     (next: SyllableAnnotation, field: string) => {
       if (!project || sourceId === undefined || syllable === undefined) return;
       const coalesceKey = `ANNOTATION:${sourceId}:${syllable}:${field}`;
-      if (!project.neumeVocabulary && next.neumes.length > 0) {
+      if (!project.neumeVocabulary && vocabularyWrittenFor.current !== project && next.neumes.length > 0) {
         dispatch({ type: "SET_NEUME_VOCABULARY", payload: createDefaultVocabulary(t), meta: { coalesceKey } });
       }
       dispatch({
@@ -47,6 +49,38 @@ export function useAnnotation(target: AnnotationTarget | null) {
         payload: { sourceId, syllable, annotation: next },
         field,
       });
+    },
+    [project, sourceId, syllable, dispatch, t],
+  );
+
+  /**
+   * Adds a neume kind (and its category, reused by folded name or created) to the project
+   * vocabulary and returns the new kind id. Shares the coalesce key of the neume sequence,
+   * so creating and appending the kind is one undo step.
+   */
+  const createKind = useCallback(
+    (draft: { name: string; categoryName: string; defaultNotes: number }): string => {
+      const kindId = `kind.${crypto.randomUUID()}`;
+      if (!project || sourceId === undefined || syllable === undefined) return kindId;
+      const base = getVocabulary(project, t);
+      const categoryName = draft.categoryName.trim();
+      const existing = base.categories.find((c) => fold(c.name.trim()) === fold(categoryName));
+      const category = existing ?? { id: `cat.${crypto.randomUUID()}`, name: categoryName };
+      const next: NeumeVocabulary = {
+        ...base,
+        categories: existing ? base.categories : [...base.categories, category],
+        kinds: [
+          ...base.kinds,
+          { id: kindId, categoryId: category.id, name: draft.name.trim(), defaultNotes: draft.defaultNotes },
+        ],
+      };
+      vocabularyWrittenFor.current = project;
+      dispatch({
+        type: "SET_NEUME_VOCABULARY",
+        payload: next,
+        meta: { coalesceKey: `ANNOTATION:${sourceId}:${syllable}:neumes` },
+      });
+      return kindId;
     },
     [project, sourceId, syllable, dispatch, t],
   );
@@ -101,5 +135,5 @@ export function useAnnotation(target: AnnotationTarget | null) {
     [project, syllable, annotation, update],
   );
 
-  return { annotation, vocabulary, tags, update, setTagNames, setComment, copyNeumesFrom };
+  return { annotation, vocabulary, tags, update, createKind, setTagNames, setComment, copyNeumesFrom };
 }

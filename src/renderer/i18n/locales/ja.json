@@ -300,5 +300,12 @@
   "annotation.category.simple": "単純ネウマ",
   "annotation.category.compound": "複合ネウマ",
   "annotation.category.liquescent": "リクエッセンス",
-  "annotation.category.ornamental": "装飾・反復ネウマ"
+  "annotation.category.ornamental": "装飾・反復ネウマ",
+  "annotation.neumes": "ネウマ",
+  "annotation.neumes.empty": "該当するネウマがありません",
+  "annotation.create": "「{{name}}」を作成",
+  "annotation.create.category": "カテゴリ",
+  "annotation.create.newCategory": "新しいカテゴリ",
+  "annotation.create.notes": "音数",
+  "annotation.create.submit": "作成"
 }

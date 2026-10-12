@@ -300,5 +300,12 @@
   "annotation.category.simple": "Simple",
   "annotation.category.compound": "Compound",
   "annotation.category.liquescent": "Liquescent",
-  "annotation.category.ornamental": "Ornamental and repercussive"
+  "annotation.category.ornamental": "Ornamental and repercussive",
+  "annotation.neumes": "Neumes",
+  "annotation.neumes.empty": "No neume found",
+  "annotation.create": "Create “{{name}}”",
+  "annotation.create.category": "Category",
+  "annotation.create.newCategory": "New category",
+  "annotation.create.notes": "Notes",
+  "annotation.create.submit": "Create"
 }

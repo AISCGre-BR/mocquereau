@@ -300,5 +300,12 @@
   "annotation.category.simple": "Simples",
   "annotation.category.compound": "Compuestos",
   "annotation.category.liquescent": "Licuescentes",
-  "annotation.category.ornamental": "Ornamentales y repercusivos"
+  "annotation.category.ornamental": "Ornamentales y repercusivos",
+  "annotation.neumes": "Neumas",
+  "annotation.neumes.empty": "Ningún neuma encontrado",
+  "annotation.create": "Crear «{{name}}»",
+  "annotation.create.category": "Categoría",
+  "annotation.create.newCategory": "Nueva categoría",
+  "annotation.create.notes": "Notas",
+  "annotation.create.submit": "Crear"
 }

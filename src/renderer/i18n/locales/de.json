@@ -300,5 +300,12 @@
   "annotation.category.simple": "Einfache",
   "annotation.category.compound": "Zusammengesetzte",
   "annotation.category.liquescent": "Liqueszierende",
-  "annotation.category.ornamental": "Ornamentale und repetierende"
+  "annotation.category.ornamental": "Ornamentale und repetierende",
+  "annotation.neumes": "Neumen",
+  "annotation.neumes.empty": "Keine Neume gefunden",
+  "annotation.create": "„{{name}}“ anlegen",
+  "annotation.create.category": "Kategorie",
+  "annotation.create.newCategory": "Neue Kategorie",
+  "annotation.create.notes": "Töne",
+  "annotation.create.submit": "Anlegen"
 }

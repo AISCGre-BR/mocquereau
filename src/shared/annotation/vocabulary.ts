@@ -2,7 +2,8 @@
 import type { NeumeCategory, NeumeKind, NeumeVocabulary } from "./types";
 import { createDefaultVocabulary } from "./default-vocabulary";
 
-const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+/** Case- and accent-insensitive form used to compare vocabulary names. */
+export const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 export function kindMap(v: NeumeVocabulary): Map<string, NeumeKind> {
   return new Map(v.kinds.map((k) => [k.id, k]));
