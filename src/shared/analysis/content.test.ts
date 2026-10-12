@@ -1,0 +1,79 @@
+import { describe, expect, it } from "vitest";
+import { marks, neumeContent } from "./content";
+import { makeAnalysisProject, vocabulary as v } from "./__fixtures__/analysis-project";
+
+const p = makeAnalysisProject();
+
+describe("neumeContent", () => {
+  const { rows, meanNotes } = neumeContent(p, {}, v);
+  const row = (id: string) => rows.find((r) => r.kindId === id)!;
+
+  it("lists the kinds in use in vocabulary order, unknown kinds last", () => {
+    expect(rows.map((r) => r.kindId)).toEqual(["virga", "tractulus", "uncinus", "pes", "clivis", "sumido"]);
+  });
+
+  it("counts syllables per real kind with percent of the source's annotated syllables", () => {
+    expect(row("virga").bySource).toEqual({
+      E: { count: 1, percent: 1 / 5 },
+      SG: { count: 1, percent: 1 / 4 },
+      L: { count: 2, percent: 2 / 3 },
+      X: { count: 0, percent: 0 },
+    });
+    expect(row("virga").total).toBe(4);
+    expect(row("pes").bySource.X).toEqual({ count: 1, percent: 1 });
+  });
+
+  it("keeps the real kind and names its equivalent", () => {
+    expect(row("uncinus")).toMatchObject({
+      name: "uncinus", categoryId: "cat.simple", equivalentName: "tractulus", total: 1,
+    });
+    expect(row("tractulus").equivalentName).toBeUndefined();
+    expect(row("tractulus").total).toBe(2);
+  });
+
+  it("marks kinds missing from the vocabulary as unknown", () => {
+    expect(row("sumido")).toMatchObject({ name: "sumido", categoryId: null, unknown: true, total: 1 });
+  });
+
+  it("averages effective notes over annotated syllables with a defined total", () => {
+    expect(meanNotes.E).toBeCloseTo(1.5);
+    expect(meanNotes.SG).toBeCloseTo(4 / 3);
+    expect(meanNotes.L).toBeCloseTo(5 / 3);
+    expect(meanNotes.X).toBe(2);
+  });
+
+  it("gives null percent and mean when a source has no annotated syllable", () => {
+    const r = neumeContent(p, { sectionIds: ["none"] }, v);
+    expect(r.rows).toEqual([]);
+    expect(r.meanNotes).toEqual({ E: null, SG: null, L: null, X: null });
+  });
+});
+
+describe("marks", () => {
+  const rows = marks(p, {}, v);
+  const row = (key: string) => rows.find((r) => r.key === key)!.bySource;
+
+  it("emits the fixed rows, the letters in use and the certainty rows", () => {
+    expect(rows.map((r) => r.key)).toEqual([
+      "liq.augmentative", "liq.diminutive", "liq.none", "liq.unset",
+      "episema.yes", "episema.no", "episema.unset",
+      "letter.letter.c",
+      "certainty.secure", "certainty.probable", "certainty.illegible", "certainty.unset",
+    ]);
+  });
+
+  it("counts liquescence and episema per neume, unset when absent", () => {
+    expect(row("liq.augmentative")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
+    expect(row("liq.unset")).toEqual({ E: 4, SG: 3, L: 4, X: 1 });
+    expect(row("liq.none")).toEqual({ E: 0, SG: 0, L: 0, X: 0 });
+    expect(row("episema.yes")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
+    expect(row("episema.unset")).toEqual({ E: 4, SG: 3, L: 4, X: 1 });
+    expect(row("letter.letter.c")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
+  });
+
+  it("counts certainty per annotated syllable and never presumes secure", () => {
+    expect(row("certainty.secure")).toEqual({ E: 0, SG: 0, L: 0, X: 0 });
+    expect(row("certainty.illegible")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
+    expect(row("certainty.unset")).toEqual({ E: 4, SG: 4, L: 3, X: 1 });
+  });
+});
