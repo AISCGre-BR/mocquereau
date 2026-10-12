@@ -324,8 +324,9 @@ export function ImageCanvas({
   function handleImagePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     // Only the primary button draws (right click opens the context menu).
     if (e.button !== 0) return;
-    if (bandTool) {
+    if (bandTool || e.shiftKey) {
       // The band tool owns the sheet: a drag draws a band; a click clears the selection.
+      // Shift+drag does the same for one drag, without turning the tool on.
       e.preventDefault();
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const rect = imageWrapperRef.current!.getBoundingClientRect();
@@ -403,7 +404,7 @@ export function ImageCanvas({
   }
 
   function handleImagePointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (bandDraw.current && bandTool) {
+    if (bandDraw.current) {
       const band = bandDraw.current.live;
       bandDraw.current = null;
       setLiveBand(null);
@@ -566,7 +567,8 @@ export function ImageCanvas({
                 }}
                 onPointerDown={(e) => {
                   // Prevent image wrapper from starting a draw; just switch active syllable
-                  e.stopPropagation();
+                  // (Shift+drag draws a line area over boxes too).
+                  if (!e.shiftKey) e.stopPropagation();
                 }}
                 onClick={(e) => {
                   e.stopPropagation();

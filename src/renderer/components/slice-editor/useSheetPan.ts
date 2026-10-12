@@ -1,13 +1,17 @@
 import { useEffect, type RefObject } from 'react';
 
+/** Ctrl on Windows/Linux, Cmd on macOS (where Ctrl+click is the context-menu click). */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const panKey = (e: { ctrlKey: boolean; metaKey: boolean }) => (IS_MAC ? e.metaKey : e.ctrlKey);
+
 /**
- * Drag the sheet: Shift + primary button, or the middle button, scrolls the
+ * Drag the sheet: Ctrl (Cmd on macOS) + primary button, or the middle button, scrolls the
  * scroll container with the pointer (no box is drawn or selected).
  *
  * Native capture-phase listeners on the scroller run before the sheet's React
  * handlers (bubble phase), so stopping the event there keeps boxes, bands and
  * suggestions out of the gesture. The scroller gets `data-pan="grab"` while
- * Shift is held over it and `data-pan="grabbing"` while dragging, for the cursor.
+ * the modifier is held over it and `data-pan="grabbing"` while dragging, for the cursor.
  */
 export function useSheetPan(scrollerRef: RefObject<HTMLElement | null>, active: boolean): void {
   useEffect(() => {
@@ -17,15 +21,15 @@ export function useSheetPan(scrollerRef: RefObject<HTMLElement | null>, active: 
 
     let pan: { id: number; x: number; y: number; left: number; top: number } | null = null;
     let hover = false;
-    let shift = false;
+    let held = false;
 
     function sync() {
-      const state = pan ? 'grabbing' : hover && shift ? 'grab' : '';
+      const state = pan ? 'grabbing' : hover && held ? 'grab' : '';
       if (state) el.dataset.pan = state;
       else delete el.dataset.pan;
     }
 
-    const isPanStart = (e: PointerEvent) => e.button === 1 || (e.button === 0 && e.shiftKey);
+    const isPanStart = (e: PointerEvent) => e.button === 1 || (e.button === 0 && panKey(e));
 
     function onPointerDown(e: PointerEvent) {
       if (!isPanStart(e)) return;
@@ -42,7 +46,7 @@ export function useSheetPan(scrollerRef: RefObject<HTMLElement | null>, active: 
 
     function onPointerMove(e: PointerEvent) {
       hover = true;
-      shift = e.shiftKey;
+      held = panKey(e);
       if (pan && e.pointerId === pan.id) {
         e.stopPropagation();
         el.scrollLeft = pan.left - (e.clientX - pan.x);
@@ -74,12 +78,12 @@ export function useSheetPan(scrollerRef: RefObject<HTMLElement | null>, active: 
       sync();
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key !== 'Shift') return;
-      shift = e.type === 'keydown';
+      if (e.key !== (IS_MAC ? 'Meta' : 'Control')) return;
+      held = e.type === 'keydown';
       sync();
     }
     function onBlur() {
-      shift = false;
+      held = false;
       sync();
     }
 
