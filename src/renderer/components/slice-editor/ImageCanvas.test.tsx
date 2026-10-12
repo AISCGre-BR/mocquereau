@@ -350,3 +350,82 @@ describe("ImageCanvas: áreas da linha de neumas (S7)", () => {
     }
   });
 });
+
+describe("ImageCanvas: arrastar a folha", () => {
+  function setupPan() {
+    const commit = vi.fn();
+    const bands = vi.fn();
+    Object.assign(HTMLElement.prototype, { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() });
+    const { container } = render(
+      <ImageCanvas
+        image={IMAGE}
+        syllableBoxes={{}}
+        activeSyllableIdx={0}
+        syllableRange={{ start: 0, end: 1 }}
+        zoom={3}
+        onZoomChange={vi.fn()}
+        onBoxCommit={commit}
+        onBandsCommit={bands}
+        drawMode
+      />,
+    );
+    const wrapper = container.querySelector("[data-image-wrapper]") as HTMLElement;
+    const scroller = container.querySelector("[data-canvas-scroller]") as HTMLElement;
+    wrapper.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} });
+    scroller.scrollLeft = 200;
+    scroller.scrollTop = 100;
+    const drag = (init: MouseEventInit) => {
+      for (const [type, x] of [["pointerdown", 50], ["pointermove", 20], ["pointerup", 20]] as const) {
+        act(() => void wrapper.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: x, ...init })));
+      }
+    };
+    return { commit, bands, wrapper, scroller, drag };
+  }
+
+  it("Ctrl+arrastar rola a folha e não desenha caixa", () => {
+    const v = setupPan();
+    v.drag({ ctrlKey: true, button: 0 });
+    expect(v.scroller.scrollLeft).toBe(230);
+    expect(v.scroller.scrollTop).toBe(130);
+    expect(v.commit).not.toHaveBeenCalled();
+    expect(v.bands).not.toHaveBeenCalled();
+  });
+
+  it("Shift+arrastar desenha uma área de linha (não caixa) sem ligar a ferramenta", () => {
+    const v = setupPan();
+    v.drag({ shiftKey: true, button: 0 });
+    expect(v.commit).not.toHaveBeenCalled();
+    expect(v.bands).toHaveBeenCalledOnce();
+    expect(v.scroller.scrollLeft).toBe(200);
+  });
+
+  it("arrastar sem Shift continua desenhando a caixa", () => {
+    const v = setupPan();
+    v.drag({ button: 0 });
+    expect(v.commit).toHaveBeenCalledOnce();
+    expect(v.bands).not.toHaveBeenCalled();
+    expect(v.scroller.scrollLeft).toBe(200);
+  });
+
+  it("o botão do meio também arrasta a folha (sem autorrolagem)", () => {
+    const v = setupPan();
+    v.drag({ button: 1 });
+    expect(v.scroller.scrollLeft).toBe(230);
+    expect(v.scroller.scrollTop).toBe(130);
+    expect(v.commit).not.toHaveBeenCalled();
+    const md = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 1 });
+    act(() => void v.wrapper.dispatchEvent(md));
+    expect(md.defaultPrevented).toBe(true);
+  });
+
+  it("Ctrl sobre a folha mostra a mão; arrastando, a mão fechada", () => {
+    const v = setupPan();
+    act(() => void v.wrapper.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, ctrlKey: true })));
+    expect(v.scroller.dataset.pan).toBe("grab");
+    act(() => void v.wrapper.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, ctrlKey: true, button: 0 })));
+    expect(v.scroller.dataset.pan).toBe("grabbing");
+    act(() => void v.wrapper.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
+    act(() => void window.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" })));
+    expect(v.scroller.dataset.pan).toBeUndefined();
+  });
+});
