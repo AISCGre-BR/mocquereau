@@ -364,6 +364,7 @@
   "annotation.tags": "タグ",
   "annotation.neumeComment": "メモ",
   "annotation.comment": "備考",
+  "annotation.popoverTitle": "{{siglum}} の {{syllable}} に注釈",
   "annotation.openInRecortes": "切り抜きで開く",
   "shell.file.tags": "タグ…",
   "tagsDialog.title": "タグ",

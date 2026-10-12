@@ -32,7 +32,9 @@ export interface TableCellProps {
   rowHeightPx: number;
   /** Accessible name: "Recortar <sílaba> em <sigla>" (pending) or the cell actions. */
   ariaLabel?: string;
-  /** Click, Enter or Space: pending goes to Recortes, otherwise opens the menu (D-06). */
+  /** The syllable has an annotation: a small corner mark, top right. */
+  annotated?: boolean;
+  /** Click, Enter or Space: pending goes to Recortes, a filled cell opens the annotation popover. */
   onActivate: (anchor: CellAnchor) => void;
   /** Right click, the ContextMenu key or Shift+F10: opens the menu. */
   onOpenMenu: (anchor: CellAnchor) => void;
@@ -59,6 +61,7 @@ export function TableCell({
   colWidthPx,
   rowHeightPx,
   ariaLabel,
+  annotated,
   onActivate,
   onOpenMenu,
   adjustments,
@@ -87,7 +90,9 @@ export function TableCell({
         // Fronteira de palavra: borda esquerda rule-strong; dentro da palavra, rule-soft.
         startsWord ? 'border-l-rule-strong' : '',
         pending ? 'bg-parchment hover:bg-rubric-wash' : '',
+        annotated ? 'after:pointer-events-none after:absolute after:top-0 after:right-0 after:border-t-8 after:border-l-8 after:border-t-ink-muted after:border-l-transparent' : '',
       ].join(' ')}
+      data-annotated={annotated ? '' : undefined}
       style={{
         width: colWidthPx,
         height: rowHeightPx,
@@ -95,7 +100,7 @@ export function TableCell({
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}
-      aria-haspopup={state.kind === 'unfilled' ? undefined : 'menu'}
+      aria-haspopup={state.kind === 'filled' ? 'dialog' : state.kind === 'unfilled' ? undefined : 'menu'}
       onClick={(e) => {
         e.stopPropagation();
         onActivate({ x: e.clientX, y: e.clientY, cell: e.currentTarget });

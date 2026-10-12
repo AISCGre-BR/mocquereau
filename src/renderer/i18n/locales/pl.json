@@ -364,6 +364,7 @@
   "annotation.tags": "Etykiety",
   "annotation.neumeComment": "Uwaga",
   "annotation.comment": "Komentarz",
+  "annotation.popoverTitle": "Adnotuj {{syllable}} w {{siglum}}",
   "annotation.openInRecortes": "Otwórz w Wycinkach",
   "shell.file.tags": "Tagi…",
   "tagsDialog.title": "Tagi",

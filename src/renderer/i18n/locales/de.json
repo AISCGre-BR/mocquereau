@@ -364,6 +364,7 @@
   "annotation.tags": "Schlagwörter",
   "annotation.neumeComment": "Notiz",
   "annotation.comment": "Bemerkung",
+  "annotation.popoverTitle": "{{syllable}} in {{siglum}} annotieren",
   "annotation.openInRecortes": "In Ausschnitten öffnen",
   "shell.file.tags": "Schlagwörter…",
   "tagsDialog.title": "Schlagwörter",

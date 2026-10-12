@@ -364,6 +364,7 @@
   "annotation.tags": "Tags",
   "annotation.neumeComment": "Note",
   "annotation.comment": "Remark",
+  "annotation.popoverTitle": "Annotate {{syllable}} in {{siglum}}",
   "annotation.openInRecortes": "Open in Crops",
   "shell.file.tags": "Tags…",
   "tagsDialog.title": "Tags",
