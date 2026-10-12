@@ -256,6 +256,19 @@ const SCREENS = {
     await page.getByRole("option", { name: "Criar «franculus»" }).click();
     await settle(page, 600);
   },
+  // Nome digitado e o campo deixado (Tab): o tipo é criado sem categoria. Ao voltar, a lista
+  // filtrada mostra o grupo "Sem categoria", sem número de notas.
+  "recortes-anotacao-sem-categoria": async (page) => {
+    await openAnnotationPanel(page, 1);
+    const input = page.locator("[data-annotation-panel]").getByRole("combobox", { name: "Neumas" });
+    await input.click();
+    await input.fill("franculus");
+    await page.keyboard.press("Tab");
+    await settle(page, 300);
+    await input.click();
+    await input.fill("fr");
+    await settle(page, 600);
+  },
   "fonte-dialog": async (page) => {
     await openFixtureProject(page);
     await page.keyboard.press("Control+2");
@@ -285,6 +298,20 @@ const SCREENS = {
   },
   etiquetas: async (page) => { await openFileMenuItem(page, "Etiquetas…"); },
   vocabulario: async (page) => { await openFileMenuItem(page, "Vocabulário de neumas…"); },
+  // Tipo criado sem categoria no painel Anotação; no diálogo, a entrada "Sem categoria".
+  "vocabulario-sem-categoria": async (page) => {
+    await openAnnotationPanel(page, 1);
+    const input = page.locator("[data-annotation-panel]").getByRole("combobox", { name: "Neumas" });
+    await input.click();
+    await input.fill("franculus");
+    await page.keyboard.press("Tab");
+    await settle(page, 300);
+    await page.getByRole("menuitem", { name: "Arquivo" }).click();
+    await page.getByRole("menuitem", { name: "Vocabulário de neumas…" }).click();
+    await settle(page, 600);
+    await page.getByRole("button", { name: "Sem categoria" }).click();
+    await settle(page, 300);
+  },
   analise: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+4"); await settle(page, 800); },
   "analise-ocorrencias": async (page) => {
     await openFixtureProject(page);

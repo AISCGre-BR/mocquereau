@@ -20,9 +20,12 @@ Telas (objeto `SCREENS` em `shoot.mjs`): `welcome`, `welcome-empty`, `novo-peca`
 (ferramenta "Marcar linha de neumas" ligada, linha selecionada com alças), `recortes-anotacao`
 (painel Anotação, Ctrl+Shift+A, numa sílaba anotada com o primeiro neuma selecionado e o detalhe
 dele), `recortes-anotacao-criar` (neuma fora do vocabulário: "Criar «…»" e o formulário em linha),
+`recortes-anotacao-sem-categoria` (nome digitado e campo deixado com Tab: tipo criado sem
+categoria, depois a lista filtrada com o grupo "Sem categoria"),
 `fonte-dialog`, `classificacao`, `tabela`, `tabela-anotacao` (anotação compacta aberta por clique
 numa célula anotada), `etiquetas` (Arquivo > Etiquetas…), `vocabulario` (Arquivo > Vocabulário de
-neumas…), `analise`, `analise-ocorrencias` (ocorrências de um par da concordância), `exportar`
+neumas…), `vocabulario-sem-categoria` (o diálogo na entrada "Sem categoria", com o tipo criado
+no painel), `analise`, `analise-ocorrencias` (ocorrências de um par da concordância), `exportar`
 (com a caixa "Incluir indicadores").
 `VISUAL_SCREENS=recortes-anotacao,tabela-anotacao` captura só as telas listadas.
 A fixture traz anotações sintéticas nas três fontes (só nas sílabas com recorte), o vocabulário
