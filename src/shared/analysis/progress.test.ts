@@ -9,9 +9,15 @@ describe("progressBySource", () => {
     expect(progressBySource(p, {}, v)).toEqual([
       { key: "E", label: "E", total: 6, withBox: 6, annotated: 5, illegible: 1, missing: 1 },
       { key: "SG", label: "SG", total: 6, withBox: 6, annotated: 4, illegible: 0, missing: 2 },
-      { key: "L", label: "L", total: 6, withBox: 3, annotated: 3, illegible: 0, missing: 0 },
-      { key: "X", label: "X", total: 6, withBox: 0, annotated: 1, illegible: 0, missing: 0 },
+      { key: "L", label: "L", total: 3, withBox: 3, annotated: 3, illegible: 0, missing: 0 },
+      { key: "X", label: "X", total: 1, withBox: 0, annotated: 1, illegible: 0, missing: 0 },
     ]);
+  });
+
+  it("scope is cropped or annotated syllables: \"sem neuma\" gaps and bare syllables stay out; total = annotated + missing", () => {
+    for (const r of [...progressBySource(p, {}, v), ...progressBySection(p, {}, v)]) {
+      expect(r.total).toBe(r.annotated + r.missing);
+    }
   });
 
   it("applies the certainty filter before counting", () => {
@@ -23,9 +29,9 @@ describe("progressBySource", () => {
 describe("progressBySection", () => {
   it("aggregates sources per section and puts syllables outside sections in \"none\"", () => {
     expect(progressBySection(p, {}, v)).toEqual([
-      { key: "s1", label: "Primeira", total: 8, withBox: 6, annotated: 7, illegible: 0, missing: 0 },
-      { key: "s2", label: "Segunda", total: 12, withBox: 7, annotated: 6, illegible: 1, missing: 1 },
-      { key: "none", label: "", total: 4, withBox: 2, annotated: 0, illegible: 0, missing: 2 },
+      { key: "s1", label: "Primeira", total: 7, withBox: 6, annotated: 7, illegible: 0, missing: 0 },
+      { key: "s2", label: "Segunda", total: 7, withBox: 7, annotated: 6, illegible: 1, missing: 1 },
+      { key: "none", label: "", total: 2, withBox: 2, annotated: 0, illegible: 0, missing: 2 },
     ]);
   });
 

@@ -1,7 +1,8 @@
 // src/renderer/components/analysis/ProgressBlock.tsx
 //
 // Progress: per source (or section), a stacked bar of the syllables: annotated (lapis),
-// illegible (orpiment, part of the annotated) and the rest on the track (rule: legible in both themes); percent annotated.
+// illegible (orpiment, part of the annotated) and the missing (cropped, not annotated) on the track (rule: legible in both themes);
+// percent = annotated / scope (cropped or annotated syllables, see progress.ts).
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { progressBySection, progressBySource, type ProgressRow } from "@shared/analysis";
@@ -47,12 +48,11 @@ export function ProgressBlock({ project, filters, vocabulary, onDrill, className
       <div className="px-4 pb-3">
         <div className={BAR_GRID}>
           {rows.map((r) => {
-            const rest = r.total - r.annotated;
             const title = [
               label(r),
               `${t("analysis.legend.annotated")} ${r.annotated}`,
               `${t("analysis.legend.illegible")} ${r.illegible}`,
-              `${t("analysis.legend.missing")} ${rest}`,
+              `${t("analysis.legend.missing")} ${r.missing}`,
             ].join(" · ");
             const where = mode === "source" ? { sourceId: r.key } : { sectionId: r.key };
             return (

@@ -119,6 +119,20 @@ describe("AnaliseView", () => {
     expect(within(clivis).getAllByRole("cell").map((c) => c.textContent).slice(1, 4)).toEqual(["—", "—", "—"]);
   });
 
+  it("Progresso: escopo = sílabas recortadas ou anotadas; faltando = recortadas sem anotação", () => {
+    mount(fixture());
+    // L: 3 recortes anotados, a lacuna "sem neuma" e as sílabas sem recorte ficam fora.
+    const l = screen.getByRole("img", { name: /^L · / });
+    expect(l.getAttribute("aria-label")).toMatch(/Faltando 0$/i);
+    const x = screen.getByRole("img", { name: /^X · / });
+    expect(x.getAttribute("aria-label")).toMatch(/Faltando 0$/i);
+    const sg = screen.getByRole("img", { name: /^SG · / });
+    expect(sg.getAttribute("aria-label")).toMatch(/Faltando 2$/i);
+    const value = (name: RegExp) => screen.getByRole("img", { name }).closest("div")!.parentElement!.textContent;
+    expect(value(/^L · /)).toContain("100%");
+    expect(value(/^X · /)).toContain("100%");
+  });
+
   it("nomes dos neumas em serifa", () => {
     mount(fixture());
     expect(screen.getByText("pes").className).toContain("font-serif");

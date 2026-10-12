@@ -15,10 +15,18 @@ export function cellHasStatus(c: Cell, status: ProgressStatus): boolean {
   }
 }
 
+/**
+ * Progress scope: syllables with a crop (cut or box) or an annotation. "Sem neuma" gaps and
+ * uncropped, unannotated syllables are outside, so total = annotated + missing.
+ */
+function inScope(c: Cell): boolean {
+  return c.hasBox || c.annotation !== undefined;
+}
+
 function row(key: string, label: string, cells: Cell[]): ProgressRow {
   const count = (s: ProgressStatus) => cells.filter((c) => cellHasStatus(c, s)).length;
   return {
-    key, label, total: cells.length,
+    key, label, total: cells.filter(inScope).length,
     withBox: count("withBox"), annotated: count("annotated"),
     illegible: count("illegible"), missing: count("missing"),
   };
