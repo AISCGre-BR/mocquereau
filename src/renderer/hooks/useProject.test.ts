@@ -781,3 +781,66 @@ describe("projectReducer — áreas de neumas e notação por página", () => {
     expect("notationOverride" in lineOf(s)).toBe(false);
   });
 });
+
+describe("anotações no reducer", () => {
+  const stateOf = () => makeStateWithSources([makeSource("s1", 0)]);
+
+  it("SET_ANNOTATION grava normalizado e null remove", () => {
+    const s0 = stateOf();
+    const s1 = projectReducer(s0, {
+      type: "SET_ANNOTATION",
+      payload: { sourceId: "s1", syllable: 3, annotation: { neumes: [{ kind: "pes", letters: [] }], tags: [] } },
+    });
+    expect(s1.project!.sources[0].annotations).toEqual({ 3: { neumes: [{ kind: "pes" }], tags: [] } });
+    expect(s1.isDirty).toBe(true);
+    const s2 = projectReducer(s1, {
+      type: "SET_ANNOTATION",
+      payload: { sourceId: "s1", syllable: 3, annotation: { neumes: [], tags: [] } },
+    });
+    expect(s2.project!.sources[0].annotations).toBeUndefined();
+  });
+
+  it("SET_ANNOTATION só afeta a fonte indicada e null remove", () => {
+    const s0 = makeStateWithSources([makeSource("s1", 0), makeSource("s2", 1)]);
+    const s1 = projectReducer(s0, {
+      type: "SET_ANNOTATION",
+      payload: { sourceId: "s2", syllable: 0, annotation: { neumes: [{ kind: "virga" }], tags: [] } },
+    });
+    expect(s1.project!.sources[0].annotations).toBeUndefined();
+    expect(s1.project!.sources[1].annotations).toBeDefined();
+    const s2 = projectReducer(s1, { type: "SET_ANNOTATION", payload: { sourceId: "s2", syllable: 0, annotation: null } });
+    expect(s2.project!.sources[1].annotations).toBeUndefined();
+  });
+
+  it("vocabulário e etiquetas substituem o campo e marcam sujo", () => {
+    const s0 = stateOf();
+    const voc = { categories: [], kinds: [], letters: [] };
+    const s1 = projectReducer(s0, { type: "SET_NEUME_VOCABULARY", payload: voc });
+    expect(s1.project!.neumeVocabulary).toEqual(voc);
+    expect(s1.isDirty).toBe(true);
+    const s2 = projectReducer(s0, { type: "SET_TAGS", payload: [{ id: "t", name: "T" }] });
+    expect(s2.project!.tags).toEqual([{ id: "t", name: "T" }]);
+    expect(s2.isDirty).toBe(true);
+  });
+
+  it("digitar no mesmo campo vira um passo de desfazer", () => {
+    const reduce = createDocumentReducer(() => 0);
+    let doc: DocumentState = reduce(initialDocumentState, { type: "SET_PROJECT", payload: stateOf().project! });
+    const act = (comment: string) => ({
+      type: "SET_ANNOTATION" as const,
+      payload: { sourceId: "s1", syllable: 0, annotation: { neumes: [], tags: [], comment } },
+      field: "comment",
+    });
+    doc = reduce(doc, act("a"));
+    doc = reduce(doc, act("ab"));
+    expect(doc.history.past).toHaveLength(1);
+  });
+
+  it("SET_EXPORT_PREFS não entra no histórico", () => {
+    const reduce = createDocumentReducer(() => 0);
+    let doc: DocumentState = reduce(initialDocumentState, { type: "SET_PROJECT", payload: stateOf().project! });
+    doc = reduce(doc, { type: "SET_EXPORT_PREFS", payload: { includeIndicators: true } });
+    expect(doc.history.past).toHaveLength(0);
+    expect(doc.history.present!.exportPrefs).toEqual({ includeIndicators: true });
+  });
+});

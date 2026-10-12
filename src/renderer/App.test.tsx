@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "./i18n";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { App } from "./App";
 import { createNewProject } from "./hooks/useProject";
 import { SUGGESTED_CLASSIFICATION, cloneClassification } from "../shared/classification";
@@ -91,11 +91,14 @@ describe("App", () => {
     expect(screen.getByText("Mocquereau", { selector: ".sc-menubar__title span" })).toBeTruthy();
   });
 
-  it("Novo projeto leva ao Texto; Ctrl+2 e Ctrl+3 trocam de vista; não há Avançar/Voltar", async () => {
+  it("Novo projeto leva ao Texto; Ctrl+2, Ctrl+3 e Ctrl+4 trocam de vista; não há Avançar/Voltar", async () => {
     render(<App />);
     await createViaGuide();
     expect(tab("Texto").getAttribute("aria-selected")).toBe("true");
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Texto", "Recortes", "Tabela"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Texto", "Recortes", "Tabela", "Análise"]);
+    ctrl("4");
+    expect(tab("Análise").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Ainda não há anotações. Clique numa sílaba em Recortes para anotar.")).toBeTruthy();
     ctrl("2");
     expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
     ctrl("3");
@@ -364,6 +367,95 @@ describe("App", () => {
     expect(container.querySelector("[data-box-overlay]")).toBeNull();
     expect(container.querySelector('[role=treeitem][aria-selected=true][data-line-id="line-2"]')).not.toBeNull();
   });
+  it("Recortes: painel Anotação lembrado da preferência; Ctrl+Shift+A o fecha e grava", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.mocquereau.getAnnotationPanelOpen = vi.fn().mockResolvedValue(true);
+    window.mocquereau.setAnnotationPanelOpen = vi.fn().mockResolvedValue(undefined);
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    expect(container.querySelector("[data-annotation-panel]")).toBeNull();
+    ctrl("2");
+    expect(container.querySelector("[data-annotation-panel]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Painel Anotação" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.keyDown(window, { key: "A", ctrlKey: true, shiftKey: true });
+    expect(container.querySelector("[data-annotation-panel]")).toBeNull();
+    expect(window.mocquereau.setAnnotationPanelOpen).toHaveBeenCalledWith(false);
+  });
+
+  it("Análise: número abre as ocorrências; clicar numa leva a Recortes com o painel Anotação na sílaba", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.mocquereau.getAnnotationPanelOpen = vi.fn().mockResolvedValue(false);
+    window.mocquereau.setAnnotationPanelOpen = vi.fn().mockResolvedValue(undefined);
+    const project = projectWithBox();
+    project.sources[0].annotations = { 1: { neumes: [{ kind: "virga" }], tags: [] } };
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project, filePath: null });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("4");
+    const row = screen.getByRole("row", { name: /virga/ });
+    fireEvent.click(within(row).getAllByRole("button")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Ocorrências" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /er/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(tab("Recortes").getAttribute("aria-selected")).toBe("true");
+    const panel = container.querySelector("[data-annotation-panel]") as HTMLElement;
+    expect(panel).not.toBeNull();
+    expect(within(panel).getByText("er")).toBeTruthy();
+    expect(window.mocquereau.setAnnotationPanelOpen).toHaveBeenCalledWith(true);
+  });
+
+  it("Análise: Exportar CSV… (barra e menu Arquivo) usa os filtros ativos e avisa", async () => {
+    const exportCsv = vi.fn().mockResolvedValue({ files: ["/p/a-neumas.csv", "/p/a-totais.csv"] });
+    window.mocquereau.exportCsv = exportCsv;
+    const project = projectWithBox();
+    project.sources[0].annotations = { 1: { neumes: [{ kind: "virga" }], tags: [] } };
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project, filePath: null });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("4");
+    fireEvent.click(screen.getByRole("button", { name: "Exportar CSV…" }));
+    await wait(0);
+    expect(exportCsv.mock.calls[0][0].raw).toContain("virga");
+    expect(screen.getByRole("status").textContent).toContain("CSV exportado");
+    // Certeza: só "Ilegível" — a sílaba anotada (sem certeza) sai do CSV.
+    fireEvent.click(screen.getByRole("button", { name: /^Certeza/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Ilegível" }));
+    fireEvent.click(screen.getByRole("button", { name: "Exportar CSV…" }));
+    await wait(0);
+    expect(exportCsv.mock.calls[1][0].raw).not.toContain("virga");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Arquivo" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Exportar CSV/ }));
+    await wait(0);
+    expect(exportCsv.mock.calls[2][0].raw).not.toContain("virga");
+  });
+
+  it("Análise: sem anotações, Exportar CSV… fica desabilitado", async () => {
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project: projectWithBox(), filePath: null });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("4");
+    expect((screen.getByRole("button", { name: "Exportar CSV…" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Análise: falha ao exportar o CSV mostra um erro", async () => {
+    window.mocquereau.exportCsv = vi.fn().mockRejectedValue(new Error("disco cheio"));
+    const project = projectWithBox();
+    project.sources[0].annotations = { 1: { neumes: [{ kind: "virga" }], tags: [] } };
+    window.mocquereau.openProject = vi.fn().mockResolvedValue({ project, filePath: null });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir…" }));
+    await screen.findByDisplayValue("Introito");
+    ctrl("4");
+    fireEvent.click(screen.getByRole("button", { name: "Exportar CSV…" }));
+    await wait(0);
+    expect(screen.getByRole("alert").textContent).toContain("Não foi possível exportar o CSV");
+  });
+
   it("abrir outro projeto esquece as fontes abertas na árvore do Recortes", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const project = projectWithBox();

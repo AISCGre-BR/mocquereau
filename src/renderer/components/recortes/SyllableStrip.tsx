@@ -30,6 +30,8 @@ export interface SyllableStripProps {
   onRemoveBox(i: number): void;
   /** Sílabas com sugestão de neuma na página (S3). */
   suggested?: ReadonlySet<number>;
+  /** Sílabas anotadas na fonte ativa: um ponto discreto sob elas. */
+  annotated?: ReadonlySet<number>;
 }
 
 type Edge = "start" | "end";
@@ -45,6 +47,7 @@ export function SyllableStrip({
   onToggleGap,
   onRemoveBox,
   suggested,
+  annotated,
 }: SyllableStripProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -208,6 +211,7 @@ export function SyllableStrip({
           inRange={i >= range.start && i <= range.end}
           hasBox={line.syllableBoxes?.[i] != null}
           suggested={suggested?.has(i) ?? false}
+          annotated={annotated?.has(i) ?? false}
           gap={isLineGap(line, i)}
           coveredBy={coveredByOthers.get(i)}
           tabStop={i === tabStop}
@@ -268,6 +272,7 @@ interface SyllableProps {
   inRange: boolean;
   hasBox: boolean;
   suggested: boolean;
+  annotated: boolean;
   gap: boolean;
   coveredBy: string | undefined;
   tabStop: boolean;
@@ -285,6 +290,7 @@ function Syllable({
   inRange,
   hasBox,
   suggested,
+  annotated,
   gap,
   coveredBy,
   tabStop,
@@ -350,6 +356,13 @@ function Syllable({
     >
       {text}
       {underline}
+      {annotated && (
+        <span
+          data-annotated
+          aria-hidden
+          className={`absolute bottom-0 left-1/2 size-1 -translate-x-1/2 translate-y-full rounded-full ${active ? "bg-rubric" : "bg-ink-muted"}`}
+        />
+      )}
       {covered && tooltip}
     </span>
   );

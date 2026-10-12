@@ -14,6 +14,10 @@
 //   settle() encerra o ciclo; quem chama é o efeito que reporta o estado sujo real.
 // - epoch()/bump(): muda sempre que o documento sob as vistas é trocado (novo,
 //   aberto, fechado, desfeito). O flush ao desmontar é ignorado se a época mudou.
+//   bump("history") (desfazer/refazer) muda só epoch(); bump() muda também
+//   documentEpoch(), que só conta trocas do documento (novo, aberto, fechado).
+//   usePendingFlush(flush, "document") se guia por documentEpoch(): uma vista que
+//   continua montada depois de desfazer ainda grava ao desmontar.
 //
 // Quando o Texto também editar o projeto direto, isto some.
 import { useEffect, useRef } from "react";
@@ -27,12 +31,16 @@ export interface PendingEdits {
   markPending(): void;
   settle(): void;
   epoch(): number;
-  bump(): void;
+  /** Changes only when the document is replaced (new, open, close), not on undo/redo. */
+  documentEpoch(): number;
+  /** "document" (default): the document was replaced; "history": undo/redo. */
+  bump(scope?: "document" | "history"): void;
 }
 
 export function createPendingEdits(): PendingEdits {
   const flushes = new Set<PendingFlush>();
   let epoch = 0;
+  let documentEpoch = 0;
   let marked = false;
   return {
     register(flush) {
@@ -55,8 +63,10 @@ export function createPendingEdits(): PendingEdits {
       marked = false;
     },
     epoch: () => epoch,
-    bump() {
+    documentEpoch: () => documentEpoch,
+    bump(scope = "document") {
       epoch += 1;
+      if (scope === "document") documentEpoch += 1;
     },
   };
 }
@@ -65,20 +75,23 @@ export function createPendingEdits(): PendingEdits {
  * Registra o flush da vista e o executa ao desmontar, a menos que o documento
  * tenha sido trocado desde a montagem (época diferente). Sem registro no
  * contexto (testes isolados), só executa o flush ao desmontar.
+ * scope "document": só uma troca de documento (novo, aberto, fechado) cancela o
+ * flush de desmontagem; desfazer/refazer não (para vistas que seguem montadas).
  */
-export function usePendingFlush(flush: PendingFlush): void {
+export function usePendingFlush(flush: PendingFlush, scope?: "document"): void {
   const { pending } = useProject();
   const flushRef = useRef(flush);
   flushRef.current = flush;
 
   useEffect(() => {
-    const mountEpoch = pending?.epoch();
+    const current = () => (scope === "document" ? pending?.documentEpoch() : pending?.epoch());
+    const mountEpoch = current();
     const run = () => flushRef.current();
     const unregister = pending?.register(run);
     return () => {
       unregister?.();
-      if (pending && pending.epoch() !== mountEpoch) return;
+      if (pending && current() !== mountEpoch) return;
       run();
     };
-  }, [pending]);
+  }, [pending, scope]);
 }

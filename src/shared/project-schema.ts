@@ -5,6 +5,8 @@
 // (images referenced by imageId). SessionProject is the in-memory shape the
 // renderer still uses in wave A2 (images inline as data URLs + optional imageId).
 
+import type { Annotations, ExportPrefs, NeumeVocabulary, Tag } from "./annotation/types";
+
 export const CURRENT_SCHEMA_VERSION = 3;
 export const PACKAGE_MIMETYPE = "application/vnd.mocquereau.project+zip";
 
@@ -132,6 +134,8 @@ export interface SourceOf<I> {
   metadata: SourceMetadata;
   lines: LineOf<I>[];
   syllableCuts: Record<number, I | null>;
+  /** Anotações paleográficas por sílaba global; ausente = nada anotado. */
+  annotations?: Annotations;
 }
 
 export interface ProjectBody<I> {
@@ -140,6 +144,9 @@ export interface ProjectBody<I> {
   sections: SectionData[];
   classification: Classification;
   sources: SourceOf<I>[];
+  neumeVocabulary?: NeumeVocabulary;
+  tags?: Tag[];
+  exportPrefs?: ExportPrefs;
 }
 
 export interface PackagedImageMeta {

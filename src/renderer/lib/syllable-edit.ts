@@ -8,6 +8,7 @@
 // index-keyed) and are deliberately left untouched.
 
 import type { MocquereauProject, SyllabifiedWord } from './models';
+import type { Annotations, SyllableAnnotation } from '@shared/annotation/types';
 
 /** Split syllable `sylIdx` of word `wordIdx` at character position `at` (1 <= at < length). */
 export function splitSyllable(
@@ -141,6 +142,13 @@ export function replaceWordSyllables(
     return out;
   }
 
+  const remapAnnotations = (rec: Annotations): Annotations | undefined => {
+    const r = remapRecord<SyllableAnnotation>(rec, true);
+    const out: Annotations = {};
+    for (const [k, a] of Object.entries(r)) if (a) out[Number(k)] = a;
+    return Object.keys(out).length ? out : undefined;
+  };
+
   const sources = project.sources.map((source) => ({
     ...source,
     lines: source.lines.map((line) => {
@@ -171,6 +179,7 @@ export function replaceWordSyllables(
       };
     }),
     syllableCuts: remapRecord(source.syllableCuts, false),
+    ...(source.annotations ? { annotations: remapAnnotations(source.annotations) } : {}),
   }));
 
   return {

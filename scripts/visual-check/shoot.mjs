@@ -105,6 +105,7 @@ const stub = ({ theme, data, emptyRecent }) => {
     openProject: async () => opened(),
     importGueranger: async () => null,
     exportDocx: async () => ({ filePath: "/fixture/saida.docx" }),
+    exportCsv: async () => ({ files: ["/fixture/saida-neumas.csv", "/fixture/saida-totais.csv"] }),
     putImage: async () => { throw new Error("visual-check: putImage não suportado"); },
     getImages: async (ids) =>
       ids.filter((id) => images.has(id)).map((id) => ({
@@ -122,6 +123,8 @@ const stub = ({ theme, data, emptyRecent }) => {
     setTheme: async () => true,
     getSuggestionsEnabled: async () => true,
     setSuggestionsEnabled: async (on) => on,
+    getAnnotationPanelOpen: async () => false,
+    setAnnotationPanelOpen: async () => {},
   };
 };
 
@@ -142,6 +145,27 @@ async function openNeumePage(page) {
   if ((await laon.getAttribute("aria-expanded")) !== "true") await laon.getByTestId("source-chevron").click();
   await page.locator('[role=treeitem][data-line-id="line-1-neumas"]').click();
   await settle(page, 3000);
+}
+
+/** Recortes na primeira página confirmada, com o painel Anotação aberto na sílaba `syllable`. */
+async function openAnnotationPanel(page, syllable) {
+  await openFixtureProject(page);
+  await page.keyboard.press("Control+2");
+  await settle(page);
+  await page.locator("[role=treeitem][data-line-id]").filter({ has: page.locator("[data-confirmed]") }).first().click();
+  await settle(page, 2000);
+  await page.keyboard.press("Control+Shift+A");
+  await settle(page, 400);
+  await page.locator(`[data-syllable="${syllable}"]`).first().click();
+  await settle(page, 600);
+}
+
+/** Abre um item do menu Arquivo (com o projeto da fixture aberto). */
+async function openFileMenuItem(page, name) {
+  await openFixtureProject(page);
+  await page.getByRole("menuitem", { name: "Arquivo" }).click();
+  await page.getByRole("menuitem", { name }).click();
+  await settle(page, 600);
 }
 
 const GUIDE_TEXT = [
@@ -212,6 +236,36 @@ const SCREENS = {
     await page.locator("[data-neume-band]").first().click();
     await settle(page, 600);
   },
+  // Painel Anotação (Ctrl+Shift+A) na sílaba "est" (liquescência, episema, letra), com o
+  // primeiro neuma selecionado: o bloco de detalhe aparece (o clique não abre a lista).
+  "recortes-anotacao": async (page) => {
+    await openAnnotationPanel(page, 4);
+    await page.locator("[data-annotation-panel] [data-neume-index]").first().click();
+    await settle(page, 600);
+  },
+  // Neuma que não existe no vocabulário: opção "Criar «…»" e o formulário em linha.
+  "recortes-anotacao-criar": async (page) => {
+    await openAnnotationPanel(page, 1);
+    const input = page.locator("[data-annotation-panel]").getByRole("combobox", { name: "Neumas" });
+    await input.click();
+    await input.fill("franculus");
+    await settle(page, 300);
+    await page.getByRole("option", { name: "Criar «franculus»" }).click();
+    await settle(page, 600);
+  },
+  // Nome digitado e o campo deixado (Tab): o tipo é criado sem categoria. Ao voltar, a lista
+  // filtrada mostra o grupo "Sem categoria", sem número de notas.
+  "recortes-anotacao-sem-categoria": async (page) => {
+    await openAnnotationPanel(page, 1);
+    const input = page.locator("[data-annotation-panel]").getByRole("combobox", { name: "Neumas" });
+    await input.click();
+    await input.fill("franculus");
+    await page.keyboard.press("Tab");
+    await settle(page, 300);
+    await input.click();
+    await input.fill("fr");
+    await settle(page, 600);
+  },
   "fonte-dialog": async (page) => {
     await openFixtureProject(page);
     await page.keyboard.press("Control+2");
@@ -228,6 +282,39 @@ const SCREENS = {
     await settle(page, 600);
   },
   tabela: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+3"); await settle(page, 5000); },
+  // Clique numa célula preenchida e anotada: a anotação compacta abre sob ela.
+  "tabela-anotacao": async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+3");
+    await settle(page, 3000);
+    // O foco vai para o campo Neumas, sem abrir a lista.
+    await page.locator("[data-annotated]").nth(1).click();
+    await settle(page, 600);
+  },
+  etiquetas: async (page) => { await openFileMenuItem(page, "Etiquetas…"); },
+  vocabulario: async (page) => { await openFileMenuItem(page, "Vocabulário de neumas…"); },
+  // Tipo criado sem categoria no painel Anotação; no diálogo, a entrada "Sem categoria".
+  "vocabulario-sem-categoria": async (page) => {
+    await openAnnotationPanel(page, 1);
+    const input = page.locator("[data-annotation-panel]").getByRole("combobox", { name: "Neumas" });
+    await input.click();
+    await input.fill("franculus");
+    await page.keyboard.press("Tab");
+    await settle(page, 300);
+    await page.getByRole("menuitem", { name: "Arquivo" }).click();
+    await page.getByRole("menuitem", { name: "Vocabulário de neumas…" }).click();
+    await settle(page, 600);
+    await page.getByRole("button", { name: "Sem categoria" }).click();
+    await settle(page, 300);
+  },
+  analise: async (page) => { await openFixtureProject(page); await page.keyboard.press("Control+4"); await settle(page, 800); },
+  "analise-ocorrencias": async (page) => {
+    await openFixtureProject(page);
+    await page.keyboard.press("Control+4");
+    await settle(page, 600);
+    await page.locator('[data-pair="src-0:src-1"] button').click();
+    await settle(page, 600);
+  },
   exportar: async (page) => {
     await openFixtureProject(page);
     await page.keyboard.press("Control+3");
@@ -237,12 +324,15 @@ const SCREENS = {
   },
 };
 
+// VISUAL_SCREENS=a,b captura só essas telas.
+const only = process.env.VISUAL_SCREENS?.split(",").map((s) => s.trim()).filter(Boolean);
 let failed = false;
 const browser = await chromium.launch();
 await rasterizeSvgs(browser, data);
 for (const theme of THEMES) {
   for (const [w, h] of VIEWPORTS) {
     for (const [name, run] of Object.entries(SCREENS)) {
+      if (only && !only.includes(name)) continue;
       // Contexto novo por captura: cada tela parte da tela inicial, sem estado de outra.
       const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme });
       const page = await ctx.newPage();

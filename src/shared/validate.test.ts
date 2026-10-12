@@ -173,3 +173,147 @@ describe("classification validation", () => {
     expect(b.warnings.some((w) => w.includes("notationOverride") || w.includes("neumeBands"))).toBe(false);
   });
 });
+
+describe("anotações", () => {
+  const withAnnotations = () => {
+    const p = clone() as any;
+    p.neumeVocabulary = {
+      categories: [{ id: "cat.simple", name: "Simples" }],
+      kinds: [
+        { id: "virga", categoryId: "cat.simple", name: "virga", defaultNotes: 1 },
+        { id: "tractulus", categoryId: "cat.simple", name: "tractulus", defaultNotes: 1 },
+        { id: "uncinus", categoryId: "cat.simple", name: "uncinus", defaultNotes: 1, equivalentTo: ["tractulus"] },
+      ],
+      letters: [{ id: "letter.c", abbr: "c", meaning: "celeriter" }],
+    };
+    p.tags = [{ id: "t1", name: "raspagem", group: "Paleografia" }];
+    p.exportPrefs = { includeIndicators: true };
+    p.sources[0].annotations = {
+      0: { neumes: [{ kind: "virga", letters: ["letter.c"], episema: false }], certainty: "probable", tags: ["t1"], comment: "x" },
+      2: { neumes: [], notes: 3, tags: [] },
+    };
+    return p;
+  };
+
+  it("anotações, vocabulário, etiquetas e preferências fazem a viagem completa sem aviso", () => {
+    const r = validateProject(withAnnotations());
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.warnings).toEqual([]);
+    expect(r.project.sources[0].annotations).toEqual(withAnnotations().sources[0].annotations);
+    expect(r.project.neumeVocabulary?.kinds).toHaveLength(3);
+    expect(r.project.tags).toEqual([{ id: "t1", name: "raspagem", group: "Paleografia" }]);
+    expect(r.project.exportPrefs).toEqual({ includeIndicators: true });
+  });
+
+  it("ausência dos campos novos não gera aviso nem valor", () => {
+    const r = validateProject(clone());
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.project.sources[0].annotations).toBeUndefined();
+    expect(r.project.neumeVocabulary).toBeUndefined();
+    expect(r.project.tags).toBeUndefined();
+  });
+
+  it("valores inválidos somem com aviso, sem inventar padrão", () => {
+    const p = withAnnotations();
+    p.sources[0].annotations[0].certainty = "sure";
+    p.sources[0].annotations[0].neumes[0].liquescence = "big";
+    p.sources[0].annotations[0].neumes.push({ notes: 2 }); // sem kind
+    p.sources[0].annotations.x = { neumes: [], tags: [] }; // chave não numérica
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    const a = r.project.sources[0].annotations![0];
+    expect(a.certainty).toBeUndefined();
+    expect(a.neumes).toHaveLength(1);
+    expect(a.neumes[0].liquescence).toBeUndefined();
+    expect(Object.keys(r.project.sources[0].annotations!)).toEqual(["0", "2"]);
+    expect(r.warnings.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("anotação vazia é descartada em silêncio", () => {
+    const p = withAnnotations();
+    p.sources[0].annotations[5] = { neumes: [], tags: [] };
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.project.sources[0].annotations![5]).toBeUndefined();
+  });
+
+  it("notas alargadas: inteiros >= 1 ordenados e sem repetição; inválidas somem com aviso; vazio = ausente", () => {
+    const p = withAnnotations();
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: [3, 1, 3] });
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: [0, 2.5, "x", 2] });
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: [] });
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: "1" });
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    const n = r.project.sources[0].annotations![0].neumes;
+    expect(n[1].lengthened).toEqual([1, 3]);
+    expect(n[2].lengthened).toEqual([2]);
+    expect("lengthened" in n[3]).toBe(false);
+    expect("lengthened" in n[4]).toBe(false);
+    expect(r.warnings.filter((w) => w.includes("lengthened")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("equivalência em texto (formato antigo) vira lista em silêncio", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[2].equivalentTo = "tractulus";
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.warnings).toEqual([]);
+    expect(r.project.neumeVocabulary!.kinds[2].equivalentTo).toEqual(["tractulus"]);
+  });
+
+  it("equivalências: várias, mútuas permitidas, repetidas unificadas; o próprio tipo cai com aviso", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[2].equivalentTo = ["tractulus", "virga", "tractulus", "uncinus"];
+    p.neumeVocabulary.kinds[1].equivalentTo = ["uncinus"];
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    const byId = Object.fromEntries(r.project.neumeVocabulary!.kinds.map((k) => [k.id, k]));
+    expect(byId.uncinus.equivalentTo).toEqual(["tractulus", "virga"]);
+    expect(byId.tractulus.equivalentTo).toEqual(["uncinus"]);
+    expect(r.warnings.some((w) => w.includes("uncinus") && w.includes("equivalentTo"))).toBe(true);
+  });
+
+  it("tipo sem categoria e sem notas padrão faz a viagem sem aviso; ausente continua ausente", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds.push({ id: "solto", name: "solto" });
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.warnings).toEqual([]);
+    const k = r.project.neumeVocabulary!.kinds.find((x) => x.id === "solto")!;
+    expect(k).toEqual({ id: "solto", name: "solto" });
+    expect("categoryId" in k).toBe(false);
+    expect("defaultNotes" in k).toBe(false);
+  });
+
+  it("categoria inexistente cai com aviso e o tipo fica sem categoria", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[0].categoryId = "cat.nada";
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    const k = r.project.neumeVocabulary!.kinds.find((x) => x.id === "virga")!;
+    expect(k.categoryId).toBeUndefined();
+    expect(k.defaultNotes).toBe(1);
+    expect(r.warnings.some((w) => w.includes("virga") && w.includes("categoryId"))).toBe(true);
+  });
+
+  it("categoria ou notas padrão presentes mas inválidas ainda descartam o tipo", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[0].categoryId = 3;
+    p.neumeVocabulary.kinds[1].defaultNotes = 1.5;
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.project.neumeVocabulary!.kinds.map((k) => k.id)).toEqual(["uncinus"]);
+  });
+
+  it("equivalência para tipo inexistente some com aviso", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[2].equivalentTo = ["nada", 3];
+    p.neumeVocabulary.kinds[1].equivalentTo = ["nada", "virga"];
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.project.neumeVocabulary!.kinds[2]).not.toHaveProperty("equivalentTo");
+    expect(r.project.neumeVocabulary!.kinds[1].equivalentTo).toEqual(["virga"]);
+    expect(r.warnings.length).toBeGreaterThan(0);
+  });
+});

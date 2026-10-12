@@ -6,15 +6,15 @@ import { ProjectContext, initialStateForTest } from "./useProject";
 
 afterEach(cleanup);
 
-function View({ flush }: { flush: () => boolean }) {
-  usePendingFlush(flush);
+function View({ flush, scope }: { flush: () => boolean; scope?: "document" }) {
+  usePendingFlush(flush, scope);
   return null;
 }
 
-function mount(pending: PendingEdits, flush: () => boolean) {
+function mount(pending: PendingEdits, flush: () => boolean, scope?: "document") {
   return render(
     <ProjectContext.Provider value={{ state: initialStateForTest, dispatch: vi.fn(), pending }}>
-      <View flush={flush} />
+      <View flush={flush} scope={scope} />
     </ProjectContext.Provider>,
   );
 }
@@ -48,6 +48,29 @@ describe("pendingEdits", () => {
     unmount();
     expect(flush).not.toHaveBeenCalled();
     expect(pending.flushAll()).toBe(false); // e saiu do registro
+  });
+
+  it("escopo document: desfazer (bump de histórico) não cancela o flush; trocar o documento cancela", () => {
+    const pending = createPendingEdits();
+    const flush = vi.fn(() => true);
+    const first = mount(pending, flush, "document");
+    pending.bump("history");
+    first.unmount();
+    expect(flush).toHaveBeenCalledOnce();
+
+    const second = mount(pending, flush, "document");
+    pending.bump();
+    second.unmount();
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("sem escopo, o bump de histórico continua cancelando o flush (Texto)", () => {
+    const pending = createPendingEdits();
+    const flush = vi.fn(() => true);
+    const { unmount } = mount(pending, flush);
+    pending.bump("history");
+    unmount();
+    expect(flush).not.toHaveBeenCalled();
   });
 
   it("markPending avisa o main (setDirty(true)) uma vez por ciclo; settle reabre o ciclo", () => {

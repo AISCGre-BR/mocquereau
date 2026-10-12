@@ -14,11 +14,14 @@ import {
   VerticalAlign,
   TableLayoutType,
   HeightRule,
+  HeadingLevel,
+  PageBreak,
 } from 'docx';
 import { dialog, ipcMain } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { t } from './i18n';
 import type { DocxExportPayload, DocxCellData } from '../renderer/lib/models';
+import type { IndicatorTable } from '../shared/analysis/indicator-tables';
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
 function log(...args: unknown[]) {
@@ -334,6 +337,75 @@ export function buildGroupRow(name: string, span: number): TableRow {
   });
 }
 
+// ── Indicators appendix ───────────────────────────────────────────────────────
+const INDICATOR_LABEL_WIDTH_PCT = 24;
+
+function indicatorCell(text: string, opts: { bold?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; widthPct: number }): TableCell {
+  return new TableCell({
+    width: { size: opts.widthPct, type: WidthType.PERCENTAGE },
+    children: [
+      new Paragraph({
+        alignment: opts.align,
+        children: [new TextRun({ text, size: 18, bold: opts.bold })],
+      }),
+    ],
+    margins: { top: 40, bottom: 40, left: 80, right: 80 },
+  });
+}
+
+/** Page break, heading and one titled table per indicator (same landscape section). */
+export function buildIndicatorSection(ind: { title: string; tables: IndicatorTable[] }): Array<Paragraph | Table> {
+  const out: Array<Paragraph | Table> = [
+    new Paragraph({ children: [new PageBreak()] }),
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: ind.title, bold: true, size: 28 })],
+      spacing: { after: 160 },
+    }),
+  ];
+  ind.tables.forEach((table, i) => {
+    if (i > 0) out.push(new Paragraph({ children: [], spacing: { before: 240, after: 120 } }));
+    out.push(
+      new Paragraph({
+        children: [new TextRun({ text: table.title, bold: true, size: 22 })],
+        spacing: { before: 120, after: 80 },
+        keepNext: true,
+      }),
+    );
+    const n = table.columns.length;
+    const dataPct = n === 0 ? 0 : (100 - INDICATOR_LABEL_WIDTH_PCT) / n;
+    const widths = [INDICATOR_LABEL_WIDTH_PCT, ...Array(n).fill(dataPct)];
+    const header = new TableRow({
+      tableHeader: true,
+      cantSplit: true,
+      children: [
+        indicatorCell('', { widthPct: INDICATOR_LABEL_WIDTH_PCT }),
+        ...table.columns.map((c) => indicatorCell(c, { bold: true, align: AlignmentType.CENTER, widthPct: dataPct })),
+      ],
+    });
+    const rows = table.rows.map((r) =>
+      r.group
+        ? buildGroupRow(r.label, 1 + n)
+        : new TableRow({
+            cantSplit: true,
+            children: [
+              indicatorCell(r.label, { widthPct: INDICATOR_LABEL_WIDTH_PCT }),
+              ...r.values.map((v) => indicatorCell(v, { align: AlignmentType.CENTER, widthPct: dataPct })),
+            ],
+          }),
+    );
+    out.push(
+      new Table({
+        rows: [header, ...rows],
+        layout: TableLayoutType.FIXED,
+        columnWidths: widths.map((w) => Math.round((w / 100) * (PAGE_WIDTH_TWIPS - 2 * MARGIN_TWIPS))),
+        width: { size: 100, type: WidthType.PERCENTAGE },
+      }),
+    );
+  });
+  return out;
+}
+
 // ── Document builder ──────────────────────────────────────────────────────────
 export function buildDocument(payload: DocxExportPayload): Document {
   const { title, author, rawText, syllables, rows, wordBoundaries } = payload;
@@ -429,7 +501,12 @@ export function buildDocument(payload: DocxExportPayload): Document {
             },
           },
         },
-        children: [...titleParas, rawTextPara, ...tablesWithSpacing],
+        children: [
+          ...titleParas,
+          rawTextPara,
+          ...tablesWithSpacing,
+          ...(payload.indicators ? buildIndicatorSection(payload.indicators) : []),
+        ],
       },
     ],
   });

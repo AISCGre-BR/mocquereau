@@ -17,8 +17,20 @@ O script constrói o app (`electron-vite build`; a captura isolada, `node script
 Telas (objeto `SCREENS` em `shoot.mjs`): `welcome`, `welcome-empty`, `novo-peca`, `novo-texto`,
 `novo-divisao`, `novo-conferir`, `texto`, `recortes`, `recortes-imagem`, `recortes-sugestoes`
 (Ctrl+Shift+G na página de neumas sintéticos, com o detector real no worker), `recortes-area`
-(ferramenta "Marcar linha de neumas" ligada, linha selecionada com alças), `fonte-dialog`,
-`classificacao`, `tabela`, `exportar`.
+(ferramenta "Marcar linha de neumas" ligada, linha selecionada com alças), `recortes-anotacao`
+(painel Anotação, Ctrl+Shift+A, numa sílaba anotada com o primeiro neuma selecionado e o detalhe
+dele), `recortes-anotacao-criar` (neuma fora do vocabulário: "Criar «…»" e o formulário em linha),
+`recortes-anotacao-sem-categoria` (nome digitado e campo deixado com Tab: tipo criado sem
+categoria, depois a lista filtrada com o grupo "Sem categoria"),
+`fonte-dialog`, `classificacao`, `tabela`, `tabela-anotacao` (anotação compacta aberta por clique
+numa célula anotada), `etiquetas` (Arquivo > Etiquetas…), `vocabulario` (Arquivo > Vocabulário de
+neumas…), `vocabulario-sem-categoria` (o diálogo na entrada "Sem categoria", com o tipo criado
+no painel), `analise`, `analise-ocorrencias` (ocorrências de um par da concordância), `exportar`
+(com a caixa "Incluir indicadores").
+`VISUAL_SCREENS=recortes-anotacao,tabela-anotacao` captura só as telas listadas.
+A fixture traz anotações sintéticas nas três fontes (só nas sílabas com recorte), o vocabulário
+padrão com uma equivalência em uso (uncinus na fonte de Laon, = tractulus), três etiquetas em dois
+grupos e uma sílaba ilegível.
 A página de neumas (Laon 239, 6r) vem do gerador sintético dos testes do detector
 (`src/renderer/lib/neume-detect/synthetic.ts`), codificada em PNG no `fixture.mjs`.
 Erros de página (`pageerror`) e `console.error` são impressos e o processo sai com código 1.

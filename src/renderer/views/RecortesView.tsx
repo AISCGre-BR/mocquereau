@@ -30,6 +30,7 @@ import { boxesInView, hasAnyBox } from "@shared/box-frame";
 import type { ImageAdjustments, ManuscriptSource, SyllableBox } from "../lib/models";
 import { coveredByOtherPages } from "../lib/sources";
 import { focusSheet, focusSheetIfStranded } from "../components/recortes/sheetFocus";
+import { AnnotationPanel } from "../components/annotation/AnnotationPanel";
 
 /**
  * Alvos cujas teclas não são do editor (atalhos globais Tab/Enter/Delete/setas):
@@ -54,9 +55,17 @@ export interface RecortesViewProps {
   /** Fonte recém-criada pela Texto: o diálogo Fonte dela abre ao montar. */
   openSourceId?: string | null;
   onOpenSourceHandled?: () => void;
+  /** Painel Anotação (preference kept by the App). */
+  annotationPanelOpen?: boolean;
+  onCloseAnnotationPanel?: () => void;
 }
 
-export function RecortesView({ openSourceId = null, onOpenSourceHandled }: RecortesViewProps = {}) {
+export function RecortesView({
+  openSourceId = null,
+  onOpenSourceHandled,
+  annotationPanelOpen = false,
+  onCloseAnnotationPanel,
+}: RecortesViewProps = {}) {
   const { state, dispatch } = useProject();
   const { t } = useTranslation();
   const project = state.project;
@@ -100,6 +109,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
     [activeSource, activeLine, pageLabel],
   );
   const activeSyllable = recortes.activeSyllable;
+  const annotations = activeSource?.annotations;
+  const annotatedSet = useMemo(() => new Set(Object.keys(annotations ?? {}).map(Number)), [annotations]);
 
   // ── Writes to the project (end of each gesture) ──────────────────────────
 
@@ -238,6 +249,8 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
   keyRef.current = (e: KeyboardEvent) => {
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    // The Anotação panel keeps its keys (Tab between fields, arrows, Delete, Esc).
+    if (target instanceof Element && target.closest("[data-annotation-panel]")) return;
     // Esc descarta as sugestões da página (S6), mesmo com o foco num botão da barra
     // (o Sugerir); com diálogo ou menu aberto, a tecla é deles.
     // Com a ferramenta de área ligada, Esc a desliga (S7).
@@ -371,6 +384,7 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
                 onToggleGap={toggleGap}
                 onRemoveBox={commands.removeBoxAt}
                 suggested={suggestedSet}
+                annotated={annotatedSet}
               />
             </div>
           )}
@@ -417,6 +431,20 @@ export function RecortesView({ openSourceId = null, onOpenSourceHandled }: Recor
             )}
           </div>
         </div>
+        {annotationPanelOpen && (
+          <AnnotationPanel
+            target={activeSource && activeSyllable !== null ? { sourceId: activeSource.id, syllable: activeSyllable } : null}
+            syllableText={(words && activeSyllable !== null ? flattenSyllables(words)[activeSyllable] : undefined) ?? ""}
+            sourceName={activeSource ? activeSource.metadata.siglum || t("sourceTree.unnamed") : ""}
+            onClose={() => onCloseAnnotationPanel?.()}
+            onNext={() => {
+              if (activeSyllable !== null && activeSyllable + 1 < total) recortes.setActiveSyllable(activeSyllable + 1);
+            }}
+            onPrev={() => {
+              if (activeSyllable !== null && activeSyllable > 0) recortes.setActiveSyllable(activeSyllable - 1);
+            }}
+          />
+        )}
         {sheetMenu && (
           <MenuSurface
             aria-label={t("shell.view.recortes")}

@@ -10,6 +10,8 @@ import { LANG_META, SUPPORTED_LANGS, languageMenuLabel, type SupportedLang } fro
 export interface MenuState {
   hasProject: boolean;
   canExport: boolean;
+  /** The project has at least one annotation (Exportar CSV… needs one). */
+  hasAnnotations: boolean;
   view: ViewId;
   theme: ThemePreference;
   language: SupportedLang;
@@ -31,6 +33,8 @@ export interface RecortesMenuState {
   canSuggestSource: boolean;
   /** The active page shows suggestions. */
   hasSuggestions: boolean;
+  /** Painel Anotação (a preference kept by the App). */
+  annotationPanelOpen?: boolean;
 }
 
 export interface RecortesMenuActions {
@@ -43,16 +47,22 @@ export interface RecortesMenuActions {
   acceptAllSuggestions: () => void;
   discardSuggestions: () => void;
   toggleSuggestions: () => void;
+  /** Painel Anotação; without it (the sheet's context menu) the item is left out. */
+  toggleAnnotationPanel?: () => void;
 }
 
 export interface MenuActions extends RecortesMenuActions {
+  toggleAnnotationPanel: () => void;
   newProject: () => void;
   open: () => void;
   save: () => void;
   saveAs: () => void;
   importGueranger: () => void;
   editClassification: () => void;
+  editTags: () => void;
+  editVocabulary: () => void;
   exportDocx: () => void;
+  exportCsv: () => void;
   closeProject: () => void;
   undo: () => void;
   redo: () => void;
@@ -102,6 +112,18 @@ export function recortesMenuItems(
       : []),
     { id: "recortes.suggestionsEnabled", label: t("recortes.menu.suggestionsEnabled"), checked: s.suggestionsEnabled, disabled: state === undefined, onSelect: actions.toggleSuggestions },
     "separator",
+    ...(actions.toggleAnnotationPanel
+      ? ([
+          {
+            id: "recortes.annotationPanel",
+            label: t("recortes.annotationPanel"),
+            accelerator: "Ctrl+Shift+A",
+            checked: !!s.annotationPanelOpen,
+            disabled: state === undefined,
+            onSelect: actions.toggleAnnotationPanel,
+          },
+        ] satisfies MenuCommand[])
+      : []),
     { id: "recortes.nextSource", label: t("recortes.menu.nextSource"), accelerator: "Ctrl+Enter", nativeInTextInput: true, disabled: !s.hasNextSource, onSelect: actions.nextSource },
   ];
 }
@@ -149,7 +171,10 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         "separator",
         { id: "file.importGueranger", label: t("shell.file.importGueranger"), disabled: noProject, onSelect: actions.importGueranger },
         { id: "file.classification", label: t("shell.file.classification"), disabled: noProject, onSelect: actions.editClassification },
+        { id: "file.tags", label: t("shell.file.tags"), disabled: noProject, onSelect: actions.editTags },
+        { id: "file.vocabulary", label: t("shell.file.vocabulary"), disabled: noProject, onSelect: actions.editVocabulary },
         { id: "file.exportDocx", label: t("shell.file.exportDocx"), accelerator: "Ctrl+E", disabled: !state.canExport, onSelect: actions.exportDocx },
+        { id: "file.exportCsv", label: t("shell.file.exportCsv"), disabled: noProject || !state.hasAnnotations, onSelect: actions.exportCsv },
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },
         ...(noProject
