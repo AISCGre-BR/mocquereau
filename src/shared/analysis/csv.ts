@@ -5,7 +5,7 @@
 import { categoryLabel } from "../annotation/default-vocabulary";
 import type { ProjectBody, SourceOf } from "../project-schema";
 import type { NeumeVocabulary } from "../annotation/types";
-import { kindMap, resolveEquivalent } from "../annotation/vocabulary";
+import { kindMap } from "../annotation/vocabulary";
 import type { AnalysisFilters } from "./types";
 import { FAMILY_LEVEL_ID, selectCells } from "./cells";
 import { concordanceBySource } from "./concordance";
@@ -88,7 +88,6 @@ export function rawRows(
     }
     a.neumes.forEach((n, i) => {
       const kind = kinds.get(n.kind);
-      const resolved = resolveEquivalent(v, n.kind);
       const notes = n.notes ?? kind?.defaultNotes;
       // The syllable comment rides on the first neume row; neume comment follows.
       const comment = [i === 0 ? a.comment : undefined, n.comment].filter((x) => x).join("; ");
@@ -96,7 +95,7 @@ export function rawRows(
         ...head,
         String(i + 1),
         kind?.name ?? n.kind,
-        resolved !== n.kind ? (kinds.get(resolved)?.name ?? resolved) : "",
+        (kind?.equivalentTo ?? []).map((id) => kinds.get(id)?.name ?? id).join("; "),
         kind?.categoryId !== undefined ? (categories.get(kind.categoryId) ?? "") : "",
         notes === undefined ? "" : String(notes),
         n.liquescence ?? "",

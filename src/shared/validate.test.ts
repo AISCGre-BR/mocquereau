@@ -182,7 +182,7 @@ describe("anotações", () => {
       kinds: [
         { id: "virga", categoryId: "cat.simple", name: "virga", defaultNotes: 1 },
         { id: "tractulus", categoryId: "cat.simple", name: "tractulus", defaultNotes: 1 },
-        { id: "uncinus", categoryId: "cat.simple", name: "uncinus", defaultNotes: 1, equivalentTo: "tractulus" },
+        { id: "uncinus", categoryId: "cat.simple", name: "uncinus", defaultNotes: 1, equivalentTo: ["tractulus"] },
       ],
       letters: [{ id: "letter.c", abbr: "c", meaning: "celeriter" }],
     };
@@ -253,14 +253,25 @@ describe("anotações", () => {
     expect(r.warnings.filter((w) => w.includes("lengthened")).length).toBeGreaterThanOrEqual(2);
   });
 
-  it("ciclo de equivalência é cortado no item que o fecha", () => {
+  it("equivalência em texto (formato antigo) vira lista em silêncio", () => {
     const p = withAnnotations();
-    p.neumeVocabulary.kinds[1].equivalentTo = "uncinus"; // tractulus -> uncinus -> tractulus
+    p.neumeVocabulary.kinds[2].equivalentTo = "tractulus";
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    expect(r.warnings).toEqual([]);
+    expect(r.project.neumeVocabulary!.kinds[2].equivalentTo).toEqual(["tractulus"]);
+  });
+
+  it("equivalências: várias, mútuas permitidas, repetidas unificadas; o próprio tipo cai com aviso", () => {
+    const p = withAnnotations();
+    p.neumeVocabulary.kinds[2].equivalentTo = ["tractulus", "virga", "tractulus", "uncinus"];
+    p.neumeVocabulary.kinds[1].equivalentTo = ["uncinus"];
     const r = validateProject(p);
     expect(r.ok).toBe(true); if (!r.ok) return;
     const byId = Object.fromEntries(r.project.neumeVocabulary!.kinds.map((k) => [k.id, k]));
-    expect(byId.uncinus.equivalentTo).toBe("tractulus");
-    expect(byId.tractulus.equivalentTo).toBeUndefined();
+    expect(byId.uncinus.equivalentTo).toEqual(["tractulus", "virga"]);
+    expect(byId.tractulus.equivalentTo).toEqual(["uncinus"]);
+    expect(r.warnings.some((w) => w.includes("uncinus") && w.includes("equivalentTo"))).toBe(true);
   });
 
   it("tipo sem categoria e sem notas padrão faz a viagem sem aviso; ausente continua ausente", () => {
@@ -297,10 +308,12 @@ describe("anotações", () => {
 
   it("equivalência para tipo inexistente some com aviso", () => {
     const p = withAnnotations();
-    p.neumeVocabulary.kinds[2].equivalentTo = "nada";
+    p.neumeVocabulary.kinds[2].equivalentTo = ["nada", 3];
+    p.neumeVocabulary.kinds[1].equivalentTo = ["nada", "virga"];
     const r = validateProject(p);
     expect(r.ok).toBe(true); if (!r.ok) return;
-    expect(r.project.neumeVocabulary!.kinds[2].equivalentTo).toBeUndefined();
+    expect(r.project.neumeVocabulary!.kinds[2]).not.toHaveProperty("equivalentTo");
+    expect(r.project.neumeVocabulary!.kinds[1].equivalentTo).toEqual(["virga"]);
     expect(r.warnings.length).toBeGreaterThan(0);
   });
 });

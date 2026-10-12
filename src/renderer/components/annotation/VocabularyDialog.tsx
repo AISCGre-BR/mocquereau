@@ -23,7 +23,6 @@ import {
   getVocabulary,
   isCategorized,
   restoreDefaults,
-  resolveEquivalent,
 } from "@shared/annotation/vocabulary";
 import type { NeumeCategory, NeumeKind, NeumeVocabulary, SignificantLetter } from "@shared/annotation/types";
 
@@ -82,6 +81,8 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
   const translate = (key: string) => t(key);
   const vocab = getVocabulary(project, translate);
   const categoryIds = new Set(vocab.categories.map((c) => c.id));
+  const namesOfKinds = (ids?: string[]) =>
+    (ids ?? []).map((id) => vocab.kinds.find((k) => k.id === id)?.name).filter((n): n is string => n !== undefined);
   // undefined = "No category" (chosen, or no category exists at all).
   const selected = selectedId === NO_CATEGORY ? undefined : (vocab.categories.find((c) => c.id === selectedId) ?? vocab.categories[0]);
   /** Group of a kind in the category column: its category id, or NO_CATEGORY. */
@@ -101,19 +102,19 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
 
   // ── Equivalência ──────────────────────────────────────────────────────────
 
-  /** `ok: false`: unknown name, the item itself or a cycle. Empty text clears it. */
-  function checkEquivalent(kindId: string | null, text: string): { ok: boolean; id?: string } {
-    const typed = fold(text);
-    if (typed === "") return { ok: true };
-    const target = vocab.kinds.find((k) => fold(k.name) === typed);
-    if (!target || target.id === kindId) return { ok: false };
-    if (kindId) {
-      const trial = { ...vocab, kinds: vocab.kinds.map((k) => (k.id === kindId ? { ...k, equivalentTo: target.id } : k)) };
-      // A chain that ends on an item that still points somewhere was cut as a cycle.
-      const root = resolveEquivalent(trial, kindId);
-      if (trial.kinds.find((k) => k.id === root)?.equivalentTo) return { ok: false };
+  /**
+   * Names separated by ";" or ",", resolved to ids in order (repeats merged). `ok: false`: an
+   * unknown name or the item itself. Empty text clears the equivalences. Mutual equivalences
+   * are fine: the relation is direct and not transitive.
+   */
+  function checkEquivalent(kindId: string | null, text: string): { ok: boolean; ids: string[] } {
+    const ids: string[] = [];
+    for (const typed of text.split(/[;,]/).map(fold).filter(Boolean)) {
+      const target = vocab.kinds.find((k) => fold(k.name) === typed);
+      if (!target || target.id === kindId) return { ok: false, ids: [] };
+      if (!ids.includes(target.id)) ids.push(target.id);
     }
-    return { ok: true, id: target.id };
+    return { ok: true, ids };
   }
 
   /** Nothing is presumed: name must be unique; notes optional, but an integer >= 1 when typed. */
@@ -138,7 +139,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     const category = next.target === "category" ? vocab.categories.find((c) => c.id === next.id) : undefined;
     setName(kind?.name ?? (category ? categoryLabel(category, t) : ""));
     setNotes(kind?.defaultNotes !== undefined ? String(kind.defaultNotes) : "");
-    setEquivalent(kind?.equivalentTo ? (vocab.kinds.find((k) => k.id === kind.equivalentTo)?.name ?? "") : "");
+    setEquivalent(namesOfKinds(kind?.equivalentTo).join("; "));
     setAbbr(letter?.abbr ?? "");
     setMeaning(letter?.meaning ?? "");
   }
@@ -207,7 +208,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
         ...(selected ? { categoryId: selected.id } : {}),
         name: typedName,
         ...(parsed !== undefined ? { defaultNotes: parsed } : {}),
-        ...(check.id ? { equivalentTo: check.id } : {}),
+        ...(check.ids.length > 0 ? { equivalentTo: check.ids } : {}),
       };
       commit({ ...vocab, kinds: [...vocab.kinds, added] });
       return true;
@@ -221,7 +222,10 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
     };
     if (typedName !== kind.name) apply({ name: typedName }, "name");
     if (parsed !== kind.defaultNotes) apply({ defaultNotes: parsed }, "notes");
-    if (check.id !== kind.equivalentTo) apply({ equivalentTo: check.id }, "equivalent");
+    const before = kind.equivalentTo ?? [];
+    if (check.ids.length !== before.length || check.ids.some((id, i) => id !== before[i])) {
+      apply({ equivalentTo: check.ids.length > 0 ? check.ids : undefined }, "equivalent");
+    }
     return true;
   }
 
@@ -331,6 +335,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
         </td>
         <td className="px-2 py-1">
           <SuggestInput
+            multiple
             suggestions={vocab.kinds.filter((k) => k.id !== id).map((k) => k.name)}
             aria-label={t("vocabularyDialog.equivalentTo")}
             aria-invalid={problems.equivalent || undefined}
@@ -374,7 +379,6 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
 
   const selectedGroup = selected?.id ?? NO_CATEGORY;
   const kindsOfSelected = vocab.kinds.filter((k) => groupOf(k) === selectedGroup);
-  const nameOfKind = (id?: string) => (id ? (vocab.kinds.find((k) => k.id === id)?.name ?? "") : "");
   const menuKind = menu?.target === "kind" ? vocab.kinds.find((k) => k.id === menu.id) : undefined;
   const menuCategory = menu?.target === "category" ? vocab.categories.find((c) => c.id === menu.id) : undefined;
   const menuLetter = menu?.target === "letter" ? vocab.letters.find((l) => l.id === menu.id) : undefined;
@@ -514,7 +518,7 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
                           {hiddenSuffix(k.hidden)}
                         </td>
                         <td className="px-2 py-1">{k.defaultNotes ?? ""}</td>
-                        <td className="px-2 py-1 font-serif text-ink-soft">{nameOfKind(k.equivalentTo)}</td>
+                        <td className="px-2 py-1 font-serif text-ink-soft">{namesOfKinds(k.equivalentTo).join(", ")}</td>
                         <td className="px-1 py-0.5">{menuButton("kind", k.id)}</td>
                       </tr>
                     ),

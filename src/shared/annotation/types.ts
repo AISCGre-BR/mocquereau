@@ -36,7 +36,8 @@ export interface NeumeKind {
   /** Absent: no default; an item without its own notes leaves the total undefined. */
   defaultNotes?: number;
   hidden?: boolean;
-  equivalentTo?: string;
+  /** Direct, non-transitive equivalences (kind ids); absent = none. */
+  equivalentTo?: string[];
 }
 export interface SignificantLetter { id: string; abbr: string; meaning: string; hidden?: boolean }
 export interface NeumeVocabulary {

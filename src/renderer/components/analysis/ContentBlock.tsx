@@ -73,8 +73,8 @@ export function ContentBlock({ project, filters, vocabulary, onDrill, className 
                   <tr key={r.kindId} className="border-b border-rule-soft">
                     <th scope="row" className={TH_ROW}>
                       <span className={r.unknown ? "font-serif italic" : "font-serif"}>{r.name}</span>
-                      {r.equivalentName && (
-                        <span className="ml-2 text-caption text-ink-muted">= {r.equivalentName}</span>
+                      {r.equivalentNames && (
+                        <span className="ml-2 text-caption text-ink-muted">= {r.equivalentNames.join(", ")}</span>
                       )}
                     </th>
                     {sources.map((s) => {

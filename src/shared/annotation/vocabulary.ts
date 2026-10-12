@@ -14,18 +14,19 @@ export function kindMap(v: NeumeVocabulary): Map<string, NeumeKind> {
   return new Map(v.kinds.map((k) => [k.id, k]));
 }
 
-/** Root id of an equivalence chain. Unknown ids resolve to themselves; cycles are cut. */
-export function resolveEquivalent(v: NeumeVocabulary, kindId: string): string {
-  const map = kindMap(v);
-  const seen = new Set<string>();
-  let id = kindId;
-  while (!seen.has(id)) {
-    seen.add(id);
-    const next = map.get(id)?.equivalentTo;
-    if (!next || !map.has(next)) return id;
-    id = next;
-  }
-  return id;
+/**
+ * Whether two kinds read the same: the same id, or one lists the other in `equivalentTo`.
+ * Direct and not transitive: uncinus = tractulus and uncinus = virga do not make
+ * tractulus = virga. `kinds` may be passed to avoid rebuilding the map.
+ */
+export function areEquivalent(
+  v: NeumeVocabulary,
+  a: string,
+  b: string,
+  kinds: Map<string, NeumeKind> = kindMap(v),
+): boolean {
+  if (a === b) return true;
+  return (kinds.get(a)?.equivalentTo?.includes(b) ?? false) || (kinds.get(b)?.equivalentTo?.includes(a) ?? false);
 }
 
 /**

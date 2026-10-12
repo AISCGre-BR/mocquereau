@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createDefaultVocabulary } from "./default-vocabulary";
-import { resolveEquivalent, filterKinds, restoreDefaults, getVocabulary, fold } from "./vocabulary";
+import { areEquivalent, filterKinds, restoreDefaults, getVocabulary, fold } from "./vocabulary";
 
 const t = (k: string) => k;
 
@@ -20,15 +20,17 @@ describe("vocabulário padrão", () => {
     }
     expect(v.letters.map((l) => l.abbr)).toEqual(["c", "t", "a", "x", "e", "s", "m", "l", "i", "st", "nl"]);
   });
-  it("uncinus equivale a tractulus", () => {
-    expect(resolveEquivalent(v, "uncinus")).toBe("tractulus");
-    expect(resolveEquivalent(v, "virga")).toBe("virga");
-    expect(resolveEquivalent(v, "sumido")).toBe("sumido");
+  it("uncinus equivale a tractulus e a virga", () => {
+    expect(v.kinds.find((k) => k.id === "uncinus")!.equivalentTo).toEqual(["tractulus", "virga"]);
   });
-  it("resolve cadeias e não entra em laço mesmo com ciclo em memória", () => {
-    const w = structuredClone(v);
-    w.kinds.find((k) => k.id === "tractulus")!.equivalentTo = "uncinus";
-    expect(["tractulus", "uncinus"]).toContain(resolveEquivalent(w, "uncinus"));
+  it("equivalência é direta, nos dois sentidos, e não transitiva", () => {
+    expect(areEquivalent(v, "uncinus", "tractulus")).toBe(true);
+    expect(areEquivalent(v, "tractulus", "uncinus")).toBe(true);
+    expect(areEquivalent(v, "virga", "uncinus")).toBe(true);
+    expect(areEquivalent(v, "tractulus", "virga")).toBe(false);
+    expect(areEquivalent(v, "virga", "virga")).toBe(true);
+    expect(areEquivalent(v, "sumido", "sumido")).toBe(true);
+    expect(areEquivalent(v, "sumido", "virga")).toBe(false);
   });
   it("filtra por prefixo de palavra, sem acento nem caixa, ignorando ocultos", () => {
     const w = structuredClone(v);

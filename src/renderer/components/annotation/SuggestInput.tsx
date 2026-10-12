@@ -2,7 +2,9 @@
 //
 // Text input with a styled suggestion list (replaces the native <datalist>, which renders as an
 // unstyled popup). The list opens while typing or on ArrowDown, filters by word prefix, and is
-// keyboard accessible: ArrowUp/Down move, Enter picks, Esc closes only the list.
+// keyboard accessible: ArrowUp/Down move, Enter picks, Esc closes only the list. With `multiple`,
+// the value is a list separated by ";" or ","; suggestions are for the last item and leave out
+// names already listed, and picking replaces that item and adds "; ".
 
 import { useId, useLayoutEffect, useState, type InputHTMLAttributes, type KeyboardEvent } from "react";
 import { fold } from "@shared/annotation/vocabulary";
@@ -12,19 +14,25 @@ export interface SuggestInputProps
   value: string;
   onChange: (value: string) => void;
   suggestions: string[];
+  multiple?: boolean;
 }
 
-export function SuggestInput({ value, onChange, suggestions, onKeyDown, onBlur, ...rest }: SuggestInputProps) {
+const LIST_SEP = /[;,]/;
+
+export function SuggestInput({ value, onChange, suggestions, multiple, onKeyDown, onBlur, ...rest }: SuggestInputProps) {
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1); // -1: nothing chosen yet, so Enter keeps its usual meaning
   const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
 
-  const q = fold(value.trim());
+  const cut = multiple ? Math.max(value.lastIndexOf(";"), value.lastIndexOf(",")) : -1;
+  const head = value.slice(0, cut + 1);
+  const taken = new Set(head.split(LIST_SEP).map((s) => fold(s.trim())).filter(Boolean));
+  const q = fold(value.slice(cut + 1).trim());
   const matches = suggestions.filter((s) => {
     const f = fold(s.trim());
-    return f !== q && (q === "" || f.split(/\s+/).some((w) => w.startsWith(q)));
+    return f !== q && !taken.has(f) && (q === "" || f.split(/\s+/).some((w) => w.startsWith(q)));
   });
   const shown = open && matches.length > 0;
   const activeIndex = Math.min(active, matches.length - 1);
@@ -37,7 +45,7 @@ export function SuggestInput({ value, onChange, suggestions, onKeyDown, onBlur, 
   }, [shown, anchor, value]);
 
   function pick(i: number) {
-    onChange(matches[i]);
+    onChange(multiple ? `${head.trim() === "" ? "" : `${head.trimEnd()} `}${matches[i]}; ` : matches[i]);
     setOpen(false);
   }
 
@@ -86,7 +94,9 @@ export function SuggestInput({ value, onChange, suggestions, onKeyDown, onBlur, 
         onChange={(e) => {
           onChange(e.target.value);
           setActive(-1);
-          setOpen(e.target.value.trim() !== "");
+          // With `multiple`, only the item being typed opens the list (not a bare separator).
+          const typed = multiple ? e.target.value.split(LIST_SEP).pop()! : e.target.value;
+          setOpen(typed.trim() !== "");
         }}
         onKeyDown={handleKeyDown}
         onBlur={(e) => {

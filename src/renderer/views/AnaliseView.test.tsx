@@ -76,7 +76,7 @@ describe("AnaliseView", () => {
     expect(within(pes()).getAllByRole("button")[0].textContent).toBe("1");
     fireEvent.click(screen.getByRole("tab", { name: "% das sílabas" }));
     expect(within(pes()).getAllByRole("button")[0].textContent).toBe("20%");
-    expect(screen.getByText("= tractulus")).toBeTruthy();
+    expect(screen.getByText("= tractulus, virga")).toBeTruthy();
     expect(screen.getByRole("row", { name: /Média de notas por sílaba/ })).toBeTruthy();
   });
 

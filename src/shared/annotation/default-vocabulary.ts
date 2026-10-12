@@ -37,7 +37,7 @@ export function categoryLabel(c: { id: string; name?: string }, t: (key: string)
   return key ? t(key) : c.id;
 }
 
-const K = (categoryId: string, name: string, defaultNotes: number, equivalentTo?: string): NeumeKind => ({
+const K = (categoryId: string, name: string, defaultNotes: number, equivalentTo?: string[]): NeumeKind => ({
   id: name.replace(/\s+/g, "-"),
   categoryId,
   name,
@@ -47,7 +47,7 @@ const K = (categoryId: string, name: string, defaultNotes: number, equivalentTo?
 
 export const DEFAULT_KINDS: NeumeKind[] = [
   K("cat.simple", "virga", 1), K("cat.simple", "tractulus", 1), K("cat.simple", "punctum", 1),
-  K("cat.simple", "gravis", 1), K("cat.simple", "uncinus", 1, "tractulus"),
+  K("cat.simple", "gravis", 1), K("cat.simple", "uncinus", 1, ["tractulus", "virga"]),
   K("cat.compound", "pes", 2), K("cat.compound", "clivis", 2), K("cat.compound", "torculus", 3),
   K("cat.compound", "porrectus", 3), K("cat.compound", "climacus", 3), K("cat.compound", "scandicus", 3),
   K("cat.compound", "porrectus flexus", 4), K("cat.compound", "torculus resupinus", 4),
@@ -70,7 +70,7 @@ export const DEFAULT_LETTERS: SignificantLetter[] = ([
 export function createDefaultVocabulary(_t?: (key: string) => string): NeumeVocabulary {
   return {
     categories: CURRENT_CATEGORY_IDS.map((id) => ({ id })),
-    kinds: DEFAULT_KINDS.map((k) => ({ ...k })),
+    kinds: DEFAULT_KINDS.map((k) => (k.equivalentTo ? { ...k, equivalentTo: [...k.equivalentTo] } : { ...k })),
     letters: DEFAULT_LETTERS.map((l) => ({ ...l })),
   };
 }

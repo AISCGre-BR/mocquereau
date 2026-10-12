@@ -44,7 +44,8 @@ export interface KindRow {
   kindId: string;
   name: string;
   categoryId: string | null;
-  equivalentName?: string;
+  /** Names of the kinds it is directly equivalent to (in its own list order). */
+  equivalentNames?: string[];
   unknown?: boolean;
   bySource: Record<string, CountCell>;
   total: number;

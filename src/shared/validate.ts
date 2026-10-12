@@ -370,7 +370,15 @@ export function readVocabulary(v: unknown, ctx: Ctx): NeumeVocabulary | undefine
     const k: NeumeKind = withHidden(e, { id: e.id as string, name: e.name });
     if (isStr(e.categoryId)) k.categoryId = e.categoryId;
     if (isNum(e.defaultNotes)) k.defaultNotes = e.defaultNotes;
-    if (isStr(e.equivalentTo)) k.equivalentTo = e.equivalentTo;
+    // A single id (older files) becomes a one-element list, silently.
+    if (isStr(e.equivalentTo)) k.equivalentTo = [e.equivalentTo];
+    else if (Array.isArray(e.equivalentTo)) {
+      const ids = e.equivalentTo.filter(isStr);
+      if (ids.length !== e.equivalentTo.length) ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: invalid entries dropped`);
+      k.equivalentTo = ids;
+    } else if (e.equivalentTo !== undefined) {
+      ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: invalid, dropped`);
+    }
     return k;
   });
   const letters = readEntries<SignificantLetter>(v.letters, "neumeVocabulary.letters", ctx, (e) =>
@@ -384,28 +392,18 @@ export function readVocabulary(v: unknown, ctx: Ctx): NeumeVocabulary | undefine
     }
   }
 
+  // Equivalences are direct and not transitive: no cycles to cut, only unknown ids and the
+  // kind itself to drop (with a warning); repeated ids are merged; an empty list is absent.
   const ids = new Set(kinds.map((k) => k.id));
   for (const k of kinds) {
-    if (k.equivalentTo !== undefined && (k.equivalentTo === k.id || !ids.has(k.equivalentTo))) {
-      ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: invalid target, dropped`);
-      delete k.equivalentTo;
-    }
-  }
-  const byId = new Map(kinds.map((k) => [k.id, k]));
-  for (const k of kinds) {
     if (k.equivalentTo === undefined) continue;
-    const visited = new Set<string>([k.id]);
-    let cur = byId.get(k.equivalentTo);
-    while (cur) {
-      if (cur.id === k.id) {
-        ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: cycle, dropped`);
-        delete k.equivalentTo;
-        break;
-      }
-      if (visited.has(cur.id)) break; // joins a cycle that does not include k; handled from its own start
-      visited.add(cur.id);
-      cur = cur.equivalentTo === undefined ? undefined : byId.get(cur.equivalentTo);
+    const valid = k.equivalentTo.filter((id) => id !== k.id && ids.has(id));
+    if (valid.length !== k.equivalentTo.length) {
+      ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: invalid target, dropped`);
     }
+    const unique = [...new Set(valid)];
+    if (unique.length > 0) k.equivalentTo = unique;
+    else delete k.equivalentTo;
   }
   return { categories, kinds, letters };
 }

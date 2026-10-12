@@ -42,9 +42,9 @@ describe("neumeContent", () => {
 
   it("keeps the real kind and names its equivalent", () => {
     expect(row("uncinus")).toMatchObject({
-      name: "uncinus", categoryId: "cat.simple", equivalentName: "tractulus", total: 1,
+      name: "uncinus", categoryId: "cat.simple", equivalentNames: ["tractulus", "virga"], total: 1,
     });
-    expect(row("tractulus").equivalentName).toBeUndefined();
+    expect(row("tractulus")).not.toHaveProperty("equivalentNames");
     expect(row("tractulus").total).toBe(2);
   });
 

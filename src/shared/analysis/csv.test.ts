@@ -38,7 +38,8 @@ describe("rawRows", () => {
   it("registra equivalente, categoria, notas e classificação", () => {
     const r = find("L", 2);
     expect(r[col("neume")]).toBe("uncinus");
-    expect(r[col("equivalent")]).toBe("tractulus");
+    expect(r[col("equivalent")]).toBe("tractulus; virga");
+    expect(find("E", 2)[col("equivalent")]).toBe("");
     expect(r[col("notes")]).toBe("1");
     expect(r[col("certainty")]).toBe("");
     expect(r[col("family")]).not.toBe("");

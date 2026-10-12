@@ -19,11 +19,11 @@ export function occurrences(
   q: OccurrenceQuery,
 ): Occurrence[] {
   if (q.kind === "pair") {
-    const { bySource } = readings(p, f, v);
+    const { bySource } = readings(p, f);
     const a = bySource.get(q.a);
     const b = bySource.get(q.b);
     if (!a || !b || q.a === q.b) return [];
-    const r = comparePair(a, b);
+    const r = comparePair(a, b, v);
     const syllables = q.agree ? r.agree : r.disagree;
     return [q.a, q.b].flatMap((sourceId) => syllables.map((syllable) => ({ sourceId, syllable })));
   }

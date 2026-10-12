@@ -74,7 +74,7 @@ describe("VocabularyDialog", () => {
     fireEvent.change(eq, { target: { value: "punctum" } });
     expect(eq.getAttribute("aria-invalid")).toBeNull();
     fireEvent.keyDown(eq, { key: "Enter" });
-    expect(kindMap(vocab()).get("gravis")!.equivalentTo).toBe("punctum");
+    expect(kindMap(vocab()).get("gravis")!.equivalentTo).toEqual(["punctum"]);
     fireEvent.doubleClick(kindRow("gravis"));
     const eq2 = screen.getByRole("combobox", { name: "Equivale a" });
     fireEvent.change(eq2, { target: { value: "" } });
@@ -82,19 +82,42 @@ describe("VocabularyDialog", () => {
     expect(kindMap(vocab()).get("gravis")!.equivalentTo).toBeUndefined();
   });
 
-  it("'Equivale a' that closes a cycle (tractulus = uncinus) is aria-invalid and is not saved", () => {
-    const { saved } = mount();
+  it("'Equivale a' takes several names (';' or ','), in order, and shows them in the list", () => {
+    const { vocab } = mount();
+    fireEvent.doubleClick(kindRow("uncinus"));
+    const eq = screen.getByRole("combobox", { name: "Equivale a" }) as HTMLInputElement;
+    expect(eq.value).toBe("tractulus; virga");
+    fireEvent.change(eq, { target: { value: "virga, punctum; tractulus" } });
+    expect(eq.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.keyDown(eq, { key: "Enter" });
+    expect(kindMap(vocab()).get("uncinus")!.equivalentTo).toEqual(["virga", "punctum", "tractulus"]);
+    expect(kindRow("uncinus").textContent).toContain("virga, punctum, tractulus");
+  });
+
+  it("'Equivale a' suggests names for the token being typed and keeps the earlier ones", () => {
+    mount();
+    fireEvent.doubleClick(kindRow("gravis"));
+    const eq = screen.getByRole("combobox", { name: "Equivale a" }) as HTMLInputElement;
+    fireEvent.change(eq, { target: { value: "virga; punc" } });
+    fireEvent.click(screen.getByRole("option", { name: "punctum" }));
+    expect(eq.value).toBe("virga; punctum; ");
+    expect(eq.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("'Equivale a': mutual equivalence is allowed; itself or an unknown name is aria-invalid and not saved", () => {
+    const { saved, vocab } = mount();
     fireEvent.doubleClick(kindRow("tractulus"));
     const eq = screen.getByRole("combobox", { name: "Equivale a" });
-    fireEvent.change(eq, { target: { value: "uncinus" } });
+    fireEvent.change(eq, { target: { value: "virga; tractulus" } });
     expect(eq.getAttribute("aria-invalid")).toBe("true");
     fireEvent.keyDown(eq, { key: "Enter" });
     expect(saved()).toBeUndefined();
-    // Itself and unknown names are invalid too.
-    fireEvent.change(eq, { target: { value: "tractulus" } });
+    fireEvent.change(eq, { target: { value: "uncinus, inexistente" } });
     expect(eq.getAttribute("aria-invalid")).toBe("true");
-    fireEvent.change(eq, { target: { value: "inexistente" } });
-    expect(eq.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.change(eq, { target: { value: "uncinus" } });
+    expect(eq.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.keyDown(eq, { key: "Enter" });
+    expect(kindMap(vocab()).get("tractulus")!.equivalentTo).toEqual(["uncinus"]);
   });
 
   it("hiding climacus removes it from the kinds offered (filterKinds), keeps the others", () => {

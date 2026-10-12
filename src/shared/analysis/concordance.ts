@@ -1,37 +1,55 @@
 // src/shared/analysis/concordance.ts
 //
-// Agreement between sources: identical neume sequences after resolving equivalences.
+// Agreement between sources: two neume sequences agree when they have the same length and the
+// kinds at each position are equivalent (same kind, or one lists the other; not transitive).
 // Only syllables where both sources have at least one neume are compared.
 import type { ProjectBody } from "../project-schema";
-import type { NeumeVocabulary } from "../annotation/types";
-import { resolveEquivalent } from "../annotation/vocabulary";
+import type { NeumeKind, NeumeVocabulary } from "../annotation/types";
+import { areEquivalent, kindMap } from "../annotation/vocabulary";
 import type { Agreement, AgreementMatrix, AnalysisFilters, DivergentSyllable } from "./types";
 import { FAMILY_LEVEL_ID, NO_FAMILY, familyOf, selectCells } from "./cells";
 
-/** sourceId -> syllable -> canonical reading (resolved kinds), only for syllables with neumes. */
+/** A syllable's reading: the kind ids of its neumes, in order. */
+export type Reading = string[];
+
+/** sourceId -> syllable -> reading, only for syllables with neumes. */
 export function readings(
   p: ProjectBody<unknown>,
   f: AnalysisFilters,
-  v: NeumeVocabulary,
-): { ids: string[]; bySource: Map<string, Map<number, string>> } {
+): { ids: string[]; bySource: Map<string, Map<number, Reading>> } {
   const { sources, cells } = selectCells(p, f);
-  const bySource = new Map(sources.map((s) => [s.id, new Map<number, string>()]));
+  const bySource = new Map(sources.map((s) => [s.id, new Map<number, Reading>()]));
   for (const c of cells) {
     const neumes = c.annotation?.neumes ?? [];
     if (neumes.length === 0) continue;
-    bySource.get(c.sourceId)!.set(c.syllable, JSON.stringify(neumes.map((n) => resolveEquivalent(v, n.kind))));
+    bySource.get(c.sourceId)!.set(c.syllable, neumes.map((n) => n.kind));
   }
   return { ids: sources.map((s) => s.id), bySource };
 }
 
+/** Same length and, position by position, equivalent kinds. */
+export function readingsAgree(
+  v: NeumeVocabulary,
+  a: Reading,
+  b: Reading,
+  kinds: Map<string, NeumeKind> = kindMap(v),
+): boolean {
+  return a.length === b.length && a.every((k, i) => areEquivalent(v, k, b[i], kinds));
+}
+
 /** Syllables compared between two reading maps, split by agreement. */
-export function comparePair(a: Map<number, string>, b: Map<number, string>): { agree: number[]; disagree: number[] } {
+export function comparePair(
+  a: Map<number, Reading>,
+  b: Map<number, Reading>,
+  v: NeumeVocabulary,
+): { agree: number[]; disagree: number[] } {
+  const kinds = kindMap(v);
   const agree: number[] = [];
   const disagree: number[] = [];
   for (const [syllable, ra] of a) {
     const rb = b.get(syllable);
     if (rb === undefined) continue;
-    (ra === rb ? agree : disagree).push(syllable);
+    (readingsAgree(v, ra, rb, kinds) ? agree : disagree).push(syllable);
   }
   const asc = (x: number, y: number) => x - y;
   return { agree: agree.sort(asc), disagree: disagree.sort(asc) };
@@ -42,7 +60,7 @@ const agreement = (compared: number, agree: number): Agreement => ({
 });
 
 export function concordanceBySource(p: ProjectBody<unknown>, f: AnalysisFilters, v: NeumeVocabulary): AgreementMatrix {
-  const { ids, bySource } = readings(p, f, v);
+  const { ids, bySource } = readings(p, f);
   const matrix: AgreementMatrix["matrix"] = {};
   for (const a of ids) {
     matrix[a] = {};
@@ -51,7 +69,7 @@ export function concordanceBySource(p: ProjectBody<unknown>, f: AnalysisFilters,
         matrix[a][b] = agreement(0, 0);
         continue;
       }
-      const r = comparePair(bySource.get(a)!, bySource.get(b)!);
+      const r = comparePair(bySource.get(a)!, bySource.get(b)!, v);
       matrix[a][b] = agreement(r.agree.length + r.disagree.length, r.agree.length);
     }
   }
@@ -95,6 +113,20 @@ export function concordanceByFamily(p: ProjectBody<unknown>, f: AnalysisFilters,
   return { ids, matrix };
 }
 
+/**
+ * Number of distinct readings among a syllable's readings. Agreement is not transitive, so the
+ * readings are grouped greedily in source order: each joins the first group whose representative
+ * (the group's first reading) agrees with it, or starts a new group. With E uncinus, SG tractulus
+ * and L virga (in that order) SG and L both join E's group: one reading, although SG and L
+ * disagree with each other; in the order SG, L, E there are two groups.
+ */
+export function countReadings(v: NeumeVocabulary, rs: Reading[]): number {
+  const kinds = kindMap(v);
+  const reps: Reading[] = [];
+  for (const r of rs) if (!reps.some((rep) => readingsAgree(v, rep, r, kinds))) reps.push(r);
+  return reps.length;
+}
+
 /** Syllables with >= 2 distinct readings (so >= 2 sources), by number of distinct readings desc, then sources desc, then index. */
 export function divergentSyllables(
   p: ProjectBody<unknown>,
@@ -102,14 +134,14 @@ export function divergentSyllables(
   v: NeumeVocabulary,
   limit = 10,
 ): DivergentSyllable[] {
-  const { bySource } = readings(p, f, v);
-  const bySyllable = new Map<number, string[]>();
+  const { bySource } = readings(p, f);
+  const bySyllable = new Map<number, Reading[]>();
   for (const m of bySource.values()) {
     for (const [syllable, r] of m) bySyllable.set(syllable, [...(bySyllable.get(syllable) ?? []), r]);
   }
   return [...bySyllable]
     .filter(([, rs]) => rs.length >= 2)
-    .map(([syllable, rs]) => ({ syllable, readings: new Set(rs).size, sources: rs.length }))
+    .map(([syllable, rs]) => ({ syllable, readings: countReadings(v, rs), sources: rs.length }))
     .filter((d) => d.readings >= 2)
     .sort((a, b) => b.readings - a.readings || b.sources - a.sources || a.syllable - b.syllable)
     .slice(0, limit);

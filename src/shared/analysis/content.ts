@@ -50,12 +50,12 @@ export function neumeContent(
       total += count;
       bySource[s.id] = { count, percent: ratio(bySourceSyllables.get(s.id) ?? 0, annotatedBySource.get(s.id)!) };
     }
-    const equivalent = kind?.equivalentTo ? kinds.get(kind.equivalentTo) : undefined;
+    const equivalentNames = (kind?.equivalentTo ?? []).map((id) => kinds.get(id)?.name ?? id);
     return {
       kindId,
       name: kind?.name ?? kindId,
       categoryId: kind?.categoryId ?? null,
-      ...(equivalent ? { equivalentName: equivalent.name } : {}),
+      ...(equivalentNames.length > 0 ? { equivalentNames } : {}),
       ...(kind ? {} : { unknown: true }),
       bySource,
       total,

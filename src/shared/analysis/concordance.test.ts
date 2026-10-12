@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { concordanceByFamily, concordanceBySource, divergentSyllables } from "./concordance";
+import { concordanceByFamily, countReadings, concordanceBySource, divergentSyllables } from "./concordance";
 import { makeAnalysisProject, vocabulary as v } from "./__fixtures__/analysis-project";
 
 const p = makeAnalysisProject();
@@ -25,6 +25,37 @@ describe("concordanceBySource", () => {
 
   it("leaves the diagonal without percent", () => {
     for (const id of ids) expect(matrix[id][id].percent).toBeNull();
+  });
+});
+
+describe("equivalências diretas e não transitivas", () => {
+  // E [uncinus], SG [tractulus], L [virga] numa mesma sílaba.
+  const q = structuredClone(makeAnalysisProject());
+  q.sources[0].annotations = { 0: { neumes: [{ kind: "uncinus" }], tags: [] } };
+  q.sources[1].annotations = { 0: { neumes: [{ kind: "tractulus" }], tags: [] } };
+  q.sources[2].annotations = { 0: { neumes: [{ kind: "virga" }], tags: [] } };
+  q.sources[3].annotations = {};
+
+  it("E concorda com SG e com L; SG e L discordam", () => {
+    const { matrix } = concordanceBySource(q, {}, v);
+    expect(matrix.E.SG).toEqual(ag(1, 1));
+    expect(matrix.E.L).toEqual(ag(1, 1));
+    expect(matrix.SG.L).toEqual(ag(1, 0));
+  });
+
+  it("sequências de tamanhos diferentes discordam", () => {
+    const r = structuredClone(q);
+    r.sources[1].annotations = { 0: { neumes: [{ kind: "tractulus" }, { kind: "virga" }], tags: [] } };
+    expect(concordanceBySource(r, {}, v).matrix.E.SG).toEqual(ag(1, 0));
+  });
+
+  it("leituras: cada uma entra no primeiro grupo cujo representante concorda (SG e L entram no de E)", () => {
+    expect(countReadings(v, [["uncinus"], ["tractulus"], ["virga"]])).toBe(1);
+    expect(countReadings(v, [["tractulus"], ["virga"], ["uncinus"]])).toBe(2);
+    expect(divergentSyllables(q, {}, v)).toEqual([]);
+    const r = structuredClone(q);
+    r.sources[0].annotations = {};
+    expect(divergentSyllables(r, {}, v)).toEqual([{ syllable: 0, readings: 2, sources: 2 }]);
   });
 });
 
