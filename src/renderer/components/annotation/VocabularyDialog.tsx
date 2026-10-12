@@ -5,7 +5,7 @@
 // nada: o vocabulário padrão só entra no projeto na primeira alteração. Não há
 // exclusão (só ocultar), para não deixar anotações órfãs.
 
-import { useId, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { MoreVertical, Plus } from "lucide-react";
 import { useProject } from "../../hooks/useProject";
@@ -15,6 +15,7 @@ import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
 import { MenuItem, MenuSubmenu, MenuSurface } from "../../ui/Menu";
 import { SegmentedControl } from "../../ui/SegmentedControl";
+import { SuggestInput } from "./SuggestInput";
 import { categoryLabel } from "@shared/annotation/default-vocabulary";
 import { belowElement } from "../texto/SyllableText";
 import {
@@ -67,7 +68,6 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
   const project = state.project;
   const [tab, setTab] = useState<Tab>("neumes");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const listId = useId();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [name, setName] = useState("");
@@ -330,12 +330,12 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
           />
         </td>
         <td className="px-2 py-1">
-          <input
-            list={listId}
+          <SuggestInput
+            suggestions={vocab.kinds.filter((k) => k.id !== id).map((k) => k.name)}
             aria-label={t("vocabularyDialog.equivalentTo")}
             aria-invalid={problems.equivalent || undefined}
             value={equivalent}
-            onChange={(e) => setEquivalent(e.target.value)}
+            onChange={setEquivalent}
             onKeyDown={onEditKeyDown}
             className={`${INPUT_CLASS} w-full`}
           />
@@ -522,13 +522,6 @@ export function VocabularyDialog({ onClose }: VocabularyDialogProps) {
                   {isEditing("kind", null) && kindEditRow(null)}
                 </tbody>
               </table>
-              <datalist id={listId}>
-                {vocab.kinds
-                  .filter((k) => k.id !== editing?.id)
-                  .map((k) => (
-                    <option key={k.id} value={k.name} />
-                  ))}
-              </datalist>
               <Button
                 size="sm"
                 className="self-start text-ink-soft"

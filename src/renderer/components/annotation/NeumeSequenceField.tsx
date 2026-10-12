@@ -5,6 +5,7 @@ import { Button } from "../../ui/Button";
 import { filterKinds, fold, kindMap } from "@shared/annotation/vocabulary";
 import { categoryLabel } from "@shared/annotation/default-vocabulary";
 import { ownsKey } from "./keys";
+import { SuggestInput } from "./SuggestInput";
 import type { NeumeCategory, NeumeItem, NeumeKind, NeumeVocabulary } from "@shared/annotation/types";
 
 /** Absent category name = no category; absent notes = no default notes. */
@@ -449,14 +450,13 @@ export function NeumeSequenceField({
                 <label htmlFor={`${baseId}-category`} className="text-caption text-ink-muted">
                   {t("annotation.create.category")}
                 </label>
-                <input
+                <SuggestInput
                   id={`${baseId}-category`}
                   className="sc-input"
                   autoFocus
-                  autoComplete="off"
-                  list={`${baseId}-categories`}
+                  suggestions={visibleCategories.map((c) => categoryLabel(c, t))}
                   value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  onChange={(category) => setForm({ ...form, category })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -464,11 +464,6 @@ export function NeumeSequenceField({
                     }
                   }}
                 />
-                <datalist id={`${baseId}-categories`}>
-                  {visibleCategories.map((c) => (
-                    <option key={c.id} value={categoryLabel(c, t)} />
-                  ))}
-                </datalist>
                 {isNewCategory && <span className="text-caption text-ink-muted">{t("annotation.create.newCategory")}</span>}
               </div>
               <div className="flex items-end gap-2">
