@@ -63,7 +63,11 @@ export function hydrateProject(
       metadata: { ...s.metadata, classes: [...s.metadata.classes] as SourceClasses },
       lines: s.lines.map((l) => ({ ...l, image: inline(l.image) })),
       syllableCuts: mapCuts(s.syllableCuts, inline),
+      ...(s.annotations ? { annotations: structuredClone(s.annotations) } : {}),
     })),
+    ...(file.neumeVocabulary ? { neumeVocabulary: structuredClone(file.neumeVocabulary) } : {}),
+    ...(file.tags ? { tags: structuredClone(file.tags) } : {}),
+    ...(file.exportPrefs ? { exportPrefs: structuredClone(file.exportPrefs) } : {}),
   };
 }
 
@@ -107,7 +111,13 @@ export async function dehydrateProject(
     for (const [key, c] of Object.entries(s.syllableCuts) as [string, InlineImage | null][]) {
       cuts[Number(key)] = c === null ? null : await toRef(c);
     }
-    sources.push({ ...s, lines, syllableCuts: cuts });
+    const { annotations, ...rest } = s;
+    sources.push({
+      ...rest,
+      lines,
+      syllableCuts: cuts,
+      ...(annotations ? { annotations: structuredClone(annotations) } : {}),
+    });
   }
 
   return {
@@ -121,6 +131,9 @@ export async function dehydrateProject(
       classification: project.classification,
       images,
       sources,
+      ...(project.neumeVocabulary ? { neumeVocabulary: structuredClone(project.neumeVocabulary) } : {}),
+      ...(project.tags ? { tags: structuredClone(project.tags) } : {}),
+      ...(project.exportPrefs ? { exportPrefs: structuredClone(project.exportPrefs) } : {}),
     },
   };
 }

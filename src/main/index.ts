@@ -4,6 +4,7 @@ import { Conf } from "electron-conf/main";
 import { registerProjectHandlers } from './project-io';
 import { registerImageHandlers } from './iiif-fetch';
 import { registerDocxExportHandler } from './docx-export';
+import { registerCsvExportHandler } from './csv-export';
 import { registerAppStateHandlers } from './app-state';
 import { normalizeTheme, overlayFor, shouldUseNativeFrame, windowChromeOptions, type ThemePreference } from './window-chrome';
 import { SessionStore } from './session-store';
@@ -13,6 +14,7 @@ import { CloseFlow, SaveThenClose, closeChoiceFromResponse, createQuitGuard } fr
 import { SaveQueue } from './save-queue';
 import { SUGGESTED_CLASSIFICATION, cloneClassification, type Classification } from '../shared/classification';
 import { readClassification } from '../shared/validate';
+import { registerAnnotationPanelPrefHandlers } from './annotation-pref';
 
 interface UserPrefs {
   language: string;
@@ -20,6 +22,8 @@ interface UserPrefs {
   classification?: Classification;
   /** "Sugestões de neumas" (S8). */
   suggestionsEnabled?: boolean;
+  /** Painel Anotação of the Recortes view. */
+  annotationPanelOpen?: boolean;
 }
 
 const userPrefs = new Conf<UserPrefs>({
@@ -235,6 +239,7 @@ function registerSystemHandlers(): void {
     if (typeof value === "boolean") userPrefs.set('suggestionsEnabled', value);
     return userPrefs.get('suggestionsEnabled') !== false;
   });
+  registerAnnotationPanelPrefHandlers(ipcMain, userPrefs);
 }
 
 app.whenReady().then(async () => {
@@ -254,6 +259,7 @@ app.whenReady().then(async () => {
     onSaveFinished: (token, ok) => saveThenClose.onSaveFinished(token, ok),
   });
   registerDocxExportHandler();
+  registerCsvExportHandler();
   registerImageHandlers();
   registerSessionImageHandlers(getSession);
   registerSystemHandlers();

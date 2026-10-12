@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld("mocquereau", {
   exportDocx: (project: unknown) =>
     ipcRenderer.invoke("export:docx", project),
 
+  exportCsv: (payload: unknown) =>
+    ipcRenderer.invoke("export:csv", payload),
+
   // Imagens
   putImage: (bytes: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke("images:put", { bytes, mimeType }),
@@ -102,4 +105,10 @@ contextBridge.exposeInMainWorld("mocquereau", {
 
   setSuggestionsEnabled: (on: boolean) =>
     ipcRenderer.invoke("settings:set-suggestions", on),
+
+  getAnnotationPanelOpen: () =>
+    ipcRenderer.invoke("settings:get-annotation-panel"),
+
+  setAnnotationPanelOpen: (open: boolean) =>
+    ipcRenderer.invoke("settings:set-annotation-panel", open),
 });

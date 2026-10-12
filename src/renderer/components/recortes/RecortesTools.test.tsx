@@ -37,7 +37,7 @@ function projectWith(lines: ManuscriptLine[]): MocquereauProject {
 }
 
 /** Toolbar tools and the view under one provider, like App. */
-function mount(project: MocquereauProject) {
+function mount(project: MocquereauProject, toolsProps: React.ComponentProps<typeof RecortesTools> = {}) {
   const ref: { state?: ProjectState; dispatch?: React.Dispatch<DocumentAction>; history?: HistoryApi } = {};
   function Harness() {
     const [state, dispatch, history] = useProjectReducer();
@@ -48,7 +48,7 @@ function mount(project: MocquereauProject) {
         <RecortesProvider>
           <SuggestionsProvider>
             <div role="toolbar">
-              <RecortesTools />
+              <RecortesTools {...toolsProps} />
             </div>
             <RecortesView />
           </SuggestionsProvider>
@@ -75,6 +75,17 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+describe("RecortesTools: Painel Anotação", () => {
+  it("botão com o estado do painel; o clique pede a alternância", () => {
+    const onToggle = vi.fn();
+    mount(projectWith([mkLine("a1")]), { annotationPanelOpen: true, onToggleAnnotationPanel: onToggle });
+    const button = screen.getByRole("button", { name: "Painel Anotação" });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(button);
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
 });
 
 describe("RecortesTools: alternâncias", () => {

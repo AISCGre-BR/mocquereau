@@ -14,6 +14,7 @@ import {
   buildTitleParagraphs,
   buildGroupRow,
   buildDocument,
+  buildIndicatorSection,
 } from './docx-export';
 import type { DocxExportPayload } from '../renderer/lib/models';
 
@@ -255,5 +256,47 @@ describe('buildDocument', () => {
     const xml = await documentXml(payloadWithGroups(6));
     expect(xml).not.toContain('•');
     expect(xml.match(/<w:tblHeader\/>/g)).toHaveLength(1);
+  });
+});
+
+// ── Indicators appendix ──────────────────────────────────────────────────────
+
+describe('indicators appendix', () => {
+  const indicators = {
+    title: 'Indicadores',
+    tables: [
+      { title: 'Progresso', columns: ['E', 'SG'], rows: [{ label: 'anotadas', values: ['5', '4'] }] },
+      {
+        title: 'Conteúdo',
+        columns: ['E', 'SG'],
+        rows: [
+          { label: 'Simples', values: ['', ''], group: true },
+          { label: 'uncinus', values: ['1 (20.0%)', '—'] },
+        ],
+      },
+    ],
+  };
+
+  it('adds the title, a page break and the table contents', async () => {
+    const xml = await documentXml({ ...payloadWithGroups(6), indicators });
+    expect(xml).toContain('Indicadores');
+    expect(xml).toContain('w:type="page"');
+    expect(xml).toContain('uncinus');
+    expect(xml).toContain('Simples');
+    expect(xml).toContain('Heading1');
+  });
+
+  it('leaves the document unchanged without indicators', async () => {
+    const base = payloadWithGroups(6);
+    const without = await documentXml(base);
+    const withUndefined = await documentXml({ ...base, indicators: undefined });
+    expect(withUndefined).toBe(without);
+    expect(without).not.toContain('w:type="page"');
+    expect(without).not.toContain('Heading1');
+  });
+
+  it('buildIndicatorSection returns one table per indicator', () => {
+    const parts = buildIndicatorSection(indicators);
+    expect(parts.filter((p) => p instanceof Table)).toHaveLength(2);
   });
 });

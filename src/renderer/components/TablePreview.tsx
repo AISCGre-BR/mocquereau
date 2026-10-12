@@ -14,6 +14,8 @@ import { toggleCellGap } from '../lib/syllable-gap';
 import type { MenuCloseReason } from '../ui/Menu';
 import { TableCell, type CellAnchor } from './table-preview/TableCell';
 import { ContextMenu } from './table-preview/ContextMenu';
+import { AnnotationPopover } from './annotation/AnnotationPopover';
+import { isAnnotationEmpty } from '@shared/annotation/annotation';
 import type { ManuscriptSource } from '../lib/models';
 import { useTranslation } from 'react-i18next';
 
@@ -48,7 +50,7 @@ export function sourceCaption(source: ManuscriptSource): string {
 
 // ── Props ────────────────────────────────────────────────────────────────────
 interface TablePreviewProps {
-  onNavigateToEditor?: (sourceId: string, syllable: number) => void;
+  onNavigateToEditor?: (sourceId: string, syllable: number, opts?: { annotate?: boolean }) => void;
 }
 
 // ── Context menu state ────────────────────────────────────────────────────────
@@ -61,10 +63,18 @@ interface MenuState {
   cell: HTMLElement;
 }
 
+/** The cell whose compact annotation popover is open. */
+interface PopoverState {
+  sourceId: string;
+  syllableIdx: number;
+  cell: HTMLElement;
+}
+
 export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
   const { state, dispatch } = useContext(ProjectContext)!;
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [popover, setPopover] = useState<PopoverState | null>(null);
   const { zoom } = useTableZoom();
   useTableZoomShortcuts();
 
@@ -99,6 +109,7 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
 
   // ── Context menu handlers ────────────────────────────────────────────────────
   function openMenu(sourceId: string, syllableIdx: number, anchor: CellAnchor) {
+    setPopover(null);
     setMenu({ x: anchor.x, y: anchor.y, sourceId, syllableIdx, cell: anchor.cell });
   }
 
@@ -108,6 +119,12 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
       onNavigateToEditor?.(sourceId, syllableIdx);
       return;
     }
+    // Preenchida: edição compacta da anotação; o menu fica no botão direito / Shift+F10.
+    if (resolveCellState(sources.find((s) => s.id === sourceId)!, syllableIdx).kind === 'filled') {
+      setMenu(null);
+      setPopover({ sourceId, syllableIdx, cell: anchor.cell });
+      return;
+    }
     openMenu(sourceId, syllableIdx, anchor);
   }
 
@@ -115,6 +132,11 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
     const cell = menu?.cell;
     setMenu(null);
     if (reason !== 'outside') cell?.focus();
+  }
+
+  function annotated(source: ManuscriptSource, idx: number): boolean {
+    const a = source.annotations?.[idx];
+    return !!a && !isAnnotationEmpty(a);
   }
 
   function getMenuSource(): ManuscriptSource | undefined {
@@ -268,6 +290,7 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
                               syllable: syllables[idx],
                               siglum: source.metadata.siglum,
                             })}
+                            annotated={annotated(source, idx)}
                             onActivate={(anchor) => handleCellActivate(source.id, idx, cellState.kind === 'unfilled', anchor)}
                             onOpenMenu={(anchor) => openMenu(source.id, idx, anchor)}
                             adjustments={adjustmentsForSyllable(idx)}
@@ -282,6 +305,26 @@ export function TablePreview({ onNavigateToEditor }: TablePreviewProps) {
           </div>
         </div>
       </div>
+
+      {/* ── Anotação compacta (clique numa célula preenchida) ── */}
+      {popover && (() => {
+        const src = sources.find((s) => s.id === popover.sourceId);
+        if (!src) return null;
+        return (
+          <AnnotationPopover
+            sourceId={popover.sourceId}
+            syllable={popover.syllableIdx}
+            syllableLabel={syllables[popover.syllableIdx] ?? ''}
+            sourceName={src.metadata.siglum}
+            anchor={popover.cell}
+            onOpenInRecortes={() => {
+              setPopover(null);
+              onNavigateToEditor?.(popover.sourceId, popover.syllableIdx, { annotate: true });
+            }}
+            onClose={() => setPopover(null)}
+          />
+        );
+      })()}
 
       {/* ── Context menu (D-06) ── */}
       {menu && (() => {

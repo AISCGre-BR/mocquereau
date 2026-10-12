@@ -13,7 +13,10 @@ function actions(): MenuActions {
     saveAs: vi.fn(),
     importGueranger: vi.fn(),
     editClassification: vi.fn(),
+    editTags: vi.fn(),
+    editVocabulary: vi.fn(),
     exportDocx: vi.fn(),
+    exportCsv: vi.fn(),
     closeProject: vi.fn(),
     undo: vi.fn(),
     redo: vi.fn(),
@@ -33,12 +36,13 @@ function actions(): MenuActions {
     acceptAllSuggestions: vi.fn(),
     discardSuggestions: vi.fn(),
     toggleSuggestions: vi.fn(),
+    toggleAnnotationPanel: vi.fn(),
   };
 }
 
 const NO_SUGGESTIONS = { suggestionsEnabled: false, canSuggest: false, canSuggestSource: false, hasSuggestions: false };
 
-const base: MenuState = { hasProject: true, canExport: true, view: "texto", theme: "dark", language: "en", canUndo: true, canRedo: false };
+const base: MenuState = { hasProject: true, canExport: true, hasAnnotations: true, view: "texto", theme: "dark", language: "en", canUndo: true, canRedo: false };
 
 function flat(items: MenuEntry[]): MenuCommand[] {
   return items.flatMap((item) => (item === "separator" ? [] : "items" in item ? flat(item.items) : [item]));
@@ -71,20 +75,21 @@ describe("buildMenus", () => {
     const menus = buildMenus({ ...base, hasProject: false, canExport: false }, actions(), t);
     expect(find(menus, "file.new").disabled).toBeFalsy();
     expect(find(menus, "file.open").disabled).toBeFalsy();
-    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.exportDocx", "file.close"]) {
+    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.tags", "file.vocabulary", "file.exportDocx", "file.exportCsv", "file.close"]) {
       expect(find(menus, id).disabled).toBe(true);
     }
-    for (const id of ["view.texto", "view.recortes", "view.tabela"]) {
+    for (const id of ["view.texto", "view.recortes", "view.tabela", "view.analise"]) {
       expect(find(menus, id).disabled).toBe(true);
       expect(find(menus, id).checked).toBe(false);
     }
   });
 
-  it("marca a vista, o tema e o idioma atuais; atalhos das vistas são Ctrl+1…3", () => {
+  it("marca a vista, o tema e o idioma atuais; atalhos das vistas são Ctrl+1…4", () => {
     const menus = buildMenus(base, actions(), t);
     expect(find(menus, "view.texto").checked).toBe(true);
     expect(find(menus, "view.recortes").checked).toBe(false);
     expect(find(menus, "view.tabela").accelerator).toBe("Ctrl+3");
+    expect(find(menus, "view.analise").accelerator).toBe("Ctrl+4");
     expect(find(menus, "theme.dark").checked).toBe(true);
     expect(find(menus, "theme.system").checked).toBe(false);
     expect(find(menus, "lang.en").checked).toBe(true);
@@ -158,6 +163,19 @@ describe("buildMenus", () => {
     expect(a.openExample).toHaveBeenCalledTimes(1);
   });
 
+  it("Exportar CSV… fica desabilitado sem anotações", () => {
+    expect(find(buildMenus({ ...base, hasAnnotations: false }, actions(), t), "file.exportCsv").disabled).toBe(true);
+  });
+
+  it("Exportar CSV… fica no Arquivo, habilitado com projeto, e chama a ação", () => {
+    const a = actions();
+    const item = find(buildMenus(base, a, t), "file.exportCsv");
+    expect(item.label).toBe("shell.file.exportCsv");
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(a.exportCsv).toHaveBeenCalledOnce();
+  });
+
   it("Classificação… fica no Arquivo, habilitada só com projeto aberto, e chama a ação", () => {
     const a = actions();
     const item = find(buildMenus(base, a, t), "file.classification");
@@ -166,6 +184,32 @@ describe("buildMenus", () => {
     item.onSelect();
     expect(a.editClassification).toHaveBeenCalledOnce();
     expect(find(buildMenus({ ...base, hasProject: false }, a, t), "file.classification").disabled).toBe(true);
+  });
+
+  it("Etiquetas… fica no Arquivo depois de Classificação…, habilitada só com projeto, e chama a ação", () => {
+    const a = actions();
+    const menus = buildMenus(base, a, t);
+    const item = find(menus, "file.tags");
+    expect(item.label).toBe("shell.file.tags");
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(a.editTags).toHaveBeenCalledOnce();
+    expect(find(buildMenus({ ...base, hasProject: false }, a, t), "file.tags").disabled).toBe(true);
+    const ids = menus[0].items.map((i) => (typeof i === "string" ? i : i.id));
+    expect(ids.indexOf("file.tags")).toBe(ids.indexOf("file.classification") + 1);
+  });
+
+  it("Vocabulário de neumas… fica no Arquivo depois de Etiquetas…, habilitado só com projeto, e chama a ação", () => {
+    const a = actions();
+    const menus = buildMenus(base, a, t);
+    const item = find(menus, "file.vocabulary");
+    expect(item.label).toBe("shell.file.vocabulary");
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(a.editVocabulary).toHaveBeenCalledOnce();
+    expect(find(buildMenus({ ...base, hasProject: false }, a, t), "file.vocabulary").disabled).toBe(true);
+    const ids = menus[0].items.map((i) => (typeof i === "string" ? i : i.id));
+    expect(ids.indexOf("file.vocabulary")).toBe(ids.indexOf("file.tags") + 1);
   });
 
   it("Limpar recentes só aparece sem projeto aberto", () => {
@@ -193,6 +237,7 @@ describe("buildMenus", () => {
       ["recortes.clearPage", "recortes.menu.clearPage", undefined, false],
       ["recortes.realign", "recortes.menu.realign", undefined, true],
       ["recortes.suggestionsEnabled", "recortes.menu.suggestionsEnabled", undefined, false],
+      ["recortes.annotationPanel", "recortes.annotationPanel", "Ctrl+Shift+A", false],
       ["recortes.nextSource", "recortes.menu.nextSource", "Ctrl+Enter", false],
     ]);
     for (const id of ["recortes.removeBox", "recortes.clearPage", "recortes.realign", "recortes.nextSource"]) find(menus, id).onSelect();
@@ -203,6 +248,19 @@ describe("buildMenus", () => {
     // Sem estado do Recortes, tudo desabilitado.
     const bare = buildMenus({ ...base, view: "recortes" }, a, t).find((m) => m.id === "recortes")!;
     expect(flat(bare.items).every((i) => i.disabled)).toBe(true);
+  });
+
+  it("menu Recortes: Painel Anotação (Ctrl+Shift+A) alterna o painel e mostra se está aberto", () => {
+    const a = actions();
+    const recortes = { ...NO_SUGGESTIONS, canRemoveBox: false, canClearPage: false, canRealign: false, hasNextSource: false };
+    const closed = buildMenus({ ...base, view: "recortes", recortes }, a, t);
+    const item = find(closed, "recortes.annotationPanel");
+    expect(item.accelerator).toBe("Ctrl+Shift+A");
+    expect(item.checked).toBe(false);
+    item.onSelect();
+    expect(a.toggleAnnotationPanel).toHaveBeenCalledOnce();
+    const open = buildMenus({ ...base, view: "recortes", recortes: { ...recortes, annotationPanelOpen: true } }, a, t);
+    expect(find(open, "recortes.annotationPanel").checked).toBe(true);
   });
 
   it("menu Recortes: sugestões com a preferência ligada (S6, S8, S10)", () => {

@@ -161,3 +161,32 @@ describe('previewMigration', () => {
     expect(stats.changedWords).toHaveLength(0); // R10 preserves count
   });
 });
+
+describe('migrateHyphenation annotations', () => {
+  it('remaps annotations like syllableCuts and drops those in count-changed words', () => {
+    const p = makeProject();
+    // om=0 (kept), bo=4 (bonae changes count: dropped), prop=7 -> 6
+    p.sources[0].annotations = {
+      0: { neumes: [{ kind: 'pes' }], tags: [] },
+      4: { neumes: [], tags: [], comment: 'gone' },
+      7: { neumes: [], tags: [], comment: 'moved' },
+    };
+    const { project } = migrateHyphenation(p, 'sung');
+    expect(project.sources[0].annotations).toEqual({
+      0: { neumes: [{ kind: 'pes' }], tags: [] },
+      6: { neumes: [], tags: [], comment: 'moved' },
+    });
+  });
+
+  it('previewMigration counts preserved and dropped annotations', () => {
+    const p = makeProject();
+    p.sources[0].annotations = {
+      0: { neumes: [{ kind: 'pes' }], tags: [] },
+      4: { neumes: [], tags: [] },
+      7: { neumes: [], tags: [] },
+    };
+    const stats = previewMigration(p, 'sung');
+    expect(stats.preservedAnnotations).toBe(2);
+    expect(stats.droppedAnnotations).toBe(1);
+  });
+});

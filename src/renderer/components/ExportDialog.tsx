@@ -7,8 +7,9 @@ import { useContext, useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ProjectContext } from '../hooks/useProject';
+import { buildIndicatorTables } from '@shared/analysis/indicator-tables';
+import { getVocabulary } from '@shared/annotation/vocabulary';
 import { collectDocxCrops } from '../lib/docx-collect';
-import type { MocquereauProject } from '../lib/models';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 
@@ -26,7 +27,7 @@ type ExportState =
 
 export function ExportDialog({ open, onClose }: ExportDialogProps) {
   const ctx = useContext(ProjectContext)!;
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const project = ctx.state.project;
   const [exportState, setExportState] = useState<ExportState>({ phase: 'idle' });
 
@@ -38,6 +39,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
     project !== null &&
     project.sources.length > 0 &&
     project.sources.some((s) => s.lines.length > 0);
+  const includeIndicators = project?.exportPrefs?.includeIndicators === true;
   const isWorking = exportState.phase === 'collecting' || exportState.phase === 'saving';
 
   async function handleExport() {
@@ -51,10 +53,14 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
         },
         { untitled: t('file.untitled') },
       );
+      if (includeIndicators) {
+        payload.indicators = {
+          title: t('indicators.title'),
+          tables: buildIndicatorTables(project, getVocabulary(project, (k) => t(k)), (k) => t(k), i18n.language),
+        };
+      }
       setExportState({ phase: 'saving' });
-      // A ponte do preload tipa o argumento como MocquereauProject; o valor real é o
-      // DocxExportPayload, que o handler do main lê corretamente.
-      const result = await window.mocquereau.exportDocx(payload as unknown as MocquereauProject);
+      const result = await window.mocquereau.exportDocx(payload);
       if (result === null) {
         setExportState({ phase: 'idle' }); // diálogo de salvar cancelado
       } else {
@@ -135,6 +141,21 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
           <dt className="font-medium">{t('exportDialog.syllables')}</dt>
           <dd className="sc-num m-0">{project.text.words.reduce((acc, w) => acc + w.syllables.length, 0)}</dd>
         </dl>
+      )}
+
+      {project && (
+        <label className="mt-3 flex cursor-pointer items-center gap-2 border-t border-rule-soft pt-3">
+          <input
+            type="checkbox"
+            className="accent-rubric"
+            checked={includeIndicators}
+            disabled={isWorking}
+            onChange={(e) =>
+              ctx.dispatch({ type: 'SET_EXPORT_PREFS', payload: { ...project.exportPrefs, includeIndicators: e.target.checked } })
+            }
+          />
+          {t('exportDialog.includeIndicators')}
+        </label>
       )}
 
       {!hasExportableData && exportState.phase === 'idle' && (

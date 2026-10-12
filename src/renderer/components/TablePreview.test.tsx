@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "../i18n";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { TablePreview } from "./TablePreview";
 import { TabelaTools } from "./table-preview/TabelaTools";
 import { TableZoomProvider } from "../hooks/useTableZoom";
@@ -172,11 +172,36 @@ describe("TablePreview: células", () => {
     expect(screen.getByTestId("cell-A-1").textContent).toBe("—");
   });
 
-  it("clique na célula preenchida abre o menu de contexto", () => {
+  it("botão direito na célula preenchida abre o menu de contexto", () => {
+    const { onNavigateToEditor } = mount(mkProject([mkSource("A", 0, null)]));
+    fireEvent.contextMenu(screen.getByTestId("cell-A-0"));
+    expect(onNavigateToEditor).not.toHaveBeenCalled();
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("clique esquerdo na célula preenchida abre o editor compacto, não o menu", () => {
     const { onNavigateToEditor } = mount(mkProject([mkSource("A", 0, null)]));
     fireEvent.click(screen.getByTestId("cell-A-0"));
     expect(onNavigateToEditor).not.toHaveBeenCalled();
-    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(screen.queryByRole("menu")).toBeNull();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "Neumas" })).toBeTruthy();
+  });
+
+  it("célula anotada tem data-annotated; a sem anotação não", () => {
+    const src = mkSource("A", 0, null);
+    mount(mkProject([{ ...src, annotations: { 0: { neumes: [{ kind: "pes" }], tags: [] } } }]));
+    expect(screen.getByTestId("cell-A-0").hasAttribute("data-annotated")).toBe(true);
+    expect(screen.getByTestId("cell-A-3").hasAttribute("data-annotated")).toBe(false);
+  });
+
+  it("Abrir em Recortes navega com o painel de anotação aberto", () => {
+    const { onNavigateToEditor } = mount(mkProject([mkSource("A", 0, null)]));
+    fireEvent.click(screen.getByTestId("cell-A-0"));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir em Recortes" }));
+    expect(onNavigateToEditor).toHaveBeenCalledWith("A", 0, { annotate: true });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 
@@ -185,7 +210,7 @@ describe("TablePreview: menu da célula", () => {
 
   it("itens com a redação de Recortes, sem jargão 'gap'", () => {
     mount(mkProject([mkSource("A", 0, null)]));
-    fireEvent.click(screen.getByTestId("cell-A-0"));
+    fireEvent.contextMenu(screen.getByTestId("cell-A-0"));
     expect(screen.getByRole("menuitem", { name: "Editar em Recortes" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Remover recorte" })).toBeTruthy();
     expect(noNeume().getAttribute("aria-checked")).toBe("false");
@@ -196,7 +221,7 @@ describe("TablePreview: menu da célula", () => {
     const src = mkSource("A", 0, null);
     const other = { ...src.lines[0], id: "A-l2", syllableBoxes: { 0: { x: 0.5, y: 0, w: 0.2, h: 0.5 } } };
     const { ref } = mount(mkProject([{ ...src, lines: [src.lines[0], other] }]));
-    fireEvent.click(screen.getByTestId("cell-A-0"));
+    fireEvent.contextMenu(screen.getByTestId("cell-A-0"));
     fireEvent.click(noNeume());
     const lines = ref.state!.project!.sources[0].lines;
     expect(lines[0].gaps).toEqual([0]);
@@ -208,7 +233,7 @@ describe("TablePreview: menu da célula", () => {
   it("desmarcar um gap feito em Recortes deixa a célula pendente", () => {
     const src = mkSource("A", 0, null);
     const { ref } = mount(mkProject([{ ...src, lines: [{ ...src.lines[0], gaps: [3] }] }]));
-    fireEvent.click(screen.getByTestId("cell-A-3"));
+    fireEvent.contextMenu(screen.getByTestId("cell-A-3"));
     expect(noNeume().getAttribute("aria-checked")).toBe("true");
     fireEvent.click(noNeume());
     expect(ref.state!.project!.sources[0].lines[0].gaps).toEqual([]);
@@ -218,7 +243,7 @@ describe("TablePreview: menu da célula", () => {
   it("desmarcar um gap legado limpa a caixa null e o recorte null", () => {
     const src = mkSource("A", 0, null);
     const { ref } = mount(mkProject([{ ...src, syllableCuts: { 1: null } }]));
-    fireEvent.click(screen.getByTestId("cell-A-1"));
+    fireEvent.contextMenu(screen.getByTestId("cell-A-1"));
     fireEvent.click(noNeume());
     const next = ref.state!.project!.sources[0];
     expect(1 in next.lines[0].syllableBoxes!).toBe(false);
@@ -236,16 +261,23 @@ describe("TablePreview: células pelo teclado", () => {
     expect(onNavigateToEditor).toHaveBeenCalledWith("A", 2);
   });
 
-  it("célula preenchida: espaço abre o menu e Esc devolve o foco à célula", () => {
+  it("célula preenchida: espaço abre o editor compacto e Esc devolve o foco à célula", () => {
     mount(mkProject([mkSource("A", 0, null)]));
     const cell = screen.getByRole("button", { name: "Ações de Pu em A" });
-    expect(cell.getAttribute("aria-haspopup")).toBe("menu");
+    expect(cell.getAttribute("aria-haspopup")).toBe("dialog");
     cell.focus();
     fireEvent.keyDown(cell, { key: " " });
-    const menu = screen.getByRole("menu");
-    fireEvent.keyDown(menu, { key: "Escape" });
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(cell);
+  });
+
+  it("clique fora fecha o editor compacto", () => {
+    mount(mkProject([mkSource("A", 0, null)]));
+    fireEvent.click(screen.getByTestId("cell-A-0"));
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Shift+F10 e a tecla de menu abrem o menu, também na célula pendente", () => {

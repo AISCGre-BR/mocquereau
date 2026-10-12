@@ -5,16 +5,23 @@
 
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Copy, Eye, Image as ImageIcon, RectangleHorizontal, SquareDashed } from "lucide-react";
+import { ChevronDown, Copy, Eye, Image as ImageIcon, PanelRight, RectangleHorizontal, SquareDashed } from "lucide-react";
 import { IconButton } from "../../ui/IconButton";
 import { useProject } from "../../hooks/useProject";
 import { useRecortesContext } from "../../hooks/RecortesContext";
 import { IMAGE_ADJUSTMENTS_DEFAULT } from "../../lib/image-adjustments";
 import type { ImageAdjustments } from "../../lib/models";
 import { ImagePanel, type ImageGesture } from "./ImagePanel";
+import { formatAccelerator } from "../../shell/accelerator";
 import type { HistoryMeta } from "../../history/history";
 
-export function RecortesTools() {
+export interface RecortesToolsProps {
+  /** Painel Anotação (preference kept by the App). */
+  annotationPanelOpen?: boolean;
+  onToggleAnnotationPanel?: () => void;
+}
+
+export function RecortesTools({ annotationPanelOpen = false, onToggleAnnotationPanel }: RecortesToolsProps = {}) {
   const { t } = useTranslation();
   const { state, dispatch } = useProject();
   const recortes = useRecortesContext();
@@ -115,6 +122,18 @@ export function RecortesTools() {
           />
         )}
       </div>
+      {onToggleAnnotationPanel && (
+        <>
+          <span className="sc-toolbar__sep" aria-hidden="true" />
+          <IconButton
+            label={t("recortes.annotationPanel")}
+            shortcut={formatAccelerator("Ctrl+Shift+A", window.mocquereau?.platform ?? "")}
+            icon={<PanelRight {...iconProps} />}
+            pressed={annotationPanelOpen}
+            onClick={onToggleAnnotationPanel}
+          />
+        </>
+      )}
     </>
   );
 }

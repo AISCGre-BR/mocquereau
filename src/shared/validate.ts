@@ -3,6 +3,12 @@
 // Hand-written validator for schemaVersion 3 project.json (no new dependency).
 // Structural problems are errors (the file is refused); recoverable problems
 // in optional fields become defaults plus a warning. Never mutates its input.
+import { isAnnotationEmpty } from "./annotation/annotation";
+import { DEFAULT_CATEGORY_NAMES } from "./annotation/default-vocabulary";
+import type {
+  Annotations, Certainty, ExportPrefs, Liquescence, NeumeCategory, NeumeItem, NeumeKind,
+  NeumeVocabulary, SignificantLetter, SyllableAnnotation, Tag,
+} from "./annotation/types";
 import { orderNeumeBands } from "./band-order";
 import {
   CURRENT_SCHEMA_VERSION,
@@ -241,6 +247,188 @@ function classes(v: unknown, known: Set<string>[], path: string, ctx: Ctx): Sour
   return out;
 }
 
+const LIQ = new Set(["none", "augmentative", "diminutive"]);
+const CERT = new Set(["secure", "probable", "illegible"]);
+
+function strArray(v: unknown, path: string, ctx: Ctx): string[] | undefined {
+  if (v === undefined) return undefined;
+  if (Array.isArray(v) && v.every(isStr)) return [...v];
+  ctx.warnings.push(`${path}: invalid, dropped`);
+  return undefined;
+}
+
+function optPositiveInt(v: unknown, path: string, ctx: Ctx): number | undefined {
+  if (v === undefined) return undefined;
+  if (isNum(v) && Number.isInteger(v) && v >= 0) return v;
+  ctx.warnings.push(`${path}: invalid, dropped`);
+  return undefined;
+}
+
+function neumeItem(v: unknown, path: string, ctx: Ctx): NeumeItem | null {
+  if (!isObj(v) || !isStr(v.kind) || v.kind === "") {
+    ctx.warnings.push(`${path}: neume without kind, dropped`);
+    return null;
+  }
+  const out: NeumeItem = { kind: v.kind };
+  const notes = optPositiveInt(v.notes, `${path}.notes`, ctx);
+  if (notes !== undefined) out.notes = notes;
+  if (v.liquescence !== undefined) {
+    if (isStr(v.liquescence) && LIQ.has(v.liquescence)) out.liquescence = v.liquescence as Liquescence;
+    else ctx.warnings.push(`${path}.liquescence: invalid, dropped`);
+  }
+  if (v.episema !== undefined) {
+    if (typeof v.episema === "boolean") out.episema = v.episema;
+    else ctx.warnings.push(`${path}.episema: invalid, dropped`);
+  }
+  if (v.lengthened !== undefined) {
+    if (Array.isArray(v.lengthened)) {
+      const ok = v.lengthened.filter((x): x is number => isNum(x) && Number.isInteger(x) && x >= 1);
+      if (ok.length !== v.lengthened.length) ctx.warnings.push(`${path}.lengthened: invalid positions dropped`);
+      const positions = [...new Set(ok)].sort((a, b) => a - b);
+      if (positions.length) out.lengthened = positions;
+    } else ctx.warnings.push(`${path}.lengthened: invalid, dropped`);
+  }
+  const letters = strArray(v.letters, `${path}.letters`, ctx);
+  if (letters?.length) out.letters = letters;
+  const tags = strArray(v.tags, `${path}.tags`, ctx);
+  if (tags?.length) out.tags = tags;
+  if (isStr(v.comment) && v.comment !== "") out.comment = v.comment;
+  return out;
+}
+
+function annotation(v: unknown, path: string, ctx: Ctx): SyllableAnnotation | null {
+  if (!isObj(v)) { ctx.warnings.push(`${path}: invalid, dropped`); return null; }
+  const neumes: NeumeItem[] = [];
+  if (Array.isArray(v.neumes)) v.neumes.forEach((n, i) => { const p = neumeItem(n, `${path}.neumes[${i}]`, ctx); if (p) neumes.push(p); });
+  const out: SyllableAnnotation = { neumes, tags: strArray(v.tags, `${path}.tags`, ctx) ?? [] };
+  const notes = optPositiveInt(v.notes, `${path}.notes`, ctx);
+  if (notes !== undefined) out.notes = notes;
+  if (v.certainty !== undefined) {
+    if (isStr(v.certainty) && CERT.has(v.certainty)) out.certainty = v.certainty as Certainty;
+    else ctx.warnings.push(`${path}.certainty: invalid, dropped`);
+  }
+  if (isStr(v.comment) && v.comment !== "") out.comment = v.comment;
+  return isAnnotationEmpty(out) ? null : out;
+}
+
+export function readAnnotations(v: unknown, path: string, ctx: Ctx): Annotations | undefined {
+  if (v === undefined) return undefined;
+  if (!isObj(v)) { ctx.warnings.push(`${path}: expected object, dropped`); return undefined; }
+  const out: Annotations = {};
+  for (const [key, a] of Object.entries(v)) {
+    if (!NUMERIC_KEY.test(key)) { ctx.warnings.push(`${path}.${key}: non-numeric key dropped`); continue; }
+    const parsed = annotation(a, `${path}.${key}`, ctx);
+    if (parsed) out[Number(key)] = parsed;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Reads an array of entries; each is parsed by `parse` (null = invalid); first of duplicate ids wins. */
+function readEntries<T extends { id: string }>(
+  v: unknown, path: string, ctx: Ctx, parse: (e: Obj) => T | null,
+): T[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) { ctx.warnings.push(`${path}: expected array, dropped`); return []; }
+  const seen = new Set<string>();
+  const out: T[] = [];
+  v.forEach((e, i) => {
+    const parsed = isObj(e) && isStr(e.id) ? parse(e) : null;
+    if (!parsed) { ctx.warnings.push(`${path}[${i}]: invalid entry dropped`); return; }
+    if (seen.has(parsed.id)) { ctx.warnings.push(`${path}[${i}]: duplicate id ${parsed.id} dropped`); return; }
+    seen.add(parsed.id);
+    out.push(parsed);
+  });
+  return out;
+}
+
+const withHidden = <T extends object>(e: Obj, base: T): T =>
+  (typeof e.hidden === "boolean" ? { ...base, hidden: e.hidden } : base);
+
+/** A default category carrying a default name of any locale (baked by older versions) is language-following. */
+const isBakedDefaultName = (id: string, name: string): boolean =>
+  (DEFAULT_CATEGORY_NAMES[id] ?? []).includes(name);
+
+export function readVocabulary(v: unknown, ctx: Ctx): NeumeVocabulary | undefined {
+  if (v === undefined) return undefined;
+  if (!isObj(v) || !Array.isArray(v.categories) || !Array.isArray(v.kinds) || !Array.isArray(v.letters)) {
+    ctx.warnings.push("neumeVocabulary: invalid, dropped");
+    return undefined;
+  }
+  const categories = readEntries<NeumeCategory>(v.categories, "neumeVocabulary.categories", ctx, (e) =>
+    isStr(e.name) || e.name === undefined
+      ? withHidden(e, isStr(e.name) && !isBakedDefaultName(e.id as string, e.name)
+        ? { id: e.id as string, name: e.name }
+        : { id: e.id as string })
+      : null);
+  // categoryId and defaultNotes are optional (absent stays absent), but validated when present.
+  const kinds = readEntries<NeumeKind>(v.kinds, "neumeVocabulary.kinds", ctx, (e) => {
+    if (!isStr(e.name)) return null;
+    if (e.categoryId !== undefined && !isStr(e.categoryId)) return null;
+    if (e.defaultNotes !== undefined && (!isNum(e.defaultNotes) || !Number.isInteger(e.defaultNotes) || e.defaultNotes < 0)) {
+      return null;
+    }
+    const k: NeumeKind = withHidden(e, { id: e.id as string, name: e.name });
+    if (isStr(e.categoryId)) k.categoryId = e.categoryId;
+    if (isNum(e.defaultNotes)) k.defaultNotes = e.defaultNotes;
+    // A single id (older files) becomes a one-element list, silently.
+    if (isStr(e.equivalentTo)) k.equivalentTo = [e.equivalentTo];
+    else if (Array.isArray(e.equivalentTo)) {
+      const ids = e.equivalentTo.filter(isStr);
+      if (ids.length !== e.equivalentTo.length) ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: invalid entries dropped`);
+      k.equivalentTo = ids;
+    } else if (e.equivalentTo !== undefined) {
+      ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: invalid, dropped`);
+    }
+    return k;
+  });
+  const letters = readEntries<SignificantLetter>(v.letters, "neumeVocabulary.letters", ctx, (e) =>
+    isStr(e.abbr) && isStr(e.meaning) ? withHidden(e, { id: e.id as string, abbr: e.abbr, meaning: e.meaning }) : null);
+
+  const categoryIds = new Set(categories.map((c) => c.id));
+  for (const k of kinds) {
+    if (k.categoryId !== undefined && !categoryIds.has(k.categoryId)) {
+      ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.categoryId: unknown category, dropped`);
+      delete k.categoryId;
+    }
+  }
+
+  // Equivalences are direct and not transitive: no cycles to cut, only unknown ids and the
+  // kind itself to drop (with a warning); repeated ids are merged; an empty list is absent.
+  const ids = new Set(kinds.map((k) => k.id));
+  for (const k of kinds) {
+    if (k.equivalentTo === undefined) continue;
+    const valid = k.equivalentTo.filter((id) => id !== k.id && ids.has(id));
+    if (valid.length !== k.equivalentTo.length) {
+      ctx.warnings.push(`neumeVocabulary.kinds.${k.id}.equivalentTo: invalid target, dropped`);
+    }
+    const unique = [...new Set(valid)];
+    if (unique.length > 0) k.equivalentTo = unique;
+    else delete k.equivalentTo;
+  }
+  return { categories, kinds, letters };
+}
+
+export function readTags(v: unknown, ctx: Ctx): Tag[] | undefined {
+  if (v === undefined) return undefined;
+  if (!Array.isArray(v)) { ctx.warnings.push("tags: expected array, dropped"); return undefined; }
+  return readEntries<Tag>(v, "tags", ctx, (e) => {
+    if (!isStr(e.name)) return null;
+    const t: Tag = { id: e.id as string, name: e.name };
+    if (isStr(e.group)) t.group = e.group;
+    if (isStr(e.description)) t.description = e.description;
+    return t;
+  });
+}
+
+function readExportPrefs(v: unknown, ctx: Ctx): ExportPrefs | undefined {
+  if (v === undefined) return undefined;
+  if (!isObj(v) || (v.includeIndicators !== undefined && typeof v.includeIndicators !== "boolean")) {
+    ctx.warnings.push("exportPrefs: invalid, dropped");
+    return undefined;
+  }
+  return typeof v.includeIndicators === "boolean" ? { includeIndicators: v.includeIndicators } : {};
+}
+
 function source(v: unknown, index: number, known: Set<string>[], ctx: Ctx): SourceOf<ImageRef> | null {
   const path = `sources[${index}]`;
   if (!isObj(v) || !isStr(v.id)) {
@@ -288,7 +476,15 @@ function source(v: unknown, index: number, known: Set<string>[], ctx: Ctx): Sour
     ctx.warnings.push(`${path}.syllableCuts: expected object, using {}`);
   }
 
-  return { id: v.id, order: isNum(v.order) ? v.order : index + 1, metadata, lines, syllableCuts: cuts };
+  const annotations = readAnnotations(v.annotations, `${path}.annotations`, ctx);
+  return {
+    id: v.id,
+    order: isNum(v.order) ? v.order : index + 1,
+    metadata,
+    lines,
+    syllableCuts: cuts,
+    ...(annotations ? { annotations } : {}),
+  };
 }
 
 export function validateProject(json: unknown): ValidationResult {
@@ -386,6 +582,10 @@ export function validateProject(json: unknown): ValidationResult {
     });
   }
 
+  const neumeVocabulary = readVocabulary(json.neumeVocabulary, ctx);
+  const tags = readTags(json.tags, ctx);
+  const exportPrefs = readExportPrefs(json.exportPrefs, ctx);
+
   if (ctx.errors.length > 0) return { ok: false, errors: ctx.errors };
   return {
     ok: true,
@@ -399,6 +599,9 @@ export function validateProject(json: unknown): ValidationResult {
       classification,
       images,
       sources,
+      ...(neumeVocabulary ? { neumeVocabulary } : {}),
+      ...(tags ? { tags } : {}),
+      ...(exportPrefs ? { exportPrefs } : {}),
     },
   };
 }
