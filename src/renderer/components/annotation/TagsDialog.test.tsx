@@ -169,9 +169,9 @@ describe("TagsDialog", () => {
     expect(ref.state!.project!.sources[0].annotations![1].tags).toEqual(["t-b"]);
   });
 
-  it("'Concluir' closes", () => {
+  it("'Concluído' closes", () => {
     const { onClose } = mount(project());
-    fireEvent.click(screen.getByRole("button", { name: "Concluir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Concluído" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 });

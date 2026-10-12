@@ -247,9 +247,9 @@ describe("VocabularyDialog", () => {
     expect(vocab().kinds.some((k) => k.id === "kind.mine")).toBe(true);
   });
 
-  it("'Concluir' closes", () => {
+  it("'Concluído' closes", () => {
     const { onClose } = mount();
-    fireEvent.click(screen.getByRole("button", { name: "Concluir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Concluído" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
