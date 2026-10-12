@@ -11,6 +11,7 @@
 // only per-word syllable counts vary (mostly via R11 ae/oe digraph).
 
 import type { MocquereauProject, SyllabifiedWord, SyllableBox, StoredImage } from './models';
+import type { Annotations, SyllableAnnotation } from '@shared/annotation/types';
 import { syllabifyText, type HyphenationMode } from './syllabify';
 
 // ── Word-boundary table ──────────────────────────────────────────────────────
@@ -171,6 +172,12 @@ export function migrateHyphenation(
     };
   }
 
+  function remapAnnotations(rec: Annotations): Annotations | undefined {
+    const out: Annotations = {};
+    for (const [k, a] of Object.entries(remapRecord<SyllableAnnotation>(rec))) if (a) out[Number(k)] = a;
+    return Object.keys(out).length ? out : undefined;
+  }
+
   const newSources = project.sources.map((source) => ({
     ...source,
     lines: source.lines.map((line) => ({
@@ -184,6 +191,7 @@ export function migrateHyphenation(
         : line.syllableBoxes,
     })),
     syllableCuts: remapRecord<StoredImage>(source.syllableCuts),
+    ...(source.annotations ? { annotations: remapAnnotations(source.annotations) } : {}),
   }));
 
   return {

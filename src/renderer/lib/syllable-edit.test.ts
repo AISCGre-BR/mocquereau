@@ -108,3 +108,30 @@ describe('split/merge helpers', () => {
     expect(mergeSyllables(w, 0, 0)).toBeNull();
   });
 });
+
+describe('replaceWordSyllables annotations', () => {
+  it('splitting shifts later annotations like syllableCuts', () => {
+    const b = base();
+    b.sources[0].annotations = {
+      1: { neumes: [{ kind: 'pes' }], tags: [] },
+      4: { neumes: [], tags: [], comment: 'x' },
+    };
+    const p = replaceWordSyllables(b, 0, ['Do', 'm', 'i', 'nus']);
+    expect(p.sources[0].annotations).toEqual({
+      1: { neumes: [{ kind: 'pes' }], tags: [] },
+      5: { neumes: [], tags: [], comment: 'x' },
+    });
+  });
+  it('merging keeps only the annotation of the first syllable', () => {
+    const b = base();
+    b.sources[0].annotations = {
+      3: { neumes: [{ kind: 'pes' }], tags: [] },
+      4: { neumes: [], tags: [], comment: 'x' },
+    };
+    const p = replaceWordSyllables(b, 1, ['dixit']);
+    expect(p.sources[0].annotations).toEqual({ 3: { neumes: [{ kind: 'pes' }], tags: [] } });
+  });
+  it('omits annotations when the source had none', () => {
+    expect('annotations' in replaceWordSyllables(base(), 0, ['Do', 'm', 'i', 'nus']).sources[0]).toBe(false);
+  });
+});

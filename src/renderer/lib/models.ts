@@ -1,6 +1,7 @@
 // src/renderer/lib/models.ts
 
 import type { RecentEntry, RecentMeta } from "@shared/recent";
+import type { Annotations, ExportPrefs, NeumeVocabulary, Tag } from "@shared/annotation/types";
 import type { BoxFrame, Classification, ImageBytesPayload, PageNotation, ImageRef, SourceMetadata } from "@shared/project-schema";
 
 /** Imagem armazenada localmente */
@@ -164,6 +165,9 @@ export interface ManuscriptSource {
    * Valor: imagem recortada ou null (gap explícito).
    */
   syllableCuts: Record<number, StoredImage | null>;
+
+  /** Anotações paleográficas por sílaba global; ausente = nada anotado. */
+  annotations?: Annotations;
 }
 
 /** Projeto completo de tabela neumática */
@@ -191,6 +195,12 @@ export interface MocquereauProject {
 
   /** Lista de fontes/manuscritos (linhas da tabela) */
   sources: ManuscriptSource[];
+
+  /** Vocabulário de neumas do projeto; ausente = padrão. */
+  neumeVocabulary?: NeumeVocabulary;
+  /** Etiquetas livres do projeto. */
+  tags?: Tag[];
+  exportPrefs?: ExportPrefs;
 }
 
 // ── Gueranger import format ─────────────────────────────────────────────────

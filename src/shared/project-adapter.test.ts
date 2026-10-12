@@ -128,3 +128,29 @@ describe("markMissingImages / rewriteImageIds", () => {
     expect(file.images).toEqual({ [B]: { path: `images/${B}.png`, mimeType: "image/png", byteLength: 16 } });
   });
 });
+
+describe("anotações na ida e volta", () => {
+  it("hydrate -> dehydrate preserva anotações, vocabulário, etiquetas e preferências", async () => {
+    const file = makeV2Project();
+    file.sources[0].annotations = {
+      0: { neumes: [{ kind: "virga", letters: ["letter.c"] }], certainty: "secure", tags: ["t1"], comment: "x" },
+      3: { neumes: [], notes: 2, tags: [] },
+    };
+    file.neumeVocabulary = {
+      categories: [{ id: "cat.simple", name: "Simples" }],
+      kinds: [{ id: "virga", categoryId: "cat.simple", name: "virga", defaultNotes: 1 }],
+      letters: [{ id: "letter.c", abbr: "c", meaning: "celeriter" }],
+    };
+    file.tags = [{ id: "t1", name: "raspagem" }];
+    file.exportPrefs = { includeIndicators: true };
+    const session = hydrateProject(file, url);
+    expect(session.sources[0].annotations).toEqual(file.sources[0].annotations);
+    expect(session.sources[0].annotations).not.toBe(file.sources[0].annotations);
+    const resolveAsA = async (img: InlineImage): Promise<ResolvedImage> => ({
+      ref: { imageId: IMG_A, width: img.width, height: img.height, mimeType: "image/png" },
+      byteLength: 16,
+    });
+    const out = await dehydrateProject(session, resolveAsA, "0.0.8-alpha");
+    expect(out.file).toEqual(file);
+  });
+});
