@@ -336,3 +336,54 @@ describe("NeumeSequenceField", () => {
     expect(screen.getByRole("option", { name: "pes" }).textContent).toBe("pes2");
   });
 });
+
+describe("NeumeSequenceField: leaving vs. not leaving", () => {
+  it("a press on a non-focusable part of the list keeps the focus (no commit, no junk kind)", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "cl" } });
+    const header = screen.getAllByRole("group")[0].firstElementChild as HTMLElement;
+    expect(fireEvent.mouseDown(header)).toBe(false); // default prevented: focus stays in the input
+    const listbox = screen.getByRole("listbox");
+    expect(fireEvent.mouseDown(listbox.parentElement!)).toBe(false);
+    fireEvent.click(screen.getByRole("option", { name: "Criar «cl»" }));
+    const category = screen.getByLabelText("Categoria");
+    expect(fireEvent.mouseDown(category.parentElement!)).toBe(false);
+    expect(fireEvent.mouseDown(category)).toBe(true); // inputs of the form still take the focus
+    expect(onCreateKind).not.toHaveBeenCalled();
+    expect(kinds()).toEqual([]);
+  });
+
+  it("the window losing focus does not commit; the text stays", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    input.focus(); // stays the active element while the window is away
+    fireEvent.change(input, { target: { value: "cl" } });
+    const spy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    try {
+      fireEvent.blur(input);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(onCreateKind).not.toHaveBeenCalled();
+    expect(kinds()).toEqual([]);
+    expect((input as HTMLInputElement).value).toBe("cl");
+    fireEvent.blur(input);
+    expect(onCreateKind).toHaveBeenCalledWith({ name: "cl" });
+  });
+
+  it("Esc with the list closed cancels the pending text (no commit)", () => {
+    const onCreateKind = vi.fn(() => "kind.new");
+    const { input, kinds } = setup({ onCreateKind });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "punctum" } });
+    fireEvent.keyDown(input, { key: "Escape" }); // closes the list, keeps the text
+    expect((input as HTMLInputElement).value).toBe("punctum");
+    fireEvent.keyDown(input, { key: "Escape" }); // cancels and leaves
+    fireEvent.blur(input);
+    expect((input as HTMLInputElement).value).toBe("");
+    expect(kinds()).toEqual([]);
+    expect(onCreateKind).not.toHaveBeenCalled();
+  });
+});

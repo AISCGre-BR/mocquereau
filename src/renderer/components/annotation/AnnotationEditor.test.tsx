@@ -2,6 +2,7 @@
 import "../../i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { AnnotationEditor } from "./AnnotationEditor";
 import {
   ProjectContext,
@@ -177,5 +178,61 @@ describe("AnnotationEditor", () => {
     fireEvent.keyDown(screen.getByLabelText("Observação"), { key: "Enter", ctrlKey: true });
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Neumas" }), { key: "Enter", ctrlKey: true });
     expect(onNext).toHaveBeenCalledTimes(2);
+  });
+});
+
+/** Editor keyed by target (as in the Recortes panel), with Ctrl+Enter advancing and a way to close it. */
+function mountKeyed() {
+  const ref: {
+    state?: ProjectState;
+    dispatch?: React.Dispatch<DocumentAction>;
+    close?: () => void;
+  } = {};
+  function Harness() {
+    const [state, dispatch, history] = useProjectReducer();
+    const [syllable, setSyllable] = useState(0);
+    const [open, setOpen] = useState(true);
+    Object.assign(ref, { state, dispatch, close: () => setOpen(false) });
+    if (!state.project) return null;
+    return (
+      <ProjectContext.Provider value={{ state, dispatch, history }}>
+        {open && (
+          <AnnotationEditor
+            key={syllable}
+            target={{ sourceId: "s1", syllable }}
+            variant="full"
+            onNext={() => setSyllable((n) => n + 1)}
+          />
+        )}
+      </ProjectContext.Provider>
+    );
+  }
+  render(<Harness />);
+  act(() => ref.dispatch!({ type: "SET_PROJECT", payload: mkProject() }));
+  const ann = (i: number) => ref.state!.project!.sources[0].annotations?.[i];
+  return { ref, ann };
+}
+
+function typePending(text: string) {
+  const box = screen.getByRole("combobox", { name: "Neumas" }) as HTMLInputElement;
+  act(() => box.focus());
+  fireEvent.change(box, { target: { value: text } });
+  return box;
+}
+
+describe("AnnotationEditor: pending Neumas text when leaving", () => {
+  it("Ctrl+Enter commits the pending text to the original syllable", () => {
+    const { ann } = mountKeyed();
+    const box = typePending("punctum");
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    expect(ann(0)?.neumes).toEqual([{ kind: "punctum" }]);
+    expect(ann(1)).toBeUndefined();
+  });
+
+  it("closing (unmounting) the editor commits the pending text", () => {
+    const { ref, ann } = mountKeyed();
+    typePending("punctum");
+    act(() => ref.close!());
+    expect(ann(0)?.neumes).toEqual([{ kind: "punctum" }]);
   });
 });

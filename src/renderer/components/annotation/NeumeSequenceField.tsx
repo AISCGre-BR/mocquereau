@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { Button } from "../../ui/Button";
@@ -122,6 +122,13 @@ export function NeumeSequenceField({
     commitNames([pending]);
   }
 
+  // Unmounting (panel closed, next syllable, popover closed) gives the field no blur, and React
+  // ignores focus events during a commit: commit the pending text directly, to the target the
+  // field was showing. Layout cleanup runs before the nodes go away.
+  const commitOnUnmount = useRef(commitPending);
+  commitOnUnmount.current = commitPending;
+  useLayoutEffect(() => () => commitOnUnmount.current(), []);
+
   function choose(i: number) {
     const opt = options[i];
     if (!opt) return;
@@ -199,6 +206,9 @@ export function NeumeSequenceField({
           setOpen(false);
           setForm(null);
         } else {
+          // Esc cancels: the pending text is discarded, not committed by the blur.
+          setQuery("");
+          setActive(0);
           inputRef.current?.blur();
         }
         return;
@@ -249,6 +259,9 @@ export function NeumeSequenceField({
       className="relative"
       onBlur={(e) => {
         if (rootRef.current?.contains(e.relatedTarget as Node | null)) return;
+        // The window lost focus (Alt-Tab, DevTools): not a leave. The field stays the active
+        // element; the text stays and is committed on the next real leave.
+        if (!document.hasFocus() && document.activeElement === e.target) return;
         setOpen(false);
         setForm(null);
         commitPending();
@@ -326,7 +339,15 @@ export function NeumeSequenceField({
       </div>
 
       {open && (
-        <div className="absolute top-full right-0 left-0 z-30 mt-1 max-h-80 overflow-y-auto rounded-lg bg-surface-high py-1 shadow-elev-3">
+        <div
+          className="absolute top-full right-0 left-0 z-30 mt-1 max-h-80 overflow-y-auto rounded-lg bg-surface-high py-1 shadow-elev-3"
+          onMouseDown={(e) => {
+            // A press on a part that takes no focus (group label, separator, padding,
+            // scrollbar, gaps of the form) must not blur the field: that would commit.
+            if ((e.target as Element).closest("input, textarea, select")) return;
+            e.preventDefault();
+          }}
+        >
           {groups.length === 0 && (
             <div className="px-3 py-1.5 font-sans text-sm text-ink-muted italic">{t("annotation.neumes.empty")}</div>
           )}

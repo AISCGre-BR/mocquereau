@@ -92,7 +92,6 @@ export function AnnotationPopover({
       // An inner control (a select's list, a menu) that handled Escape keeps it.
       if (e.key !== "Escape" || e.defaultPrevented) return;
       e.preventDefault();
-      blurInside();
       onCloseRef.current();
       anchor.focus();
     }

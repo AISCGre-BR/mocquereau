@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { effectiveNotes } from "@shared/annotation/annotation";
 import { findTagByName } from "@shared/annotation/tags";
@@ -42,6 +42,16 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
       : null;
   const select = (index: number | null) => setSelection({ key: targetKey, index });
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  /**
+   * Ctrl+Enter: blur the focused field first, so the fields that commit on leaving (Neumas,
+   * Etiquetas) do it for this syllable before the editor moves on.
+   */
+  const blurInside = () => {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && rootRef.current?.contains(el)) el.blur();
+  };
+
   const neumesId = `${baseId}-neumes`;
   useEffect(() => {
     if (autoFocus) document.getElementById(neumesId)?.focus();
@@ -76,11 +86,12 @@ export function AnnotationEditor({ target, variant, onNext, autoFocus }: Annotat
     if (!isCtrlEnter(e)) return;
     e.preventDefault();
     e.stopPropagation();
+    blurInside();
     onNext?.();
   }
 
   return (
-    <div className="flex flex-col gap-4" onKeyDown={onKeyDown}>
+    <div ref={rootRef} className="flex flex-col gap-4" onKeyDown={onKeyDown}>
       <div className="flex flex-col gap-1">
         <label htmlFor={neumesId} className={labelClass}>
           {t("annotation.neumes")}
