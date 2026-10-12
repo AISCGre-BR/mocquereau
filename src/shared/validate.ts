@@ -280,6 +280,14 @@ function neumeItem(v: unknown, path: string, ctx: Ctx): NeumeItem | null {
     if (typeof v.episema === "boolean") out.episema = v.episema;
     else ctx.warnings.push(`${path}.episema: invalid, dropped`);
   }
+  if (v.lengthened !== undefined) {
+    if (Array.isArray(v.lengthened)) {
+      const ok = v.lengthened.filter((x): x is number => isNum(x) && Number.isInteger(x) && x >= 1);
+      if (ok.length !== v.lengthened.length) ctx.warnings.push(`${path}.lengthened: invalid positions dropped`);
+      const positions = [...new Set(ok)].sort((a, b) => a - b);
+      if (positions.length) out.lengthened = positions;
+    } else ctx.warnings.push(`${path}.lengthened: invalid, dropped`);
+  }
   const letters = strArray(v.letters, `${path}.letters`, ctx);
   if (letters?.length) out.letters = letters;
   const tags = strArray(v.tags, `${path}.tags`, ctx);

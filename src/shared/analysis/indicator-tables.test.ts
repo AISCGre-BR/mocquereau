@@ -49,6 +49,15 @@ describe("buildIndicatorTables", () => {
     expect(tables[4].rows[0].group).toBe(true);
   });
 
+  it("notas alargadas são uma linha solta (sem linha de grupo) depois do episema", () => {
+    const labels = tables[2].rows.map((r) => r.label);
+    const i = labels.indexOf("indicators.lengthened");
+    expect(i).toBeGreaterThan(-1);
+    expect(tables[2].rows[i].group).toBeUndefined();
+    expect(labels[i - 1]).toBe("indicators.unset");
+    expect(tables[2].rows[i + 1].group).toBe(true);
+  });
+
   it("percentuais e decimais no formato do idioma (pt-BR)", () => {
     const pt = buildIndicatorTables(makeAnalysisProject(), vocabulary, t, "pt-BR");
     expect(pt[3].rows[0].values[1]).toBe("66,7%");

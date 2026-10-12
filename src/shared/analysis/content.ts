@@ -98,6 +98,8 @@ export function groupContentRows(rows: KindRow[], v: NeumeVocabulary, t: (key: s
 
 export const LIQ_KEYS = ["liq.augmentative", "liq.diminutive", "liq.none", "liq.unset"] as const;
 export const EPISEMA_KEYS = ["episema.yes", "episema.no", "episema.unset"] as const;
+/** Count of lengthened notes (not neumes); only informed positions count. */
+export const LENGTHENED_KEY = "lengthened";
 export const CERTAINTY_KEYS = ["certainty.secure", "certainty.probable", "certainty.illegible", "certainty.unset"] as const;
 
 /** Mark keys of one neume: liquescence, episema and one per letter. */
@@ -122,20 +124,24 @@ export function certaintyKey(a: SyllableAnnotation): string {
 export function cellHasMark(c: Cell, key: string): boolean {
   if (!c.annotation) return false;
   if (key.startsWith("certainty.")) return certaintyKey(c.annotation) === key;
+  if (key === LENGTHENED_KEY) return c.annotation.neumes.some((n) => (n.lengthened?.length ?? 0) > 0);
   return c.annotation.neumes.some((n) => neumeMarkKeys(n).includes(key));
 }
 
 export function marks(p: ProjectBody<unknown>, f: AnalysisFilters, v: NeumeVocabulary): MarkRow[] {
   const { sources, cells } = selectCells(p, f);
   const counts = new Map<string, Map<string, number>>();
-  const bump = (key: string, sourceId: string) => {
+  const bump = (key: string, sourceId: string, by = 1) => {
     const m = counts.get(key) ?? new Map<string, number>();
-    m.set(sourceId, (m.get(sourceId) ?? 0) + 1);
+    m.set(sourceId, (m.get(sourceId) ?? 0) + by);
     counts.set(key, m);
   };
   for (const c of cells) {
     if (!c.annotation) continue;
-    for (const n of c.annotation.neumes) for (const key of neumeMarkKeys(n)) bump(key, c.sourceId);
+    for (const n of c.annotation.neumes) {
+      for (const key of neumeMarkKeys(n)) bump(key, c.sourceId);
+      bump(LENGTHENED_KEY, c.sourceId, n.lengthened?.length ?? 0);
+    }
     bump(certaintyKey(c.annotation), c.sourceId);
   }
 
@@ -146,7 +152,7 @@ export function marks(p: ProjectBody<unknown>, f: AnalysisFilters, v: NeumeVocab
     ...usedLetters.filter((k) => !letterOrder.includes(k)).sort(),
   ];
 
-  return [...LIQ_KEYS, ...EPISEMA_KEYS, ...letterKeys, ...CERTAINTY_KEYS].map((key) => ({
+  return [...LIQ_KEYS, ...EPISEMA_KEYS, LENGTHENED_KEY, ...letterKeys, ...CERTAINTY_KEYS].map((key) => ({
     key,
     bySource: Object.fromEntries(sources.map((s) => [s.id, counts.get(key)?.get(s.id) ?? 0])),
   }));

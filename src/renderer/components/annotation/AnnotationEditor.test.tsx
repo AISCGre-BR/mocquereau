@@ -122,6 +122,26 @@ describe("AnnotationEditor", () => {
     expect(ann()!.neumes[0].letters).toEqual(["letter.c", "letter.x"]);
   });
 
+  it("stores lengthened note numbers and flags invalid ones", () => {
+    const { ref, ann } = mount();
+    addNeume("torculus");
+    fireEvent.click(document.querySelector('[data-neume-index="0"]')!);
+    const field = screen.getByLabelText("Alargadas") as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "3, 1" } });
+    expect(ann()!.neumes[0].lengthened).toEqual([1, 3]);
+    expect(field.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.change(field, { target: { value: "1 3 4" } }); // torculus has 3 notes
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(ann()!.neumes[0].lengthened).toEqual([1, 3]);
+    fireEvent.change(field, { target: { value: "0 x" } });
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    const before = ref.state!.project;
+    fireEvent.blur(field);
+    expect(ref.state!.project).toBe(before);
+    fireEvent.change(field, { target: { value: "" } });
+    expect(ann()!.neumes[0]).not.toHaveProperty("lengthened");
+  });
+
   it("Enter in Etiquetas applies existing tags and creates new ones", () => {
     const { ref, ann } = mount();
     const tags = screen.getByRole("combobox", { name: "Etiquetas" });

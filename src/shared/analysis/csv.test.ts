@@ -53,6 +53,19 @@ describe("rawRows", () => {
     expect(r[col("syllable_tags")]).toBe("raspagem");
   });
 
+  it("notas alargadas logo depois do episema, separadas por ponto e vírgula; vazio quando ausente", () => {
+    expect(RAW_HEADER.indexOf("lengthened")).toBe(RAW_HEADER.indexOf("episema") + 1);
+    const q = structuredClone(makeAnalysisProject());
+    q.sources[0].annotations![3].neumes[0].lengthened = [1, 3];
+    const r = rawRows(q, {}, vocabulary, t).find((x) => x[0] === "E" && x[col("syllable_index")] === "4")!;
+    expect(r[col("lengthened")]).toBe("1; 3");
+    expect(r[col("letters")]).toBe("c");
+    expect(find("L", 2)[col("lengthened")]).toBe("");
+    const empty = find("SG", 4);
+    expect(empty).toHaveLength(RAW_HEADER.length);
+    expect(empty[col("lengthened")]).toBe("");
+  });
+
   it("tipo sem categoria nem notas padrão: categoria e notas vazias", () => {
     const w = { ...vocabulary, kinds: [...vocabulary.kinds, { id: "solto", name: "solto" }] };
     const q = makeAnalysisProject();
@@ -76,6 +89,10 @@ describe("totalsRows", () => {
     expect(new Set(rows.slice(1).map((r) => r[0]))).toEqual(
       new Set(["progress", "neumes", "mean_notes", "marks", "concordance", "tags"]),
     );
+  });
+
+  it("totais incluem a linha de notas alargadas nas marcas", () => {
+    expect(rows).toContainEqual(["marks", "lengthened", "E", "0", ""]);
   });
 
   it("concordância E x SG: 2 de 3 = 66.7", () => {

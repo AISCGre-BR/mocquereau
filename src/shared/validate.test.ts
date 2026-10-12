@@ -237,6 +237,22 @@ describe("anotações", () => {
     expect(r.project.sources[0].annotations![5]).toBeUndefined();
   });
 
+  it("notas alargadas: inteiros >= 1 ordenados e sem repetição; inválidas somem com aviso; vazio = ausente", () => {
+    const p = withAnnotations();
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: [3, 1, 3] });
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: [0, 2.5, "x", 2] });
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: [] });
+    p.sources[0].annotations[0].neumes.push({ kind: "virga", lengthened: "1" });
+    const r = validateProject(p);
+    expect(r.ok).toBe(true); if (!r.ok) return;
+    const n = r.project.sources[0].annotations![0].neumes;
+    expect(n[1].lengthened).toEqual([1, 3]);
+    expect(n[2].lengthened).toEqual([2]);
+    expect("lengthened" in n[3]).toBe(false);
+    expect("lengthened" in n[4]).toBe(false);
+    expect(r.warnings.filter((w) => w.includes("lengthened")).length).toBeGreaterThanOrEqual(2);
+  });
+
   it("ciclo de equivalência é cortado no item que o fecha", () => {
     const p = withAnnotations();
     p.neumeVocabulary.kinds[1].equivalentTo = "uncinus"; // tractulus -> uncinus -> tractulus

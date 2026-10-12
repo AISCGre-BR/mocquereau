@@ -46,6 +46,58 @@ function resolveLetters(text: string, letters: SignificantLetter[], current: str
   return { ids, invalid };
 }
 
+/** Note numbers ("1 3", "1, 3"): integers from 1 up to `max` (when known); others are reported, not kept. */
+export function parseLengthened(text: string, max: number | undefined) {
+  const positions = new Set<number>();
+  let invalid = false;
+  for (const token of text.split(/[\s,]+/).filter(Boolean)) {
+    const n = /^\d+$/.test(token) ? Number(token) : NaN;
+    if (!(n >= 1) || (max !== undefined && n > max)) invalid = true;
+    else positions.add(n);
+  }
+  return { positions: [...positions].sort((a, b) => a - b), invalid };
+}
+
+const samePositions = (a: readonly number[], b: readonly number[]) =>
+  a.length === b.length && a.every((x, i) => x === b[i]);
+
+function LengthenedInput({
+  id,
+  value,
+  max,
+  onChange,
+}: {
+  id: string;
+  value: number[];
+  max: number | undefined;
+  onChange: (positions: number[]) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const formatted = value.join(" ");
+  // Same as the letters: the draft stays while it still yields what is stored.
+  const shown = draft !== null && samePositions(parseLengthened(draft, max).positions, value) ? draft : formatted;
+  const { invalid } = parseLengthened(shown, max);
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      spellCheck={false}
+      className="sc-input w-full"
+      aria-invalid={invalid ? true : undefined}
+      value={shown}
+      onChange={(e) => {
+        const text = e.target.value;
+        setDraft(text);
+        const { positions } = parseLengthened(text, max);
+        if (!samePositions(positions, value)) onChange(positions);
+      }}
+      onKeyDown={stopOwnedKeys}
+    />
+  );
+}
+
 function Row({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
   return (
     <>
@@ -98,7 +150,7 @@ function LettersInput({
   );
 }
 
-/** Detail of the selected neume: notes, liquescence, episema, letters, tags and note. */
+/** Detail of the selected neume: notes, liquescence, episema, lengthened notes, letters, tags and note. */
 export function NeumeDetail({ item, vocabulary, tags, onChange, onTagNames }: NeumeDetailProps) {
   const { t } = useTranslation();
   const baseId = useId();
@@ -142,6 +194,14 @@ export function NeumeDetail({ item, vocabulary, tags, onChange, onTagNames }: Ne
             ]}
             value={episema}
             onChange={(v) => onChange(withField(item, "episema", v === undefined ? undefined : v === "yes"), "episema")}
+          />
+        </Row>
+        <Row label={t("annotation.lengthened")} htmlFor={`${baseId}-lengthened`}>
+          <LengthenedInput
+            id={`${baseId}-lengthened`}
+            value={item.lengthened ?? []}
+            max={item.notes ?? kind?.defaultNotes}
+            onChange={(ps) => onChange(withField(item, "lengthened", ps.length > 0 ? ps : undefined), "lengthened")}
           />
         </Row>
         <Row label={t("annotation.letters")} htmlFor={`${baseId}-letters`}>

@@ -71,7 +71,7 @@ export function buildIndicatorTables(
   });
   const contentTable: IndicatorTable = { title: t("indicators.content"), columns, rows: contentRows };
 
-  // 3. Liquescence, episema, letters and certainty (including "not informed"), one group each.
+  // 3. Liquescence, episema, lengthened notes, letters and certainty (including "not informed"), one group each.
   const letters = new Map(v.letters.map((l) => [`letter.${l.id.replace(/^letter\./, "")}`, l]));
   const markLabel = (key: string): string => {
     if (key.endsWith(".unset")) return t("indicators.unset");
@@ -85,7 +85,9 @@ export function buildIndicatorTables(
   let currentGroup = "";
   for (const m of marks(p, EMPTY, v)) {
     const g = m.key.split(".")[0];
-    if (g !== currentGroup) {
+    // A key without a dot (lengthened notes) is a single row of its own, without a group row.
+    if (g === m.key) currentGroup = g;
+    else if (g !== currentGroup) {
       currentGroup = g;
       markRows.push(group(t(`indicators.group.${g}`)));
     }

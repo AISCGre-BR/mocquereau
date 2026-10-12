@@ -12,9 +12,10 @@ export function emptyAnnotation(): SyllableAnnotation {
 }
 
 function normalizeItem(item: NeumeItem): NeumeItem {
-  const { letters, tags, comment, ...rest } = item;
+  const { letters, tags, comment, lengthened, ...rest } = item;
   return {
     ...rest,
+    ...(lengthened && lengthened.length > 0 ? { lengthened } : {}),
     ...(letters && letters.length > 0 ? { letters } : {}),
     ...(tags && tags.length > 0 ? { tags } : {}),
     ...(comment ? { comment } : {}),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { groupContentRows, marks, neumeContent } from "./content";
+import { occurrences } from "./occurrences";
 import { makeAnalysisProject, vocabulary as v } from "./__fixtures__/analysis-project";
 
 const p = makeAnalysisProject();
@@ -92,6 +93,7 @@ describe("marks", () => {
     expect(rows.map((r) => r.key)).toEqual([
       "liq.augmentative", "liq.diminutive", "liq.none", "liq.unset",
       "episema.yes", "episema.no", "episema.unset",
+      "lengthened",
       "letter.c",
       "certainty.secure", "certainty.probable", "certainty.illegible", "certainty.unset",
     ]);
@@ -104,6 +106,20 @@ describe("marks", () => {
     expect(row("episema.yes")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
     expect(row("episema.unset")).toEqual({ E: 4, SG: 3, L: 4, X: 1 });
     expect(row("letter.c")).toEqual({ E: 1, SG: 0, L: 0, X: 0 });
+  });
+
+  it("counts lengthened notes (not neumes), only what was informed", () => {
+    const q = structuredClone(makeAnalysisProject());
+    q.sources[0].annotations![3].neumes[0].lengthened = [1, 2];
+    q.sources[2].annotations![2].neumes[0].lengthened = [2];
+    expect(marks(q, {}, v).find((r) => r.key === "lengthened")!.bySource).toEqual({ E: 2, SG: 0, L: 1, X: 0 });
+    expect(row("lengthened")).toEqual({ E: 0, SG: 0, L: 0, X: 0 });
+  });
+
+  it("drills lengthened notes down to the syllables that have them", () => {
+    const q = structuredClone(makeAnalysisProject());
+    q.sources[2].annotations![2].neumes[1].lengthened = [1];
+    expect(occurrences(q, {}, v, { kind: "mark", key: "lengthened" })).toEqual([{ sourceId: "L", syllable: 2 }]);
   });
 
   it("keys unknown letters by id, adding the prefix only when missing", () => {

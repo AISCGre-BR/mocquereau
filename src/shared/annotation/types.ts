@@ -11,6 +11,8 @@ export interface NeumeItem {
   notes?: number;
   liquescence?: Liquescence;
   episema?: boolean;
+  /** 1-based positions of lengthened notes, sorted and unique; absent = not informed. */
+  lengthened?: number[];
   letters?: string[];
   tags?: string[];
   comment?: string;

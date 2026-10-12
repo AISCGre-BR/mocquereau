@@ -15,7 +15,7 @@ import { tagCounts } from "./tag-counts";
 
 export const RAW_HEADER = [
   "source", "family", "class2", "class3", "section", "syllable_index", "syllable", "position",
-  "neume", "equivalent", "category", "notes", "liquescence", "episema", "letters",
+  "neume", "equivalent", "category", "notes", "liquescence", "episema", "lengthened", "letters",
   "neume_tags", "syllable_tags", "certainty", "comment",
 ] as const;
 export const TOTALS_HEADER = ["block", "row", "column", "value", "percent"] as const;
@@ -81,7 +81,7 @@ export function rawRows(
     if (a.neumes.length === 0) {
       // position, neume, equivalent, category empty; notes = manual total; marks and neume tags empty.
       out.push([
-        ...head, "", "", "", "", a.notes === undefined ? "" : String(a.notes), "", "", "", "",
+        ...head, "", "", "", "", a.notes === undefined ? "" : String(a.notes), "", "", "", "", "",
         syllableTags, certainty, a.comment ?? "",
       ]);
       continue;
@@ -101,6 +101,7 @@ export function rawRows(
         notes === undefined ? "" : String(notes),
         n.liquescence ?? "",
         n.episema === undefined ? "" : n.episema ? "yes" : "no",
+        (n.lengthened ?? []).join("; "),
         (n.letters ?? []).map((id) => letters.get(id) ?? id).join("; "),
         (n.tags ?? []).map(tagName).join("; "),
         syllableTags,
