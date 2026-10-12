@@ -128,6 +128,23 @@ describe("NeumeSequenceField", () => {
     expect(screen.getByRole("option", { name: "virga" })).toBeTruthy();
   });
 
+  it("typing the exact name of a hidden kind offers it", () => {
+    const { input, kinds } = setup();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "Punctum" } });
+    const option = screen.getByRole("option", { name: "punctum" });
+    expect(screen.queryByText(/Criar «/)).toBeNull();
+    fireEvent.click(option);
+    expect(kinds()).toEqual(["punctum"]);
+  });
+
+  it("a prefix of a hidden kind still does not list it", () => {
+    const { input } = setup();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "punct" } });
+    expect(screen.queryByRole("option", { name: "punctum" })).toBeNull();
+  });
+
   it("Esc closes the list", () => {
     const { input } = setup();
     fireEvent.focus(input);

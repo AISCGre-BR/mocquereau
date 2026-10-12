@@ -34,11 +34,15 @@ export function filterKinds(
 ): Array<{ category: NeumeCategory; kinds: NeumeKind[] }> {
   const q = fold(query.trim());
   const match = (k: NeumeKind) => q === "" || fold(k.name).split(/\s+/).some((w) => w.startsWith(q));
+  // Hidden kinds (or kinds of a hidden category) stay out of the list, but typing the exact
+  // name still offers them: otherwise there is no match and no "Create" either.
+  const exact = (k: NeumeKind) => q !== "" && fold(k.name.trim()) === q;
   return v.categories
-    .filter((c) => !c.hidden)
     .map((category) => ({
       category,
-      kinds: v.kinds.filter((k) => k.categoryId === category.id && !k.hidden && match(k)),
+      kinds: v.kinds.filter(
+        (k) => k.categoryId === category.id && ((!category.hidden && !k.hidden && match(k)) || exact(k)),
+      ),
     }))
     .filter((g) => g.kinds.length > 0);
 }

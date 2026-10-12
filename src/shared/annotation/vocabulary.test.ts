@@ -33,6 +33,17 @@ describe("vocabulário padrão", () => {
     expect(names).toContain("climacus resupinus");
     expect(filterKinds(w, "flex").flatMap((g) => g.kinds.map((k) => k.name))).toEqual(["porrectus flexus", "scandicus flexus"]);
   });
+  it("nome exato de um tipo oculto (ou de categoria oculta) aparece mesmo assim", () => {
+    const w = structuredClone(v);
+    w.kinds.find((k) => k.id === "climacus")!.hidden = true;
+    expect(filterKinds(w, "Clímacus").flatMap((g) => g.kinds.map((k) => k.id))).toContain("climacus");
+    const cat = w.kinds.find((k) => k.id === "virga")!.categoryId;
+    w.categories.find((c) => c.id === cat)!.hidden = true;
+    const ids = filterKinds(w, "virga").flatMap((g) => g.kinds.map((k) => k.id));
+    expect(ids).toContain("virga");
+    expect(ids).not.toContain("tractulus");
+    expect(filterKinds(w, "vir").flatMap((g) => g.kinds.map((k) => k.id))).not.toContain("virga");
+  });
   it("restaurar padrão acrescenta o que falta e mantém o que o usuário criou", () => {
     const w = structuredClone(v);
     w.kinds = w.kinds.filter((k) => k.id !== "pes");
