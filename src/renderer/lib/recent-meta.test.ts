@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRecentMeta, firstPageImage, sourceProgress } from "./recent-meta";
+import { bestPageLine, buildRecentMeta, firstPageImage, sourceProgress } from "./recent-meta";
 import { createNewProject } from "../hooks/useProject";
 
 const line = (boxes: Record<number, unknown>, dataUrl = "data:image/png;base64,AA") => ({
@@ -35,5 +35,29 @@ describe("buildRecentMeta / firstPageImage", () => {
     ];
     expect(firstPageImage(p)).toBe("data:image/png;base64,BB");
     expect(firstPageImage(createNewProject("T", "") as any)).toBe("");
+  });
+});
+
+describe("bestPageLine", () => {
+  const sized = (w: number, h: number, dataUrl: string, adj?: object) => ({
+    ...line({}, dataUrl), image: { dataUrl, width: w, height: h, mimeType: "image/png" }, imageAdjustments: adj,
+  });
+  const proj = (...sources: any[][]): any => ({ sources: sources.map((lines) => ({ lines })) });
+
+  it("prefers the largest pixel area over a smaller first page, across sources", () => {
+    const p = proj([sized(100, 100, "A")], [sized(300, 200, "B"), sized(200, 200, "C")]);
+    expect(bestPageLine(p)?.image.dataUrl).toBe("B");
+  });
+  it("keeps the earliest page on ties", () => {
+    expect(bestPageLine(proj([sized(10, 10, "A"), sized(10, 10, "B")]))?.image.dataUrl).toBe("A");
+  });
+  it("returns the chosen line so its own adjustments apply", () => {
+    const p = proj([sized(100, 100, "A", { rotation: 0 })], [sized(500, 500, "B", { rotation: 90, flipH: true })]);
+    expect(bestPageLine(p)?.imageAdjustments).toEqual({ rotation: 90, flipH: true });
+  });
+  it("skips empty images and returns undefined when there are none", () => {
+    expect(bestPageLine(proj([sized(900, 900, "")]))).toBeUndefined();
+    expect(bestPageLine(proj([sized(100, 100, ""), sized(5, 5, "Z")]))?.image.dataUrl).toBe("Z");
+    expect(bestPageLine(proj())).toBeUndefined();
   });
 });

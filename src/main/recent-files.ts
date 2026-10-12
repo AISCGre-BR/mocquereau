@@ -5,7 +5,7 @@ import type { RecentEntry, RecentMeta } from "../shared/recent";
 export type { RecentEntry, RecentMeta, RecentSourceMeta } from "../shared/recent";
 
 export const MAX_RECENT = 8;
-const MAX_TEXT = 500, MAX_THUMB = 300_000, MAX_SOURCES = 50;
+const MAX_TEXT = 500, MAX_THUMB = 800_000, MAX_SOURCES = 50;
 const str = (v: unknown, max = MAX_TEXT) => (typeof v === "string" ? v.slice(0, max) : null);
 
 export function sanitizeRecentMeta(v: unknown): RecentMeta | null {

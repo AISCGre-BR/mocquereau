@@ -11,7 +11,7 @@ import type { Classification } from "../../shared/classification";
 import { useToast } from "../ui/Toast";
 import { syllabifyText } from "../lib/syllabify";
 import type { MocquereauProject } from "../lib/models";
-import { buildRecentMeta, firstPageLine } from "../lib/recent-meta";
+import { bestPageLine, buildRecentMeta } from "../lib/recent-meta";
 import { makeThumbnail } from "../lib/thumbnail";
 import { detectRealignments, loadRasterForInk, type RasterLoader } from "../lib/box-frame-realign";
 import type { NewProjectDraft } from "../lib/new-project";
@@ -60,9 +60,9 @@ export interface ProjectFileOptions {
 /** Calcula miniatura e progresso em segundo plano e os entrega ao main (sem dispatch). */
 let thumbCache: { key: string; thumb: string } | null = null;
 
-/** Miniatura da primeira página; reaproveita a última se a imagem e os ajustes não mudaram. */
+/** Miniatura da página de maior resolução do projeto; reaproveita a última se a imagem e os ajustes não mudaram. */
 async function thumbnailFor(project: MocquereauProject): Promise<string | undefined> {
-  const line = firstPageLine(project);
+  const line = bestPageLine(project);
   const dataUrl = line?.image?.dataUrl;
   if (!line || !dataUrl) return undefined;
   const adj = line.imageAdjustments;

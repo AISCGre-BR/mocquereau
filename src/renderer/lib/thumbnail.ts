@@ -15,7 +15,7 @@ function quarterTurns(rotation = 0): number {
  */
 export async function makeThumbnail(
   dataUrl: string,
-  maxSide = 480,
+  maxSide = 1280,
   adj?: ThumbnailAdjustments,
 ): Promise<string | undefined> {
   if (!dataUrl) return undefined;
@@ -37,7 +37,7 @@ export async function makeThumbnail(
       ctx.scale(adj?.flipH ? -1 : 1, adj?.flipV ? -1 : 1);
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
     }
-    return canvas.toDataURL("image/jpeg", 0.8);
+    return canvas.toDataURL("image/jpeg", 0.82);
   } catch {
     return undefined;
   }
