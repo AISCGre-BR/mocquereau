@@ -83,3 +83,15 @@ describe("catálogos i18n", () => {
     expect(Object.keys(SAME_AS_EN).filter((key) => !(key in en))).toEqual([]);
   });
 });
+
+describe("terminologia japonesa", () => {
+  const values = Object.values(ja as Catalog);
+  it("uma só grafia para liquescência, episema e número de notas", () => {
+    expect(values.filter((v) => v.includes("リクエスケンス"))).toEqual([]);
+    expect(values.filter((v) => v.includes("エピセマ"))).toEqual([]);
+    expect(values.filter((v) => /(?<!符)音数/.test(v))).toEqual([]);
+  });
+  it("a categoria dos liquescentes é de neumas", () => {
+    expect((ja as Catalog)["annotation.category.liquescent"]).toBe("リクエッセンス・ネウマ");
+  });
+});
