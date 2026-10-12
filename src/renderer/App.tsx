@@ -20,6 +20,7 @@ import { RecortesView } from "./views/RecortesView";
 import { TabelaView } from "./views/TabelaView";
 import { ExportDialog } from "./components/ExportDialog";
 import { ClassificationDialog } from "./components/sources/ClassificationDialog";
+import { TagsDialog } from "./components/annotation/TagsDialog";
 import { RecortesTools } from "./components/recortes/RecortesTools";
 import { SuggestActions } from "./components/recortes/SuggestActions";
 import { TabelaTools } from "./components/table-preview/TabelaTools";
@@ -58,6 +59,7 @@ function Workbench() {
   const [view, setView] = useState<ViewId>("texto");
   const [exportOpen, setExportOpen] = useState(false);
   const [classificationOpen, setClassificationOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   // Desfazer/Refazer troca o projeto por baixo das vistas. As que ainda guardam
   // cópias locais (campos do Texto) remontam para reler o projeto; Recortes lê o
   // projeto a cada render (D6) e fica montada, com a seleção e o zoom.
@@ -80,6 +82,7 @@ function Workbench() {
   const setRecortesDialog = recortesCtx.setDialog;
   useEffect(() => {
     setClassificationOpen(false);
+    setTagsOpen(false);
     setRecortesDialog(null);
     resetSourceTreeSession();
   }, [file.projectEpoch, setRecortesDialog]);
@@ -144,6 +147,7 @@ function Workbench() {
       saveAs: () => void file.saveAs(),
       importGueranger: () => void file.importGueranger(),
       editClassification: () => setClassificationOpen(true),
+      editTags: () => setTagsOpen(true),
       exportDocx: () => setExportOpen(true),
       closeProject: file.close,
       undo: () => stepHistory("undo"),
@@ -235,6 +239,7 @@ function Workbench() {
       )}
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
       {classificationOpen && project && !creating && <ClassificationDialog onClose={() => setClassificationOpen(false)} />}
+      {tagsOpen && project && !creating && <TagsDialog onClose={() => setTagsOpen(false)} />}
     </AppShell>
   );
 }

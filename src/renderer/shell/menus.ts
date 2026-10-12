@@ -52,6 +52,7 @@ export interface MenuActions extends RecortesMenuActions {
   saveAs: () => void;
   importGueranger: () => void;
   editClassification: () => void;
+  editTags: () => void;
   exportDocx: () => void;
   closeProject: () => void;
   undo: () => void;
@@ -149,6 +150,7 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         "separator",
         { id: "file.importGueranger", label: t("shell.file.importGueranger"), disabled: noProject, onSelect: actions.importGueranger },
         { id: "file.classification", label: t("shell.file.classification"), disabled: noProject, onSelect: actions.editClassification },
+        { id: "file.tags", label: t("shell.file.tags"), disabled: noProject, onSelect: actions.editTags },
         { id: "file.exportDocx", label: t("shell.file.exportDocx"), accelerator: "Ctrl+E", disabled: !state.canExport, onSelect: actions.exportDocx },
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },

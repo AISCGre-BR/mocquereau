@@ -13,6 +13,7 @@ function actions(): MenuActions {
     saveAs: vi.fn(),
     importGueranger: vi.fn(),
     editClassification: vi.fn(),
+    editTags: vi.fn(),
     exportDocx: vi.fn(),
     closeProject: vi.fn(),
     undo: vi.fn(),
@@ -71,7 +72,7 @@ describe("buildMenus", () => {
     const menus = buildMenus({ ...base, hasProject: false, canExport: false }, actions(), t);
     expect(find(menus, "file.new").disabled).toBeFalsy();
     expect(find(menus, "file.open").disabled).toBeFalsy();
-    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.exportDocx", "file.close"]) {
+    for (const id of ["file.save", "file.saveAs", "file.importGueranger", "file.classification", "file.tags", "file.exportDocx", "file.close"]) {
       expect(find(menus, id).disabled).toBe(true);
     }
     for (const id of ["view.texto", "view.recortes", "view.tabela"]) {
@@ -166,6 +167,19 @@ describe("buildMenus", () => {
     item.onSelect();
     expect(a.editClassification).toHaveBeenCalledOnce();
     expect(find(buildMenus({ ...base, hasProject: false }, a, t), "file.classification").disabled).toBe(true);
+  });
+
+  it("Etiquetas… fica no Arquivo depois de Classificação…, habilitada só com projeto, e chama a ação", () => {
+    const a = actions();
+    const menus = buildMenus(base, a, t);
+    const item = find(menus, "file.tags");
+    expect(item.label).toBe("shell.file.tags");
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(a.editTags).toHaveBeenCalledOnce();
+    expect(find(buildMenus({ ...base, hasProject: false }, a, t), "file.tags").disabled).toBe(true);
+    const ids = menus[0].items.map((i) => (typeof i === "string" ? i : i.id));
+    expect(ids.indexOf("file.tags")).toBe(ids.indexOf("file.classification") + 1);
   });
 
   it("Limpar recentes só aparece sem projeto aberto", () => {
