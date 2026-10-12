@@ -42,7 +42,7 @@ function actions(): MenuActions {
 
 const NO_SUGGESTIONS = { suggestionsEnabled: false, canSuggest: false, canSuggestSource: false, hasSuggestions: false };
 
-const base: MenuState = { hasProject: true, canExport: true, view: "texto", theme: "dark", language: "en", canUndo: true, canRedo: false };
+const base: MenuState = { hasProject: true, canExport: true, hasAnnotations: true, view: "texto", theme: "dark", language: "en", canUndo: true, canRedo: false };
 
 function flat(items: MenuEntry[]): MenuCommand[] {
   return items.flatMap((item) => (item === "separator" ? [] : "items" in item ? flat(item.items) : [item]));
@@ -161,6 +161,10 @@ describe("buildMenus", () => {
     const a = actions();
     find(buildMenus(base, a, t), "help.openExample").onSelect();
     expect(a.openExample).toHaveBeenCalledTimes(1);
+  });
+
+  it("Exportar CSV… fica desabilitado sem anotações", () => {
+    expect(find(buildMenus({ ...base, hasAnnotations: false }, actions(), t), "file.exportCsv").disabled).toBe(true);
   });
 
   it("Exportar CSV… fica no Arquivo, habilitado com projeto, e chama a ação", () => {

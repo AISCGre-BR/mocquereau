@@ -10,6 +10,8 @@ import { LANG_META, SUPPORTED_LANGS, languageMenuLabel, type SupportedLang } fro
 export interface MenuState {
   hasProject: boolean;
   canExport: boolean;
+  /** The project has at least one annotation (Exportar CSV… needs one). */
+  hasAnnotations: boolean;
   view: ViewId;
   theme: ThemePreference;
   language: SupportedLang;
@@ -172,7 +174,7 @@ export function buildMenus(state: MenuState, actions: MenuActions, t: (key: stri
         { id: "file.tags", label: t("shell.file.tags"), disabled: noProject, onSelect: actions.editTags },
         { id: "file.vocabulary", label: t("shell.file.vocabulary"), disabled: noProject, onSelect: actions.editVocabulary },
         { id: "file.exportDocx", label: t("shell.file.exportDocx"), accelerator: "Ctrl+E", disabled: !state.canExport, onSelect: actions.exportDocx },
-        { id: "file.exportCsv", label: t("shell.file.exportCsv"), disabled: noProject, onSelect: actions.exportCsv },
+        { id: "file.exportCsv", label: t("shell.file.exportCsv"), disabled: noProject || !state.hasAnnotations, onSelect: actions.exportCsv },
         "separator",
         { id: "file.close", label: t("shell.file.close"), disabled: noProject, onSelect: actions.closeProject },
         ...(noProject

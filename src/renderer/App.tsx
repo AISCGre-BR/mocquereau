@@ -172,6 +172,7 @@ function Workbench() {
     {
       hasProject: !creating && project !== null,
       canExport,
+      hasAnnotations: project !== null && projectHasAnnotations(project),
       view,
       theme,
       language,
